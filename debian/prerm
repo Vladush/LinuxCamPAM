@@ -1,0 +1,15 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "remove" ]; then
+    # Disable PAM module
+    pam-auth-update --package --remove linuxcampam
+
+    # Stop service
+    if [ -d /run/systemd/system ]; then
+        systemctl stop linuxcampam || true
+        systemctl disable linuxcampam || true
+    fi
+fi
+
+#DEBHELPER#

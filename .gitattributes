@@ -1,0 +1,10 @@
+# Mark vendored dependencies for GitHub linguist
+include/json.hpp linguist-vendored
+
+# Templates and generated files
+.clang-format linguist-generated
+build/ linguist-generated
+
+# Documentation
+docs/ linguist-documentation
+*.md linguist-documentation

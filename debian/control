@@ -1,0 +1,19 @@
+Source: linuxcampam
+Section: admin
+Priority: optional
+Maintainer: Vlad Orlinski <contact.github.submerge594@slmails.com>
+Build-Depends: debhelper-compat (= 13), cmake, libopencv-dev, libpam0g-dev, nlohmann-json3-dev
+Standards-Version: 4.6.2
+Homepage: https://github.com/Vladush/LinuxCamPAM
+
+Package: linuxcampam
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libopencv-dev, libpam0g, systemd, v4l-utils
+Recommends: rocm-opencl-runtime
+Description: Face Authentication PAM Module (LinuxCamPAM)
+ LinuxCamPAM is a Pluggable Authentication Module (PAM) that provides face
+ recognition authentication using OpenCV and ONNX models. It supports
+ hardware acceleration via OpenCL (ROCm).
+ .
+ This package installs the PAM module, the authentication service, and the
+ necessary machine learning models.

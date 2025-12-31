@@ -1,0 +1,17 @@
+linuxcampam (0.9.2-1) unstable; urgency=medium
+
+  * Portable camera detection via V4L2 enumeration (no hardcoded paths).
+  * Portable GPU detection via sysfs (lspci no longer required).
+  * Setup fails with clear error if no cameras detected.
+  * Better IR emitter script guidance for non-Rust systems.
+
+ -- Vlad Orlinski <contact.github.submerge594@slmails.com>  Sat, 28 Dec 2025 23:35:00 +0100
+
+linuxcampam (1.0.0-1) unstable; urgency=medium
+
+  * Initial release.
+  * Bundled stable ONNX models (2022mar/2021dec).
+  * Feature: Automatic PAM configuration via pam-auth-update.
+  * Feature: Rusticl OpenCL support enabled by default.
+
+ -- Vlad Orlinski <contact.github.submerge594@slmails.com>  Fri, 19 Dec 2025 20:10:00 +0100

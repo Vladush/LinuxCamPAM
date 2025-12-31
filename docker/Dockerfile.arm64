@@ -1,0 +1,32 @@
+FROM ubuntu:22.04
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    libopencv-dev \
+    libpam0g-dev \
+    libjsoncpp-dev \
+    nlohmann-json3-dev \
+    v4l-utils \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Working Directory
+WORKDIR /app
+
+# Copy Source Code
+COPY . /app
+
+# Ensure Clean Build
+RUN rm -rf build && mkdir build
+
+# Build
+WORKDIR /app/build
+RUN cmake .. && make VERBOSE=1 -j1
+
+# Verification Command (to run manually)
+CMD ["./linuxcampam", "help"]

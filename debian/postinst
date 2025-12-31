@@ -1,0 +1,83 @@
+#!/bin/sh
+set -e
+
+#DEBHELPER#
+
+if [ "$1" = "configure" ]; then
+    if [ -d /run/systemd/system ]; then
+        echo "Reloading systemd daemon..."
+        systemctl daemon-reload
+        echo "Enabling LinuxCamPAM service..."
+        # Don't start immediately, let user configure camera path if needed.
+        # systemctl enable linuxcampam.service
+    fi
+    
+    # Ensure rights
+    # Users directory contains biometric embeddings - restrict to root
+    chmod 700 /etc/linuxcampam/users || true
+    chmod 755 /etc/linuxcampam/models
+    
+    # Run Camera Config Detection
+    if [ -x /usr/bin/linuxcampam-setup-config ]; then
+        echo "Auto-configuring cameras..."
+        /usr/bin/linuxcampam-setup-config || true
+    fi
+
+    echo "Registering LinuxCamPAM with PAM..."
+    
+    # 1. Create Backups (Robustness from scripts/postinst)
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    echo "Creating backups of PAM configuration..."
+    for file in common-auth common-account common-password common-session; do
+        if [ -f "/etc/pam.d/$file" ]; then
+            cp "/etc/pam.d/$file" "/etc/pam.d/$file.$TIMESTAMP.bak"
+            echo "  Backed up $file -> $file.$TIMESTAMP.bak"
+        fi
+    done
+
+    # 2. Try automatic update
+    # The '--package' flag makes it non-interactive and respects our 'Default: yes'
+    # However, it will skip if local changes are detected.
+    pam-auth-update --package --enable linuxcampam
+
+    # 3. Verify and Interactive Fallback
+    if ! grep -q "pam_linuxcampam.so" /etc/pam.d/common-auth; then
+        echo ""
+        echo "WARNING: LinuxCamPAM was NOT automatically enabled."
+        echo "This is likely due to existing local manual modifications to /etc/pam.d/common-*."
+        echo ""
+        echo "Launching interactive PAM configuration..."
+        echo "Please select 'LinuxCamPAM Face Authentication' and hit OK."
+        echo "Press Enter to continue..."
+        # If running in non-interactive shell/build, this might hang or fail. 
+        # CPack install is usually manual. Dpkg might be non-interactive.
+        # We try 'read' only if terminal is open?
+        if [ -t 0 ]; then
+             read -r _ignored_input || true
+             pam-auth-update
+        else
+             echo "Non-interactive mode detected. Skipping interactive setup."
+             echo "Please run 'sudo pam-auth-update' manually."
+        fi
+    fi
+
+    # Reload systemd and restart service if running
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload
+        systemctl enable linuxcampam
+        systemctl restart linuxcampam || true
+    fi
+    
+    echo "LinuxCamPAM installed."
+    echo "1. Edit config at /etc/linuxcampam/config.ini (OPTIONAL)"
+    if [ -d /run/systemd/system ]; then
+        echo "2. Run 'sudo systemctl enable --now linuxcampam.service'"
+    else
+        echo "2. Configure your init system to run 'linuxcampamd'"
+    fi
+    echo "3. Run 'sudo linuxcampam add <your_username>' to enroll your face."
+    echo "4. Test with 'linuxcampam test'"
+    echo ""
+    echo "NOTE: Face authentication is now ENABLED for login/sudo."
+    echo "If you need to disable it, remove package or run 'sudo pam-auth-update' and uncheck it."
+fi

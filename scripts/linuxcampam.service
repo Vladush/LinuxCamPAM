@@ -1,0 +1,13 @@
+[Unit]
+Description=LinuxCamPAM Facial Authentication Service
+After=network.target
+
+[Service]
+ExecStartPre=-/usr/local/bin/linux-enable-ir-emitter run
+ExecStart=/usr/local/bin/detect_opencl.sh /usr/local/bin/linuxcampamd
+Restart=always
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target

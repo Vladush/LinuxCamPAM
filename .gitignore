@@ -1,0 +1,60 @@
+# Build directories
+build/
+build-*/
+build_*/
+
+# Compiled Object files
+*.o
+*.obj
+*.res
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Compiled Static libraries
+*.lo
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# CMake artifacts
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Debian packaging
+debian/linuxcampam/
+debian/*.log
+debian/*.substvars
+debian/files
+debian/debhelper-build-stamp
+*.deb
+*.ddeb
+*.changes
+*.buildinfo
+*.dsc
+*.tar.gz
+
+# Models and Data
+models/
+config.ini
+
+# Python
+__pycache__/
+*.pyc

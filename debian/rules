@@ -1,0 +1,12 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@ --buildsystem=cmake
+
+override_dh_auto_configure:
+	dh_auto_configure -- -DCMAKE_BUILD_TYPE=Release
+
+execute_after_dh_auto_install:
+	# Remove files installed by CMake that conflict with Debian packaging
+	rm -rf debian/linuxcampam/lib/systemd/system
+	rm -f debian/linuxcampam/usr/share/pam-configs/linuxcampam
