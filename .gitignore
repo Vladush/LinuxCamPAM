@@ -53,7 +53,7 @@ debian/debhelper-build-stamp
 
 # Models and Data
 models/
-config.ini
+/config.ini
 
 # Python
 __pycache__/
