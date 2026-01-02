@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-gcc:
+    name: Build (GCC)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake libopencv-dev libpam0g-dev \
+            libjsoncpp-dev nlohmann-json3-dev v4l-utils \
+            libgtest-dev
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  build-clang:
+    name: Build (Clang)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake clang libopencv-dev libpam0g-dev \
+            libjsoncpp-dev nlohmann-json3-dev v4l-utils
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+  build-arm64:
+    name: Build (arm64)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build arm64
+        run: docker buildx build --platform linux/arm64 -f docker/Dockerfile.arm64 --load -t linuxcampam:arm64 .
+
+      - name: Verify
+        run: docker run --rm --platform linux/arm64 linuxcampam:arm64 ./linuxcampam help
+
+  build-i386:
+    name: Build (i386)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build i386
+        run: docker buildx build --platform linux/386 -f docker/Dockerfile.i386 --load -t linuxcampam:i386 .
+
+      - name: Verify
+        run: docker run --rm --platform linux/386 linuxcampam:i386 ./linuxcampam help
+
+  build-riscv64:
+    name: Build (riscv64)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build riscv64
+        run: docker buildx build --platform linux/riscv64 -f docker/Dockerfile.riscv64 --load -t linuxcampam:riscv64 .
+
+      - name: Verify
+        run: docker run --rm --platform linux/riscv64 linuxcampam:riscv64 ./linuxcampam help

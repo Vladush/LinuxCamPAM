@@ -1,5 +1,7 @@
 # LinuxCamPAM: Face Authentication for Linux
 
+[![CI](https://github.com/Vladush/LinuxCamPAM/actions/workflows/ci.yml/badge.svg)](https://github.com/Vladush/LinuxCamPAM/actions/workflows/ci.yml)
+
 > **A personal hobby project to bring seamless face unlock to my Linux laptop.**
 
 LinuxCamPAM provides seamless face unlock for Linux `sudo`, `login`, and `gdm` using OpenCV and AI models (YuNet/SFace). I built it to solve my own need for speed and reliability, supporting hardware acceleration (OpenCL, CUDA) and smart dual-camera configurations (IR + RGB).
