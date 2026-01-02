@@ -31,9 +31,10 @@ cmake_install.cmake
 install_manifest.txt
 compile_commands.json
 
-# Editors
+# Editors and caches
 .vscode/
 .idea/
+.cache/
 *.swp
 *~
 .DS_Store
