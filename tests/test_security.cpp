@@ -3,7 +3,6 @@
 #include <cmath>
 #include <gtest/gtest.h>
 #include <limits>
-#include <regex>
 #include <string>
 #include <vector>
 using json = nlohmann::json;
@@ -211,13 +210,13 @@ TEST(SecurityTest, LargeUserFilePrevention) {
 
 TEST(SecurityTest, MalformedJsonHandling) {
   // These should throw or be handled gracefully
-  EXPECT_THROW(json::parse("{invalid json}"), json::parse_error);
-  EXPECT_THROW(json::parse(""), json::parse_error);
-  EXPECT_THROW(json::parse("{\"unclosed\": "), json::parse_error);
+  EXPECT_THROW((void)json::parse("{invalid json}"), json::parse_error);
+  EXPECT_THROW((void)json::parse(""), json::parse_error);
+  EXPECT_THROW((void)json::parse("{\"unclosed\": "), json::parse_error);
 
   // Valid JSON should parse
-  EXPECT_NO_THROW(json::parse("{}"));
-  EXPECT_NO_THROW(json::parse("{\"valid\": true}"));
+  EXPECT_NO_THROW((void)json::parse("{}"));
+  EXPECT_NO_THROW((void)json::parse("{\"valid\": true}"));
 }
 
 TEST(SecurityTest, JsonTypeConfusion) {
