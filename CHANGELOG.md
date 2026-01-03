@@ -91,7 +91,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Smart OpenCL backend detection (uses Rusticl on AMD, prevents Mesa/Clover crashes)
 - YuNet face detection and SFace face recognition (ONNX models)
 - Debian packaging support (CPack)
-- Cross-compilation support for ARM64 and RISC-V
+- Cross-compilation support for AARCH64 and RISC-V
 - Comprehensive security assessment documentation
 
 ### Security in 0.9.0

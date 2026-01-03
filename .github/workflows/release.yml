@@ -1,56 +1,31 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   workflow_dispatch:
 
 jobs:
-  build-deb:
-    name: Build Debian Package
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential cmake libopencv-dev libpam0g-dev \
-            libjsoncpp-dev nlohmann-json3-dev v4l-utils \
-            devscripts debhelper dh-cmake
-
-      - name: Download models
-        run: ./scripts/download_models.sh
-
-      - name: Build package
-        run: dpkg-buildpackage -b -uc -us
-
-      - name: Move artifacts
-        run: mv ../linuxcampam_*.deb .
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: deb-package
-          path: linuxcampam_*.deb
-
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-24.04
-    needs: build-deb
+    if: ${{ github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'v') }}
     permissions:
       contents: write
     steps:
-      - name: Download artifact
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: deb-package
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: linuxcampam-*-deb
+          merge-multiple: true
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.workflow_run.head_branch }}
           files: linuxcampam_*.deb
           draft: false
           generate_release_notes: true

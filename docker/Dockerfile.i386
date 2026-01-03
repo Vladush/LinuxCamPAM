@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y \
     nlohmann-json3-dev \
     v4l-utils \
     git \
+    devscripts \
+    debhelper \
+    dh-cmake \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Working Directory
@@ -24,9 +27,8 @@ COPY . /app
 # Ensure Clean Build
 RUN rm -rf build && mkdir build
 
-# Build
-WORKDIR /app/build
-RUN cmake .. && make VERBOSE=1 -j$(nproc)
+# Build and Package
+RUN dpkg-buildpackage -b -uc -us
 
 # Verification
 CMD ["./linuxcampam", "help"]
