@@ -13,6 +13,8 @@ RUN apt-get update && apt-get install -y \
     nlohmann-json3-dev \
     v4l-utils \
     git \
+    wget \
+    ca-certificates \
     devscripts \
     debhelper \
     dh-cmake \
@@ -23,6 +25,9 @@ WORKDIR /app
 
 # Copy Source Code
 COPY . /app
+
+# Download models (ensures they're included even if buildx context differs)
+RUN ./scripts/download_models.sh
 
 # Ensure Clean Build
 RUN rm -rf build && mkdir build

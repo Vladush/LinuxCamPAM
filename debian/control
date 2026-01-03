@@ -1,7 +1,7 @@
 Source: linuxcampam
 Section: admin
 Priority: optional
-Maintainer: Vlad Orlinski <contact.github.submerge594@slmails.com>
+Maintainer: Vladimir Orlinski <contact.github.submerge594@slmails.com>
 Build-Depends: debhelper-compat (= 13), cmake, libopencv-dev, libpam0g-dev, nlohmann-json3-dev
 Standards-Version: 4.6.2
 Homepage: https://github.com/Vladush/LinuxCamPAM
