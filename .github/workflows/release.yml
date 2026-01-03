@@ -27,11 +27,14 @@ jobs:
       - name: Build package
         run: dpkg-buildpackage -b -uc -us
 
+      - name: Move artifacts
+        run: mv ../linuxcampam_*.deb .
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: deb-package
-          path: ../linuxcampam_*.deb
+          path: linuxcampam_*.deb
 
   create-release:
     name: Create GitHub Release
