@@ -28,7 +28,8 @@ COPY . /app
 RUN rm -rf build && mkdir build
 
 # Build and Package
-RUN dpkg-buildpackage -b -uc -us
+RUN dpkg-buildpackage -b -uc -us && \
+    dpkg -i ../*.deb || apt-get install -f -y
 
 # Verification
 CMD ["/usr/bin/linuxcampam", "help"]

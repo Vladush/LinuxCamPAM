@@ -30,7 +30,8 @@ RUN rm -rf build && mkdir build
 # Build and Package
 # dpkg-buildpackage with cmake buildsystem will handle the build process
 # We skip signing (-uc -us)
-RUN dpkg-buildpackage -b -uc -us
+RUN dpkg-buildpackage -b -uc -us && \
+    dpkg -i ../*.deb || apt-get install -f -y
 
 # Verification Command (to run manually)
 CMD ["/usr/bin/linuxcampam", "help"]
