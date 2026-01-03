@@ -42,7 +42,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: linuxcampam-deb
+          name: linuxcampam-amd64-deb
           path: linuxcampam_*.deb
 
   build-clang:
