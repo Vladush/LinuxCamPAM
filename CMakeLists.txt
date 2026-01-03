@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(LinuxCamPAM VERSION 0.9.2 LANGUAGES C CXX)
+project(LinuxCamPAM VERSION 0.9.3 LANGUAGES C CXX)
 
 add_compile_definitions(LINUXCAMPAM_VERSION="${PROJECT_VERSION}")
 

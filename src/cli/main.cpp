@@ -62,7 +62,13 @@ void print_response(const std::string &resp) {
 
 void print_help() {
   std::cout
-      << "LinuxCamPAM CLI Tool v0.9.2\n"
+#ifdef LINUXCAMPAM_VERSION
+          std::cout
+      << "LinuxCamPAM CLI Tool v" << LINUXCAMPAM_VERSION << "\n"
+#else
+          std::cout
+      << "LinuxCamPAM CLI Tool vUnknown\n"
+#endif
       << "Usage:\n"
       << "  linuxcampam add <username>              Enroll a new user\n"
       << "  linuxcampam train [username] [options]  Train/refine model\n"
