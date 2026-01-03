@@ -76,6 +76,9 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Download models
+        run: ./scripts/download_models.sh
+
       - name: Build aarch64
         run: docker buildx build --platform linux/aarch64 -f docker/Dockerfile.aarch64 --load -t linuxcampam:aarch64 .
 
@@ -106,6 +109,9 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Download models
+        run: ./scripts/download_models.sh
 
       - name: Build i386
         run: docker buildx build --platform linux/386 -f docker/Dockerfile.i386 --load -t linuxcampam:i386 .

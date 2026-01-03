@@ -1,4 +1,4 @@
-linuxcampam (0.9.3-1) unstable; urgency=medium
+linuxcampam (0.9.3.1-1) unstable; urgency=medium
 
   * Multi-arch support (AARCH64, i386, RISC-V).
   * Update Dockerfiles for packaging.
