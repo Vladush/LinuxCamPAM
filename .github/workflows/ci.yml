@@ -85,12 +85,11 @@ jobs:
       - name: Extract artifacts
         run: |
           docker create --name temp_container linuxcampam:aarch64
-          # Debian package is named arm64 by default, renaming to aarch64 for consistency
-          docker cp temp_container:/$(docker run --rm linuxcampam:aarch64 ls /*.deb | head -1) ./linuxcampam_aarch64.deb
+          docker cp temp_container:/ - | tar -tf - | grep '\.deb$' | head -1 | xargs -I{} docker cp temp_container:/{} ./linuxcampam_aarch64.deb
           docker rm temp_container
 
       - name: Verify
-        run: docker run --rm --platform linux/aarch64 linuxcampam:aarch64 ./linuxcampam help
+        run: docker run --rm --platform linux/aarch64 --entrypoint /usr/bin/linuxcampam linuxcampam:aarch64 help
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -119,11 +118,11 @@ jobs:
       - name: Extract artifacts
         run: |
           docker create --name temp_container linuxcampam:i386
-          docker cp temp_container:/$(docker run --rm linuxcampam:i386 ls /*.deb | head -1) ./linuxcampam_i386.deb
+          docker cp temp_container:/ - | tar -tf - | grep '\.deb$' | head -1 | xargs -I{} docker cp temp_container:/{} ./linuxcampam_i386.deb
           docker rm temp_container
 
       - name: Verify
-        run: docker run --rm --platform linux/386 linuxcampam:i386 ./linuxcampam help
+        run: docker run --rm --platform linux/386 --entrypoint /usr/bin/linuxcampam linuxcampam:i386 help
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -152,11 +151,11 @@ jobs:
       - name: Extract artifacts
         run: |
           docker create --name temp_container linuxcampam:riscv64
-          docker cp temp_container:/$(docker run --rm linuxcampam:riscv64 ls /*.deb | head -1) ./linuxcampam_riscv64.deb
+          docker cp temp_container:/ - | tar -tf - | grep '\.deb$' | head -1 | xargs -I{} docker cp temp_container:/{} ./linuxcampam_riscv64.deb
           docker rm temp_container
 
       - name: Verify
-        run: docker run --rm --platform linux/riscv64 linuxcampam:riscv64 ./linuxcampam help
+        run: docker run --rm --platform linux/riscv64 --entrypoint /usr/bin/linuxcampam linuxcampam:riscv64 help
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

@@ -33,4 +33,4 @@ RUN rm -rf build && mkdir build
 RUN dpkg-buildpackage -b -uc -us
 
 # Verification Command (to run manually)
-CMD ["./linuxcampam", "help"]
+CMD ["/usr/bin/linuxcampam", "help"]
