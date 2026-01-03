@@ -66,31 +66,34 @@ jobs:
 
   build-aarch64:
     name: Build (aarch64)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm # Native ARM runner - faster than QEMU
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake libopencv-dev libpam0g-dev \
+            libjsoncpp-dev nlohmann-json3-dev v4l-utils \
+            libgtest-dev devscripts debhelper dh-cmake
 
       - name: Download models
         run: ./scripts/download_models.sh
 
-      - name: Build aarch64
-        run: docker buildx build --platform linux/aarch64 -f docker/Dockerfile.aarch64 --load -t linuxcampam:aarch64 .
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
-      - name: Extract artifacts
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Build package
         run: |
-          docker create --name temp_container linuxcampam:aarch64
-          DEB_FILE=$(docker cp temp_container:/ - | tar -tf - | grep '\.deb$' | head -1)
-          docker cp "temp_container:/$DEB_FILE" .
-          docker rm temp_container
-
-      - name: Verify
-        run: docker run --rm --platform linux/aarch64 --entrypoint /usr/bin/linuxcampam linuxcampam:aarch64 help
+          dpkg-buildpackage -b -uc -us
+          mv ../linuxcampam_*.deb .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
