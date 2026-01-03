@@ -51,7 +51,7 @@ With the decision to open source this project, I have dedicated significant effo
 | :--- | :--- | :--- | :--- |
 | **x86_64** | GCC 11/12/13 | ✅ Verified | Target: Ubuntu 22.04+ / Debian 12+ |
 | **x86_64** | Clang 16/17/18 | ✅ Verified | Target: Ubuntu 22.04+ / Debian 12+ |
-| **ARM64** | GCC (Cross) | ✅ Verified | via Docker/QEMU |
+| **AARCH64** | GCC (Cross) | ✅ Verified | via Docker/QEMU |
 | **RISC-V** | GCC (Cross) | ✅ Verified | via Docker/QEMU |
 
 ### Option A: Direct System Install (Quickest)

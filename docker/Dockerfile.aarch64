@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y \
     nlohmann-json3-dev \
     v4l-utils \
     git \
+    devscripts \
+    debhelper \
+    dh-cmake \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Working Directory
@@ -24,9 +27,11 @@ COPY . /app
 # Ensure Clean Build
 RUN rm -rf build && mkdir build
 
-# Build
-WORKDIR /app/build
-RUN cmake .. && make VERBOSE=1 -j1
+# Build and Package
+# dpkg-buildpackage with cmake buildsystem will handle the build process
+# We skip signing (-uc -us)
+RUN dpkg-buildpackage -b -uc -us && \
+    dpkg -i ../*.deb || apt-get install -f -y
 
 # Verification Command (to run manually)
-CMD ["./linuxcampam", "help"]
+CMD ["/usr/bin/linuxcampam", "help"]

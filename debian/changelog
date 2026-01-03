@@ -1,3 +1,11 @@
+linuxcampam (0.9.3.1-1) unstable; urgency=medium
+
+  * Multi-arch support (AARCH64, i386, RISC-V).
+  * Update Dockerfiles for packaging.
+  * Secure release workflow.
+
+ -- Vlad Orlinski <contact.github.submerge594@slmails.com>  Sat, 03 Jan 2026 02:20:00 +0100
+
 linuxcampam (0.9.2-1) unstable; urgency=medium
 
   * Portable camera detection via V4L2 enumeration (no hardcoded paths).
