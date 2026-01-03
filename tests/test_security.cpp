@@ -210,13 +210,18 @@ TEST(SecurityTest, LargeUserFilePrevention) {
 
 TEST(SecurityTest, MalformedJsonHandling) {
   // These should throw or be handled gracefully
-  EXPECT_THROW((void)json::parse("{invalid json}"), json::parse_error);
-  EXPECT_THROW((void)json::parse(""), json::parse_error);
-  EXPECT_THROW((void)json::parse("{\"unclosed\": "), json::parse_error);
+  EXPECT_THROW(
+      { [[maybe_unused]] auto j = json::parse("{invalid json}"); },
+      json::parse_error);
+  EXPECT_THROW(
+      { [[maybe_unused]] auto j = json::parse(""); }, json::parse_error);
+  EXPECT_THROW(
+      { [[maybe_unused]] auto j = json::parse("{\"unclosed\": "); },
+      json::parse_error);
 
   // Valid JSON should parse
-  EXPECT_NO_THROW((void)json::parse("{}"));
-  EXPECT_NO_THROW((void)json::parse("{\"valid\": true}"));
+  EXPECT_NO_THROW([[maybe_unused]] auto j1 = json::parse("{}"));
+  EXPECT_NO_THROW([[maybe_unused]] auto j2 = json::parse("{\"valid\": true}"));
 }
 
 TEST(SecurityTest, JsonTypeConfusion) {

@@ -21,6 +21,7 @@
 #include <fcntl.h>
 #include <linux/videodev2.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 namespace fs = std::filesystem;
@@ -858,6 +859,8 @@ AuthEngine::enrollUser(const std::string &username) {
   fs::create_directories(config.users_dir);
   std::ofstream out(user_file);
   out << j.dump(4);
+  out.close();
+  chmod(user_file.c_str(), 0600); // Restrict to root-only
   return {true, "Success"};
 }
 
@@ -952,6 +955,8 @@ bool AuthEngine::setLabel(const std::string &username,
   if (updated) {
     std::ofstream out(user_file);
     out << j.dump(4);
+    out.close();
+    chmod(user_file.c_str(), 0600); // Restrict to root-only
     Logger::log(LogLevel::INFO, "Set label '" + label + "' for " + username);
   }
   return updated;
@@ -1074,6 +1079,8 @@ bool AuthEngine::trainUser(const std::string &username,
   if (updated_any) {
     std::ofstream out(user_file);
     out << j.dump(4);
+    out.close();
+    chmod(user_file.c_str(), 0600); // Restrict to root-only
   }
   return updated_any;
 }
@@ -1150,6 +1157,8 @@ bool AuthEngine::removeEmbedding(const std::string &username,
   if (removed) {
     std::ofstream out(user_file);
     out << j.dump(4);
+    out.close();
+    chmod(user_file.c_str(), 0600); // Restrict to root-only
     Logger::log(LogLevel::INFO,
                 "Removed embedding '" + label + "' for " + username);
   }

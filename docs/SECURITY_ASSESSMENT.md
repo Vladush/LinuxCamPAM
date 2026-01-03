@@ -58,7 +58,11 @@ The security of this system heavily depends on the camera hardware used.
 * **Mechanism:** Unix Domain Socket at `/run/linuxcampam/socket`.
 * **Access Control:** The socket permissions are set to `0666` (World Read/Write).
 
-> **Why 0666?** PAM modules run as the **authenticating user**, not root. With `0600`, login managers (`gdm`, `sudo`, `login`) couldn't connect, breaking face unlock entirely.
+> **Why 0666 for the socket?** While PAM modules typically run as root (inherited from applications like `sudo`, `login`, `gdm`), the socket uses `0666` for IPC accessibility. This is safe because:
+>
+> * The socket only returns `AUTH_SUCCESS` or `AUTH_FAIL` - no sensitive data is exposed
+> * Authentication requires physical presence in front of the camera
+> * User embedding data is stored separately with restrictive permissions
 
 #### Security Mitigations
 
@@ -66,7 +70,7 @@ The security of this system heavily depends on the camera hardware used.
 | :--- | :--- |
 | **No Data Exposure** | Socket only returns `AUTH_SUCCESS` or `AUTH_FAIL` - no face data leaks |
 | **Camera is Gatekeeper** | You can't authenticate without being physically in front of the camera |
-| **Protected User Data** | Face embeddings in `/etc/linuxcampam/users/` remain root-only (`0600`) |
+| **Protected User Data** | Face embeddings in `/etc/linuxcampam/users/` are root-only (`0700` directory, `0600` files) |
 | **Root-Only Management** | Only `sudo linuxcampam add/train` can modify user data |
 
 #### Residual Risk
