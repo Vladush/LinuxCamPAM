@@ -1,0 +1,5 @@
+# Code Owners for LinuxCamPAM
+# These owners will be required reviewers for PRs
+
+# Default owner for all files
+* @Vladush
