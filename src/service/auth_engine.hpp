@@ -112,6 +112,10 @@ private:
     // Security / Rate Limiting
     int lockout_attempts = 5;       // Lock after N failures. 0 = disabled.
     int lockout_duration_sec = 300; // Lockout duration (5 min default)
+
+    // GPU sync options
+    bool gpu_flush = false;
+    int gpu_throttle_ms = 0;
   } config;
 
   cv::Ptr<cv::FaceDetectorYN> detector;
