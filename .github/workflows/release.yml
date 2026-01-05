@@ -29,3 +29,4 @@ jobs:
           files: linuxcampam_*.deb
           draft: false
           generate_release_notes: true
+          fail_on_unmatched_files: true
