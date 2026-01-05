@@ -134,8 +134,7 @@ jobs:
       - name: Extract artifacts
         run: |
           docker create --name temp_container linuxcampam:i386
-          DEB_FILE=$(docker cp temp_container:/ - | tar -tf - | grep '\.deb$' | head -1)
-          docker cp "temp_container:/$DEB_FILE" .
+          docker cp temp_container:/artifacts/. .
           docker rm temp_container
 
       - name: Verify
@@ -179,8 +178,7 @@ jobs:
       - name: Extract artifacts
         run: |
           docker create --name temp_container linuxcampam:riscv64
-          DEB_FILE=$(docker cp temp_container:/ - | tar -tf - | grep '\.deb$' | head -1)
-          docker cp "temp_container:/$DEB_FILE" .
+          docker cp temp_container:/artifacts/. .
           docker rm temp_container
 
       - name: Verify

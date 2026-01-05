@@ -34,6 +34,8 @@ RUN rm -rf build && mkdir build
 
 # Build and Package
 RUN dpkg-buildpackage -b -uc -us && \
+    mkdir -p /artifacts && \
+    cp ../*.deb /artifacts/ && \
     dpkg -i ../*.deb || apt-get install -f -y
 
 # Verification Command
