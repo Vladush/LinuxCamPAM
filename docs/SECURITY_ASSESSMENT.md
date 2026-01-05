@@ -104,7 +104,8 @@ The service implements strict validation on all inputs (specifically usernames) 
 ### 4.2 DoS Protection
 
 * **Timeout:** Authentication requests have a hard timeout (default 3s).
-* **Socket:** The service uses a persistent connection model but handles requests sequentially to prevent resource exhaustion.
+* **Rate Limiting:** Configurable lockout after N failed auth attempts (default: 5 failures → 5 minute lockout). See `[Security]` in config.ini.
+* **Socket:** The service handles requests sequentially to prevent resource exhaustion.
 
 ---
 
@@ -115,7 +116,7 @@ The service implements strict validation on all inputs (specifically usernames) 
 2. **Model Bias:** The AI models (YuNet/SFace) may have varying accuracy across different demographics or lighting conditions.
 3. **USB Camera Injection:** Linux generally trusts USB devices. A "Rubber Ducky" style device mimicking a webcam could inject frames.
     * *Mitigation:* LinuxCamPAM checks specific device paths, but these can be spoofed if the attacker controls the USB stack.
-4. **No Brute-Force Protection:** There is currently no rate limiting. A compromised root process could spam authentication attempts indefinitely.
+4. ~~**No Brute-Force Protection:**~~ **Mitigated.** Rate limiting is now implemented (v0.9.4+). Configurable via `lockout_attempts` and `lockout_duration_sec`.
 5. **Embedding Tampering:** If an attacker gains root access, they could modify user embedding files (`/etc/linuxcampam/users/*.json`) to inject their own face. No cryptographic integrity check (e.g., HMAC) is currently performed.
 6. **Model Tampering:** Similarly, ONNX model files could be replaced with backdoored versions. No hash verification is performed on load.
 7. **Information Leakage via Logging:** Usernames are currently logged to stdout/syslog, which could leak identity information in multi-user or shared environments.
@@ -165,7 +166,7 @@ The following security features are planned for future releases:
 
 | Feature | Description |
 | :--- | :--- |
-| **Rate Limiting / Lockout** | Configurable lockout after N failed authentication attempts to mitigate brute-force attacks. |
+| ~~**Rate Limiting / Lockout**~~ | ✅ **Implemented** (v0.9.4). Configurable via `[Security]` section. |
 | **Embedding Integrity (HMAC)** | Cryptographic signature on user embedding files to detect tampering. |
 | **Model Verification (SHA256)** | Hash verification of ONNX model files on load to prevent backdoored model injection. |
 | **Configurable Logging** | Option to disable verbose logging in production to prevent username leakage via syslog. |

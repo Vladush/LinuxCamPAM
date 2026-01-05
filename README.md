@@ -165,7 +165,9 @@ This project was inspired by and utilizes tools from the open source community:
 - [ ] **Liveness Detection:**
   - *Passive:* Frame variance analysis during enrollment (static images = spoof attempt).
   - *Active:* Challenges like blink, smile, head turn to prevent video replay attacks.
-- [ ] **Security Hardening:** Rate limiting, embedding integrity (HMAC), model file verification, and configurable logging.
+- [x] **Rate Limiting:** Per-user lockout after failed auth attempts (configurable via `[Security]` in config.ini).
+- [ ] **Security Hardening:** Embedding integrity (HMAC), model file verification, and configurable logging.
+- [ ] **Adaptive Enrollment** *(needs investigation)*: Auto-update embeddings when face auth fails but password succeeds. Requires careful security analysis.
 - [ ] **GUI Config Tool:** A simple GTK/Qt app for managing users and cameras.
 - [ ] **Enterprise Features:**
   - Embedding export/import with model version validation for cross-machine portability.

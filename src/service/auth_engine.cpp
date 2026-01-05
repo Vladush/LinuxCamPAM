@@ -314,6 +314,11 @@ bool AuthEngine::init(const std::string &config_path) {
   std::string ka_str = get("Performance.model_keep_alive_sec", "0");
   config.model_keep_alive_sec = std::stoi(ka_str);
 
+  // Security / Rate Limiting
+  config.lockout_attempts = std::stoi(get("Security.lockout_attempts", "5"));
+  config.lockout_duration_sec =
+      std::stoi(get("Security.lockout_duration_sec", "300"));
+
   last_activity_ = std::chrono::steady_clock::now();
 
   // 2. Initialize Models (Delegated)
@@ -487,6 +492,10 @@ bool AuthEngine::verifyUser(const std::string &username) {
               << username << std::endl;
     return false;
   }
+  if (isUserLockedOut(username)) {
+    Logger::log(LogLevel::WARN, "User " + username + " is locked out");
+    return false;
+  }
   std::string user_file =
       std::string(config.users_dir) + "/" + username + ".json";
   if (!fs::exists(user_file))
@@ -631,7 +640,9 @@ bool AuthEngine::verifyUser(const std::string &username) {
   if (config.policy == AuthPolicy::LENIENT_ANY)
     return successes > 0;
 
-  return failures == 0;
+  bool success = (failures == 0);
+  recordAuthAttempt(username, success);
+  return success;
 }
 
 AuthResult AuthEngine::verifyUserWithDetails(const std::string &username) {
@@ -645,6 +656,10 @@ AuthResult AuthEngine::verifyUserWithDetails(const std::string &username) {
   }
   if (!isValidUsername(username)) {
     result.reason = "Invalid username";
+    return result;
+  }
+  if (isUserLockedOut(username)) {
+    result.reason = "User locked out";
     return result;
   }
   std::string user_file =
@@ -768,6 +783,7 @@ AuthResult AuthEngine::verifyUserWithDetails(const std::string &username) {
   } else {
     result.reason = "Authentication failed";
   }
+  recordAuthAttempt(username, result.success);
   return result;
 }
 
@@ -1189,4 +1205,52 @@ bool AuthEngine::testCameraAndAuth() {
   }
 
   return any_ok;
+}
+
+bool AuthEngine::isUserLockedOut(const std::string &username) {
+  if (config.lockout_attempts <= 0)
+    return false;
+
+  std::lock_guard<std::mutex> lock(lockout_mutex_);
+  auto it = lockout_map_.find(username);
+  if (it == lockout_map_.end())
+    return false;
+
+  if (std::chrono::steady_clock::now() < it->second.lockout_until)
+    return true;
+
+  return false;
+}
+
+void AuthEngine::recordAuthAttempt(const std::string &username, bool success) {
+  if (config.lockout_attempts <= 0)
+    return;
+
+  std::lock_guard<std::mutex> lock(lockout_mutex_);
+  auto &state = lockout_map_[username];
+
+  if (success) {
+    state.failed_attempts = 0;
+    state.lockout_until = {};
+  } else {
+    state.failed_attempts++;
+    if (state.failed_attempts >= config.lockout_attempts) {
+      state.lockout_until = std::chrono::steady_clock::now() +
+                            std::chrono::seconds(config.lockout_duration_sec);
+      Logger::log(LogLevel::WARN, username + " locked out");
+    }
+  }
+}
+
+std::string AuthEngine::getConfigString() const {
+  std::ostringstream ss;
+  ss << "threshold = " << config.threshold << "\n"
+     << "detection_threshold = " << config.detection_threshold << "\n"
+     << "timeout_ms = " << config.timeout_ms << "\n"
+     << "max_embeddings = " << config.max_embeddings << "\n"
+     << "model_keep_alive_sec = " << config.model_keep_alive_sec << "\n"
+     << "lockout_attempts = " << config.lockout_attempts << "\n"
+     << "lockout_duration_sec = " << config.lockout_duration_sec << "\n"
+     << "cameras = " << active_cameras.size();
+  return ss.str();
 }

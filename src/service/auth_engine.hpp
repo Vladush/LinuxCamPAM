@@ -4,9 +4,11 @@
 #include "constants.hpp"
 
 #include <chrono>
+#include <mutex>
 #include <opencv2/dnn.hpp>
 #include <opencv2/opencv.hpp>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // Helper: Cosine similarity between two feature vectors.
@@ -50,6 +52,9 @@ public:
   listEmbeddings(const std::string &username);
   [[nodiscard]] bool removeEmbedding(const std::string &username,
                                      const std::string &label);
+
+  // Config visibility
+  [[nodiscard]] std::string getConfigString() const;
 
 private:
   enum class AuthPolicy {
@@ -103,6 +108,10 @@ private:
     std::string users_dir = linuxcampam::USERS_DIR;
     std::string models_dir = linuxcampam::MODELS_DIR;
     std::string ir_emitter_path = linuxcampam::IR_EMITTER_PATH;
+
+    // Security / Rate Limiting
+    int lockout_attempts = 5;       // Lock after N failures. 0 = disabled.
+    int lockout_duration_sec = 300; // Lockout duration (5 min default)
   } config;
 
   cv::Ptr<cv::FaceDetectorYN> detector;
@@ -134,4 +143,14 @@ private:
   void unloadModels();
 
   std::chrono::steady_clock::time_point last_activity_;
+
+  // Lockout state
+  struct LockoutState {
+    int failed_attempts = 0;
+    std::chrono::steady_clock::time_point lockout_until{};
+  };
+  std::unordered_map<std::string, LockoutState> lockout_map_;
+  mutable std::mutex lockout_mutex_;
+  bool isUserLockedOut(const std::string &username);
+  void recordAuthAttempt(const std::string &username, bool success);
 };

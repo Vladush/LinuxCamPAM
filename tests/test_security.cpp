@@ -301,3 +301,124 @@ TEST(SecurityTest, SimilarityOverflowBehavior) {
   EXPECT_FALSE(std::isnan(sim));
   EXPECT_NEAR(sim, 1.0f, 0.001f);
 }
+
+// Rate limiting tests - mirrors auth_engine lockout logic
+
+#include <chrono>
+#include <thread>
+#include <unordered_map>
+
+namespace lockout_test {
+
+struct LockoutState {
+  int failed_attempts = 0;
+  std::chrono::steady_clock::time_point lockout_until{};
+};
+
+struct Config {
+  int lockout_attempts = 5;
+  int lockout_duration_sec = 300;
+};
+
+std::unordered_map<std::string, LockoutState> lockout_map;
+Config config;
+
+void reset() {
+  lockout_map.clear();
+  config.lockout_attempts = 5;
+  config.lockout_duration_sec = 300;
+}
+
+bool isUserLockedOut(const std::string &username) {
+  if (config.lockout_attempts <= 0)
+    return false;
+  auto it = lockout_map.find(username);
+  if (it == lockout_map.end())
+    return false;
+  return std::chrono::steady_clock::now() < it->second.lockout_until;
+}
+
+void recordAuthAttempt(const std::string &username, bool success) {
+  if (config.lockout_attempts <= 0)
+    return;
+  auto &state = lockout_map[username];
+  if (success) {
+    state.failed_attempts = 0;
+    state.lockout_until = {};
+  } else {
+    state.failed_attempts++;
+    if (state.failed_attempts >= config.lockout_attempts) {
+      state.lockout_until = std::chrono::steady_clock::now() +
+                            std::chrono::seconds(config.lockout_duration_sec);
+    }
+  }
+}
+
+} // namespace lockout_test
+
+TEST(RateLimitingTest, LockoutAfterFailedAttempts) {
+  lockout_test::reset();
+  std::string user = "testuser";
+
+  // 4 failures should not trigger lockout
+  for (int i = 0; i < 4; i++) {
+    lockout_test::recordAuthAttempt(user, false);
+    EXPECT_FALSE(lockout_test::isUserLockedOut(user));
+  }
+
+  // 5th failure triggers lockout
+  lockout_test::recordAuthAttempt(user, false);
+  EXPECT_TRUE(lockout_test::isUserLockedOut(user));
+}
+
+TEST(RateLimitingTest, SuccessResetsCounter) {
+  lockout_test::reset();
+  std::string user = "testuser";
+
+  // 3 failures
+  for (int i = 0; i < 3; i++)
+    lockout_test::recordAuthAttempt(user, false);
+  EXPECT_FALSE(lockout_test::isUserLockedOut(user));
+
+  // Success resets
+  lockout_test::recordAuthAttempt(user, true);
+  EXPECT_EQ(lockout_test::lockout_map[user].failed_attempts, 0);
+
+  // 4 more failures still not locked out
+  for (int i = 0; i < 4; i++)
+    lockout_test::recordAuthAttempt(user, false);
+  EXPECT_FALSE(lockout_test::isUserLockedOut(user));
+}
+
+TEST(RateLimitingTest, DisabledWhenZero) {
+  lockout_test::reset();
+  lockout_test::config.lockout_attempts = 0; // Disable
+  std::string user = "testuser";
+
+  // Even 100 failures should not lock out
+  for (int i = 0; i < 100; i++)
+    lockout_test::recordAuthAttempt(user, false);
+  EXPECT_FALSE(lockout_test::isUserLockedOut(user));
+}
+
+TEST(RateLimitingTest, LockoutExpiration) {
+  lockout_test::reset();
+  lockout_test::config.lockout_duration_sec = 1; // 1 second for testing
+  std::string user = "testuser";
+
+  // Trigger lockout
+  for (int i = 0; i < 5; i++)
+    lockout_test::recordAuthAttempt(user, false);
+  EXPECT_TRUE(lockout_test::isUserLockedOut(user));
+
+  // Wait for expiration (1.1 seconds)
+  std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+  EXPECT_FALSE(lockout_test::isUserLockedOut(user));
+}
+
+TEST(RateLimitingTest, ConfigParsing) {
+  // Test that default values are reasonable
+  lockout_test::reset();
+  EXPECT_EQ(lockout_test::config.lockout_attempts, 5);
+  EXPECT_EQ(lockout_test::config.lockout_duration_sec, 300);
+}
