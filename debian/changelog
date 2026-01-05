@@ -1,3 +1,11 @@
+linuxcampam (0.9.4-1) unstable; urgency=medium
+
+  * Feat: Implement security rate-limiting and lockout mechanism to prevent brute-force attacks.
+  * Feat: Add `show-config` CLI command for runtime configuration inspection.
+  * Security: Add comprehensive regression tests for lockout logic.
+
+ -- Vladimir Orlinski <contact.github.submerge594@slmails.com>  Sun, 05 Jan 2026 10:56:00 +0100
+
 linuxcampam (0.9.3.3-1) unstable; urgency=medium
 
 * Fix: Include AI models in Docker-based cross-arch builds (i386, riscv64).
