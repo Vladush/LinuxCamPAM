@@ -141,6 +141,8 @@ void handle_client(int client_fd, AuthEngine &engine) {
         bool success = engine.removeEmbedding(user, label);
         response = success ? "REMOVED" : "REMOVE_FAIL";
       }
+    } else if (cmd == "GET_CONFIG") {
+      response = engine.getConfigString();
     }
   } catch (const std::exception &e) {
     Logger::log(LogLevel::ERROR, "Exception handling " + cmd + ": " + e.what());

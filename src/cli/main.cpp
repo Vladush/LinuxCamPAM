@@ -75,6 +75,7 @@ void print_help() {
       << "  linuxcampam test [username]             Test camera & auth\n"
       << "  linuxcampam list <username>             Show embedding labels\n"
       << "  linuxcampam remove <user> --label <X>   Remove specific embedding\n"
+      << "  linuxcampam show-config                 Show active config\n"
       << "  linuxcampam help                        Show this help\n";
 }
 
@@ -218,6 +219,14 @@ int main(int argc, char *argv[]) {
       return 1;
     }
     print_response(send_cmd("REMOVE_EMBEDDING " + user + " " + label));
+
+  } else if (op == "show-config") {
+    std::string cfg = send_cmd("GET_CONFIG");
+    if (!cfg.empty()) {
+      std::cout << cfg << std::endl;
+    } else {
+      std::cerr << "Error: Could not get config from service." << std::endl;
+    }
 
   } else if (op == "version" || op == "--version" || op == "-v") {
 #ifdef LINUXCAMPAM_VERSION

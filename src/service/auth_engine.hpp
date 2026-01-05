@@ -53,6 +53,9 @@ public:
   [[nodiscard]] bool removeEmbedding(const std::string &username,
                                      const std::string &label);
 
+  // Config visibility
+  [[nodiscard]] std::string getConfigString() const;
+
 private:
   enum class AuthPolicy {
     STRICT_ALL,  // All cameras must match

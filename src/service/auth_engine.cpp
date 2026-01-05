@@ -1241,3 +1241,16 @@ void AuthEngine::recordAuthAttempt(const std::string &username, bool success) {
     }
   }
 }
+
+std::string AuthEngine::getConfigString() const {
+  std::ostringstream ss;
+  ss << "threshold = " << config.threshold << "\n"
+     << "detection_threshold = " << config.detection_threshold << "\n"
+     << "timeout_ms = " << config.timeout_ms << "\n"
+     << "max_embeddings = " << config.max_embeddings << "\n"
+     << "model_keep_alive_sec = " << config.model_keep_alive_sec << "\n"
+     << "lockout_attempts = " << config.lockout_attempts << "\n"
+     << "lockout_duration_sec = " << config.lockout_duration_sec << "\n"
+     << "cameras = " << active_cameras.size();
+  return ss.str();
+}
