@@ -39,7 +39,7 @@ void handle_client(int client_fd, AuthEngine &engine) {
   }
 
   std::string request(buffer);
-  Logger::log(LogLevel::DEBUG, "Received Request: " + request);
+  LOG_DEBUG("Received Request: " + request);
 
   // Protocol: COMMAND argument
   // e.g. "AUTH_REQUEST vlad"
@@ -143,6 +143,30 @@ void handle_client(int client_fd, AuthEngine &engine) {
       }
     } else if (cmd == "GET_CONFIG") {
       response = engine.getConfigString();
+    } else if (cmd == "SET_LOG_LEVEL") {
+      std::string levelStr;
+      iss >> levelStr;
+      if (levelStr == "DEBUG") {
+        Logger::setLevel(LogLevel::DEBUG);
+        response = "LOG_LEVEL_DEBUG";
+        LOG_INFO("Log level set to DEBUG via socket.");
+      } else if (levelStr == "INFO") {
+        Logger::setLevel(LogLevel::INFO);
+        response = "LOG_LEVEL_INFO";
+        LOG_INFO("Log level set to INFO via socket.");
+      } else {
+        response = "ERROR Invalid Log Level";
+      }
+    } else if (cmd == "GET_LOG_LEVEL") {
+      auto lvl = Logger::getLevel();
+      if (lvl == LogLevel::DEBUG)
+        response = "DEBUG";
+      else if (lvl == LogLevel::INFO)
+        response = "INFO";
+      else if (lvl == LogLevel::WARN)
+        response = "WARN";
+      else
+        response = "ERROR";
     }
   } catch (const std::exception &e) {
     Logger::log(LogLevel::ERROR, "Exception handling " + cmd + ": " + e.what());
@@ -159,6 +183,15 @@ void handle_client(int client_fd, AuthEngine &engine) {
 int main(int argc, char *argv[]) {
   signal(SIGINT, signal_handler);
   signal(SIGTERM, signal_handler);
+
+  // Parse args
+  for (int i = 1; i < argc; ++i) {
+    std::string arg = argv[i];
+    if (arg == "--debug" || arg == "-d") {
+      Logger::setLevel(LogLevel::DEBUG);
+      LOG_DEBUG("Debug logging enabled via command line.");
+    }
+  }
 
   // Ensure run directory exists
   std::string socket_path = linuxcampam::SOCKET_PATH;

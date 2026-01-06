@@ -16,6 +16,12 @@ public:
     current_level_ = level;
   }
 
+  static LogLevel getLevel() {
+    // atomic read would be better, but mutex is fine for now
+    std::lock_guard<std::mutex> lock(mutex_);
+    return current_level_;
+  }
+
   static void setLogFile(const std::string &path) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (log_file_.is_open()) {
@@ -75,3 +81,25 @@ private:
   static inline LogLevel current_level_ = LogLevel::INFO;
   static inline std::ofstream log_file_;
 };
+
+// Logging Macros
+// These macros ensure that we don't pay the cost of string construction
+// or function calls if the log level is not met.
+//
+// Usage: LOG_DEBUG("Value: " + std::to_string(x));
+//
+#define LOG_DEBUG(msg)                                                         \
+  if (Logger::getLevel() <= LogLevel::DEBUG)                                   \
+  Logger::log(LogLevel::DEBUG, msg)
+
+#define LOG_INFO(msg)                                                          \
+  if (Logger::getLevel() <= LogLevel::INFO)                                    \
+  Logger::log(LogLevel::INFO, msg)
+
+#define LOG_WARN(msg)                                                          \
+  if (Logger::getLevel() <= LogLevel::WARN)                                    \
+  Logger::log(LogLevel::WARN, msg)
+
+#define LOG_ERROR(msg)                                                         \
+  if (Logger::getLevel() <= LogLevel::ERROR)                                   \
+  Logger::log(LogLevel::ERROR, msg)

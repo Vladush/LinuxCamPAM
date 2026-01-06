@@ -76,6 +76,7 @@ void print_help() {
       << "  linuxcampam list <username>             Show embedding labels\n"
       << "  linuxcampam remove <user> --label <X>   Remove specific embedding\n"
       << "  linuxcampam show-config                 Show active config\n"
+      << "  linuxcampam debug [on|off]              Toggle debug logging\n"
       << "  linuxcampam version                     Show version info\n"
       << "  linuxcampam help                        Show this help\n";
 }
@@ -228,6 +229,26 @@ int main(int argc, char *argv[]) {
       std::cout << cfg << std::endl;
     } else {
       std::cerr << "Error: Could not get config from service." << std::endl;
+    }
+
+  } else if (op == "debug") {
+    if (argc < 3) {
+      // No arg: get current level
+      std::string lvl = send_cmd("GET_LOG_LEVEL");
+      if (!lvl.empty()) {
+        std::cout << "Current Log Level: " << lvl << std::endl;
+      } else {
+        std::cerr << "Error: Could not query log level." << std::endl;
+      }
+    } else {
+      std::string arg = argv[2];
+      if (arg == "on") {
+        print_response(send_cmd("SET_LOG_LEVEL DEBUG"));
+      } else if (arg == "off") {
+        print_response(send_cmd("SET_LOG_LEVEL INFO"));
+      } else {
+        std::cout << "Usage: linuxcampam debug [on|off]" << std::endl;
+      }
     }
 
   } else if (op == "version" || op == "--version" || op == "-v") {

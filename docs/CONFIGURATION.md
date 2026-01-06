@@ -6,6 +6,15 @@ LinuxCamPAM now supports an arbitrary number of cameras with configurable authen
 
 ### Configuration (`/etc/linuxcampam/config.ini`)
 
+#### General Settings
+
+Control logging verbosity:
+
+```ini
+[General]
+log_level = info  ; options: debug, info, warning, error
+```
+
 #### 1. Define Cameras
 
 List the identifiers for your cameras in the `[Cameras]` section.
