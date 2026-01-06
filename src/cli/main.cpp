@@ -76,13 +76,15 @@ void print_help() {
       << "  linuxcampam list <username>             Show embedding labels\n"
       << "  linuxcampam remove <user> --label <X>   Remove specific embedding\n"
       << "  linuxcampam show-config                 Show active config\n"
+      << "  linuxcampam version                     Show version info\n"
       << "  linuxcampam help                        Show this help\n";
 }
 
 int main(int argc, char *argv[]) {
   if (argc < 2) {
-    std::cout << "Usage: linuxcampam <add|train|test|list|remove|help> [args]"
-              << std::endl;
+    std::cout
+        << "Usage: linuxcampam <add|train|test|list|remove|version|help> [args]"
+        << std::endl;
     return 1;
   }
 
