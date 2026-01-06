@@ -79,3 +79,16 @@ If the `[Cameras]` section is missing, the system attempts to auto-detect your c
    - **Single IR**: If only `/dev/video2` exists:
      - Configures it as **Mandatory**.
    - **Fallback**: Defaults to `/dev/video0` as generic mandatory if specific paths aren't found.
+
+### GPU Stability
+
+If you experience system freezes with OpenCL (common with Mesa Rusticl on AMD), enable explicit synchronization:
+
+```ini
+[Performance]
+gpu_flush = on
+gpu_throttle_ms = 50
+```
+
+- **gpu_flush**: Force GPU sync after inference. Default: `on` (safe mode).
+- **gpu_throttle_ms**: Extra delay (ms) between operations. Default: `0`.

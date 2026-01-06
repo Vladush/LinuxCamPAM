@@ -15,6 +15,7 @@
 #include <opencv2/core/ocl.hpp>
 #include <regex>
 #include <sstream>
+#include <thread>
 #include <unordered_map>
 
 // V4L2 for camera format detection
@@ -26,6 +27,20 @@
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
+
+inline void gpuSync(bool do_flush, int delay_ms) {
+  if (do_flush && cv::ocl::useOpenCL()) {
+    try {
+      cv::ocl::finish();
+    } catch (const cv::Exception &e) {
+      // Driver might be unstable, log warning but keep running
+      std::cerr << "GPU Sync warning: " << e.what() << std::endl;
+    }
+  }
+  if (delay_ms > 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+  }
+}
 
 // Extract version from model filename (e.g. sface_2021dec)
 inline std::string getModelVersion(const std::string &model_path) {
@@ -319,6 +334,10 @@ bool AuthEngine::init(const std::string &config_path) {
   config.lockout_duration_sec =
       std::stoi(get("Security.lockout_duration_sec", "300"));
 
+  // GPU sync options
+  config.gpu_flush = (get("Performance.gpu_flush", "on") == "on");
+  config.gpu_throttle_ms = std::stoi(get("Performance.gpu_throttle_ms", "0"));
+
   last_activity_ = std::chrono::steady_clock::now();
 
   // 2. Initialize Models (Delegated)
@@ -582,6 +601,7 @@ bool AuthEngine::verifyUser(const std::string &username) {
     cv::Mat faces;
     detector->setInputSize(frame.size());
     detector->detect(frame, faces);
+    gpuSync(config.gpu_flush, config.gpu_throttle_ms);
 
     bool match = false;
     if (faces.rows >= 1) {
@@ -592,6 +612,7 @@ bool AuthEngine::verifyUser(const std::string &username) {
       for (int i = 0; i < faces.rows; i++) {
         recognizer->alignCrop(frame, faces.row(i), aligned_face);
         recognizer->feature(aligned_face, curr_emb);
+        gpuSync(config.gpu_flush, config.gpu_throttle_ms);
 
         for (const auto &stored_vec : all_embeddings) {
           cv::Mat stored_emb(1, stored_vec.size(), CV_32F,
@@ -718,6 +739,7 @@ AuthResult AuthEngine::verifyUserWithDetails(const std::string &username) {
     cv::Mat faces;
     detector->setInputSize(frame.size());
     detector->detect(frame, faces);
+    gpuSync(config.gpu_flush, config.gpu_throttle_ms);
 
     bool match = false;
     if (faces.rows >= 1) {
@@ -727,6 +749,7 @@ AuthResult AuthEngine::verifyUserWithDetails(const std::string &username) {
       for (int i = 0; i < faces.rows; i++) {
         recognizer->alignCrop(frame, faces.row(i), aligned_face);
         recognizer->feature(aligned_face, curr_emb);
+        gpuSync(config.gpu_flush, config.gpu_throttle_ms);
 
         for (const auto &stored_vec : all_embeddings) {
           cv::Mat stored_emb(1, stored_vec.size(), CV_32F,
@@ -846,6 +869,7 @@ AuthEngine::enrollUser(const std::string &username) {
     detector->setInputSize(frame.size());
     cv::Mat faces;
     detector->detect(frame, faces);
+    gpuSync(config.gpu_flush, config.gpu_throttle_ms);
 
     if (faces.rows != 1) {
       std::string err = "Found " + std::to_string(faces.rows) + " faces in " +
@@ -862,6 +886,7 @@ AuthEngine::enrollUser(const std::string &username) {
     cv::Mat aligned, emb;
     recognizer->alignCrop(frame, faces.row(0), aligned);
     recognizer->feature(aligned, emb);
+    gpuSync(config.gpu_flush, config.gpu_throttle_ms);
 
     std::vector<float> vec;
     emb.reshape(1, 1).copyTo(vec);
@@ -1013,6 +1038,7 @@ bool AuthEngine::trainUser(const std::string &username,
     cv::Mat faces;
     detector->setInputSize(frame.size());
     detector->detect(frame, faces);
+    gpuSync(config.gpu_flush, config.gpu_throttle_ms);
     if (faces.rows != 1) {
       Logger::log(LogLevel::WARN, "Train: Expected 1 face, found " +
                                       std::to_string(faces.rows));
@@ -1022,6 +1048,7 @@ bool AuthEngine::trainUser(const std::string &username,
     cv::Mat aligned, new_emb;
     recognizer->alignCrop(frame, faces.row(0), aligned);
     recognizer->feature(aligned, new_emb);
+    gpuSync(config.gpu_flush, config.gpu_throttle_ms);
 
     std::vector<float> new_vec;
     new_emb.reshape(1, 1).copyTo(new_vec);
