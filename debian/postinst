@@ -12,6 +12,12 @@ if [ "$1" = "configure" ]; then
         # systemctl enable linuxcampam.service
     fi
     
+    # Wipe OpenCL cache - stale kernels break things after upgrades
+    if [ -d /root/.cache/opencv ]; then
+        echo "Clearing OpenCL kernel cache..."
+        rm -rf /root/.cache/opencv
+    fi
+    
     # Ensure rights
     # Users directory contains biometric embeddings - restrict to root
     chmod 700 /etc/linuxcampam/users || true

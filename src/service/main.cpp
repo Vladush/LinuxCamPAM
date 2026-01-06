@@ -180,6 +180,20 @@ int main(int argc, char *argv[]) {
   Logger::log(LogLevel::INFO, "Starting LinuxCamPAM Service...");
   Logger::log(LogLevel::INFO, "Loading Config: " + config_path);
 
+  // Wipe OpenCL cache - stale kernels cause hangs after Mesa updates
+  const char *home = getenv("HOME");
+  if (!home)
+    home = "/root";
+  fs::path opencv_cache = fs::path(home) / ".cache" / "opencv";
+  if (fs::exists(opencv_cache)) {
+    try {
+      fs::remove_all(opencv_cache);
+      Logger::log(LogLevel::DEBUG, "Cleared OpenCL cache");
+    } catch (...) {
+      // Best-effort, ignore errors
+    }
+  }
+
   AuthEngine engine;
   // Initialize Engine
   if (!engine.init(config_path)) {
