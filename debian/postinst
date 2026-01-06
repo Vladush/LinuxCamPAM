@@ -55,9 +55,8 @@ if [ "$1" = "configure" ]; then
         echo "Launching interactive PAM configuration..."
         echo "Please select 'LinuxCamPAM Face Authentication' and hit OK."
         echo "Press Enter to continue..."
-        # If running in non-interactive shell/build, this might hang or fail. 
-        # CPack install is usually manual. Dpkg might be non-interactive.
-        # We try 'read' only if terminal is open?
+        echo "Press Enter to continue..."
+        # Try to read input if terminal is available
         if [ -t 0 ]; then
              read -r _ignored_input || true
              pam-auth-update

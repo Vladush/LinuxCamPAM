@@ -138,6 +138,7 @@ To test a specific user (requires `sudo` for security - prevents user enumeratio
 
 ```bash
 sudo linuxcampam test <username>
+sudo linuxcampam test <username>
 # Output: HW_OK | AUTH_FAIL: User not enrolled
 ```
 
@@ -150,6 +151,34 @@ linuxcampam version
 # Output:
 # Client Version: 0.9.5
 # Daemon Version: 0.9.5
+```
+
+## Debugging
+
+If you encounter issues, you can enable verbose debug logging dynamically without restarting the service.
+
+**Enable Debug Logging:**
+
+```bash
+sudo linuxcampam debug on
+```
+
+**Disable Debug Logging:**
+
+```bash
+sudo linuxcampam debug off
+```
+
+**Check Status:**
+
+```bash
+sudo linuxcampam debug
+```
+
+Logs are typically written to systemd journal. You can view them with:
+
+```bash
+journalctl -u linuxcampam -f
 ```
 
 ## Credits & Acknowledgements
