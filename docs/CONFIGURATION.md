@@ -92,3 +92,5 @@ gpu_throttle_ms = 50
 
 - **gpu_flush**: Force GPU sync after inference. Default: `on` (safe mode).
 - **gpu_throttle_ms**: Extra delay (ms) between operations. Default: `0`.
+
+**Note:** The daemon wipes `~/.cache/opencv` on startup - old cached kernels can cause hangs after Mesa updates.

@@ -1,8 +1,17 @@
+linuxcampam (0.9.5-1) unstable; urgency=medium
+
+* GPU sync option to prevent OpenCL hangs on some AMD GPUs
+* Fix missing i386/riscv64 debs in releases
+* Add .dockerignore for cleaner cross-arch builds
+* Auto-clear OpenCL kernel cache on startup to prevent upgrade issues
+
+ -- Vladimir Orlinski <contact.github.submerge594@slmails.com>  Mon, 06 Jan 2026 15:00:00 +0100
+
 linuxcampam (0.9.4-1) unstable; urgency=medium
 
-  * Feat: Implement security rate-limiting and lockout mechanism to prevent brute-force attacks.
-  * Feat: Add `show-config` CLI command for runtime configuration inspection.
-  * Security: Add comprehensive regression tests for lockout logic.
+* Feat: Implement security rate-limiting and lockout mechanism to prevent brute-force attacks.
+* Feat: Add `show-config` CLI command for runtime configuration inspection.
+* Security: Add comprehensive regression tests for lockout logic.
 
  -- Vladimir Orlinski <contact.github.submerge594@slmails.com>  Sun, 05 Jan 2026 10:56:00 +0100
 
