@@ -134,9 +134,10 @@ jobs:
       - name: Extract artifacts
         run: |
           docker create --name temp_container linuxcampam:i386
-          DEB_FILE=$(docker cp temp_container:/ - | tar -tf - | grep '\.deb$' | head -1)
-          docker cp "temp_container:/$DEB_FILE" .
+          docker cp temp_container:/artifacts/. .
           docker rm temp_container
+          echo "Extracted files:"
+          ls -la linuxcampam_*.deb || { echo "ERROR: No .deb files found!"; exit 1; }
 
       - name: Verify
         run: docker run --rm --platform linux/386 --entrypoint /usr/bin/linuxcampam linuxcampam:i386 help
@@ -179,9 +180,10 @@ jobs:
       - name: Extract artifacts
         run: |
           docker create --name temp_container linuxcampam:riscv64
-          DEB_FILE=$(docker cp temp_container:/ - | tar -tf - | grep '\.deb$' | head -1)
-          docker cp "temp_container:/$DEB_FILE" .
+          docker cp temp_container:/artifacts/. .
           docker rm temp_container
+          echo "Extracted files:"
+          ls -la linuxcampam_*.deb || { echo "ERROR: No .deb files found!"; exit 1; }
 
       - name: Verify
         run: docker run --rm --platform linux/riscv64 --entrypoint /usr/bin/linuxcampam linuxcampam:riscv64 help
