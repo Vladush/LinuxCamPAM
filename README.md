@@ -141,6 +141,17 @@ sudo linuxcampam test <username>
 # Output: HW_OK | AUTH_FAIL: User not enrolled
 ```
 
+**Check Version:**
+
+Shows the version of both the CLI client and the running daemon service.
+
+```bash
+linuxcampam version
+# Output:
+# Client Version: 0.9.5
+# Daemon Version: 0.9.5
+```
+
 ## Credits & Acknowledgements
 
 This project was inspired by and utilizes tools from the open source community:
