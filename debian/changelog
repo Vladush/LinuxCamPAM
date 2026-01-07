@@ -1,3 +1,13 @@
+linuxcampam (0.9.6-1) unstable; urgency=medium
+
+  * Dynamic debug logging via CLI (`linuxcampam debug on/off`)
+  * Version command for CLI and daemon
+  * Fix missing systemd service file in debian package
+  * Fix missing PAM config file in debian package
+  * Remove bloated -dev dependencies from runtime
+
+ -- Vladimir Orlinski <contact.github.submerge594@slmails.com>  Tue, 07 Jan 2026 13:30:00 +0100
+
 linuxcampam (0.9.5-1) unstable; urgency=medium
 
 * GPU sync option to prevent OpenCL hangs on some AMD GPUs
