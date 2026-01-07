@@ -7,6 +7,11 @@ override_dh_auto_configure:
 	dh_auto_configure -- -DCMAKE_BUILD_TYPE=Release
 
 execute_after_dh_auto_install:
-	# Remove files installed by CMake that conflict with Debian packaging
+	# CMake installs service to /lib but dh expects /usr/lib
 	rm -rf debian/linuxcampam/lib/systemd/system
-	rm -f debian/linuxcampam/usr/share/pam-configs/linuxcampam
+
+override_dh_installsystemd:
+	# Use scripts/linuxcampam.service
+	cp scripts/linuxcampam.service debian/linuxcampam.service
+	dh_installsystemd --no-enable --no-start
+	rm -f debian/linuxcampam.service
