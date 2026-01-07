@@ -18,9 +18,13 @@ if [ "$1" = "configure" ]; then
         rm -rf /root/.cache/opencv
     fi
     
+    # Create required directories if missing
+    mkdir -p /etc/linuxcampam/users
+    mkdir -p /etc/linuxcampam/models
+    
     # Ensure rights
     # Users directory contains biometric embeddings - restrict to root
-    chmod 700 /etc/linuxcampam/users || true
+    chmod 700 /etc/linuxcampam/users
     chmod 755 /etc/linuxcampam/models
     
     # Run Camera Config Detection
@@ -69,8 +73,8 @@ if [ "$1" = "configure" ]; then
     # Reload systemd and restart service if running
     if [ -d /run/systemd/system ]; then
         systemctl daemon-reload
-        systemctl enable linuxcampam
-        systemctl restart linuxcampam || true
+        systemctl enable linuxcampam.service || true
+        systemctl restart linuxcampam.service || true
     fi
     
     echo "LinuxCamPAM installed."

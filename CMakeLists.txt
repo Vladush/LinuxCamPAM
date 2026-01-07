@@ -146,6 +146,10 @@ install(PROGRAMS ${CMAKE_SOURCE_DIR}/scripts/setup_config.sh
     RENAME linuxcampam-setup-config
 )
 
+install(PROGRAMS ${CMAKE_SOURCE_DIR}/scripts/detect_opencl.sh
+    DESTINATION bin
+)
+
 # --- CPack Packaging ---
 set(CPACK_PACKAGE_NAME "linuxcampam")
 set(CPACK_PACKAGE_VENDOR "Vladimir Orlinski")
@@ -155,11 +159,9 @@ set(CPACK_PACKAGE_CONTACT "contact.github.submerge594@slmails.com")
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Vladimir Orlinski")
 
 set(CPACK_GENERATOR "DEB")
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libopencv-core406 | libopencv-core-dev, libopencv-imgproc406, libopencv-objdetect406, libopencv-dnn406, libpam0g, libc6, libstdc++6, v4l-utils")
-# Note: Dependencies above are slightly generic, auto-shlibdeps is often handled by specialized toolchains, but CPack DEB needs manual or CMAKE_INSTALL_RPATH hint. 
-# For Ubuntu 24.04, opencv might be 4.6+ or similar. "libopencv-dev" is strict.
-# A safer minimal set:
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libopencv-dev (>= 4.0), libpam0g, libpam-runtime, v4l-utils, systemd, bash")
+# Runtime dependencies (not -dev packages) for Ubuntu 24.04
+# OpenCV 4.6 runtime libs, PAM, and utilities
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libopencv-core406t64, libopencv-imgproc406t64, libopencv-objdetect406t64, libopencv-dnn406t64, libopencv-videoio406t64, libopencv-photo406t64, libpam0g, libpam-runtime, v4l-utils, systemd")
 
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_SOURCE_DIR}/debian/postinst")
 
