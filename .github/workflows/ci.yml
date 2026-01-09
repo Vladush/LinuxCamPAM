@@ -1,11 +1,30 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [master]
     tags: ["v*.*.*"]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - ".gitignore"
+      - ".dockerignore"
+      - "LICENSE"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/PULL_REQUEST_TEMPLATE.md"
   pull_request:
     branches: [master]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - ".gitignore"
+      - ".dockerignore"
+      - "LICENSE"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/PULL_REQUEST_TEMPLATE.md"
 
 jobs:
   build-gcc:

@@ -2,28 +2,29 @@
 
 [![CI](https://github.com/Vladush/LinuxCamPAM/actions/workflows/ci.yml/badge.svg)](https://github.com/Vladush/LinuxCamPAM/actions/workflows/ci.yml)
 
-> **A personal hobby project to bring seamless face unlock to my Linux laptop.**
+> Face unlock for Linux, like Windows Hello™. Any webcam works; IR recommended for best results.
 
-LinuxCamPAM provides seamless face unlock for Linux `sudo`, `login`, and `gdm` using OpenCV and AI models (YuNet/SFace). I built it to solve my own need for speed and reliability, supporting hardware acceleration (OpenCL, CUDA) and smart dual-camera configurations (IR + RGB).
+LinuxCamPAM provides seamless face unlock for Linux `sudo`, `login`, and login/lock screens (GDM, SDDM, LightDM) using OpenCV and AI models (YuNet/SFace). I built it to solve my own need for speed and reliability, supporting hardware acceleration (OpenCL, CUDA) and smart dual-camera configurations (IR + RGB). Virtually any USB webcam works out of the box.
 
 ## Motivation
 
-I developed this primarily to solve a real-world frustration for my family. My daughter uses a Fujitsu T900 with a complex setup involving a Swiss-French-German external keyboard and a German internal keyboard, while frequently switching between Russian and Ukrainian layouts. Keeping track of which layout is active when typing a complex password became a daily struggle for her (and occasionally for me too!). Face authentication eliminates this friction entirely—no more locked accounts due to the wrong keyboard layout!
+I built this to solve a real problem for my family. My daughter's Fujitsu T900 has a Swiss-French-German external keyboard plus a German internal one, and she switches between Russian and Ukrainian layouts. Typing passwords on the wrong layout = locked accounts. Face auth fixes that. Also for myself :-)
 
-With the decision to open source this project, I have dedicated significant effort to ensuring it is hardware and system agnostic—moving beyond just my personal devices to support a wide range of cameras and architectures. I have also invested heavily in comprehensive documentation to make it accessible to everyone.
+Since open-sourcing, I've put effort into making it hardware-agnostic and well-documented.
 
 ## Features
 
-- **Blazing Fast**: Uses lightweight ONNX models (YuNet detection + SFace recognition).
-- **Hardware Acceleration**: OpenCL (AMD via Rusticl, Intel, NVIDIA) with optional CUDA backend (requires CUDA-enabled OpenCV build).
-  - **Smart GPU Detection**: Automatically detects AMD GPUs and uses Rusticl OpenCL driver. This was added after discovering that Mesa/Clover causes kernel-level GPU crashes on my AMD Radeon 880M. Non-AMD systems use their native drivers; AMD systems without Rusticl gracefully fall back to CPU.
+- **Any Webcam Works**: Standard USB or integrated cameras (720p+ recommended). No special hardware required.
+- **Enhanced IR Support**: Detects IR cameras and controls emitters for better low-light and anti-spoofing.
+- **Hardware Acceleration**: OpenCL (AMD via Rusticl, Intel, NVIDIA) with optional CUDA backend.
+  - **Smart GPU Detection**: Auto-detects AMD GPUs and uses Rusticl. Non-AMD systems use native drivers; falls back to CPU if needed.
 - **Smart Camera Support**:
-  - **Dual-Camera Security**: Uses IR cameras for liveness/security and RGB for validation, ensuring robust auth even in low light.
-  - **Auto-Configuration**: Automatically detects your hardware (IR vs RGB) and selects the best authentication policy.
-  - **Enhanced Enrollment**: HDR capture (multi-exposure merge) when supported, frame averaging for all cameras. Configurable globally via `[Capture]` or per-camera via `[Camera.xxx]` sections.
-- **Multi-Embedding Support**: Store multiple face embeddings per user for different lighting conditions (`linuxcampam list`, `train --new`).
-- **PAM Integration**: Standard PAM module integrating seamlessly with Debian/Ubuntu.
-- **Security First**: Comprehensive [Threat Model & Security Assessment](docs/SECURITY_ASSESSMENT.md) included.
+  - **Dual-Camera Security**: Uses IR for liveness/security and RGB for validation.
+  - **Auto-Configuration**: Detects your hardware (IR vs RGB) and selects the best policy.
+  - **Enhanced Enrollment**: HDR capture when supported, frame averaging for all cameras.
+- **Multi-Embedding Support**: Store multiple face embeddings per user for different lighting (`linuxcampam list`, `train --new`).
+- **PAM Integration**: Standard PAM module for Debian/Ubuntu.
+- **Security First**: [Threat Model & Security Assessment](docs/SECURITY_ASSESSMENT.md) included.
 
 ## Installation
 
@@ -239,3 +240,7 @@ I am excited to see this project grow beyond the hardware I currently possess! *
 ## License
 
 MIT License
+
+---
+
+*Windows Hello is a trademark of Microsoft Corporation. This project is not affiliated with or endorsed by Microsoft.*
