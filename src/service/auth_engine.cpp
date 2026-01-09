@@ -486,12 +486,11 @@ void AuthEngine::fallbackToCPU() {
 }
 
 bool AuthEngine::isValidUsername(std::string_view username) {
-  // 1. Basic sanity checks
+  // Basic sanity checks
   if (username.empty() || username.length() > 32)
     return false;
 
-  // 2. Prevent Path Traversal (CRITICAL)
-  // Rejects ".." and hidden files starting with "."
+  // Block path traversal and hidden files
   if (username[0] == '.')
     return false;
 
@@ -501,8 +500,8 @@ bool AuthEngine::isValidUsername(std::string_view username) {
     }
   }
 
-  // 3. Prevent Shell Injection & Enforce Linux Rules
-  // Allowed: a-z, A-Z, 0-9, _, ., -, $ (samba)
+  // Standard Linux username chars (plus Samba's $)
+  // strict allowlist prevents shell injection
   for (char c : username) {
     bool is_lower = (c >= 'a' && c <= 'z');
     bool is_upper = (c >= 'A' && c <= 'Z');
