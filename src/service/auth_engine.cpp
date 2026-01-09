@@ -13,8 +13,8 @@
 #include <iomanip>
 #include <iostream>
 #include <opencv2/core/ocl.hpp>
-#include <regex>
 #include <sstream>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
 
@@ -348,7 +348,7 @@ bool AuthEngine::init(const std::string &config_path) {
 
   // GPU sync options
   config.gpu_flush = (get("Performance.gpu_flush", "on") == "on");
-  config.gpu_throttle_ms = std::stoi(get("Performance.gpu_throttle_ms", "0"));
+  config.gpu_throttle_ms = std::stoi(get("Performance.gpu_throttle_ms", "20"));
 
   last_activity_ = std::chrono::steady_clock::now();
 
@@ -485,14 +485,35 @@ void AuthEngine::fallbackToCPU() {
   }
 }
 
-bool AuthEngine::isValidUsername(const std::string &username) {
-  // Allow alphanumeric, underscore, dot, dash.
-  // Prevent path traversal characters like "/" or "..".
-  // Max length 32 for sanity.
-  if (username.length() > 32 || username.empty())
+bool AuthEngine::isValidUsername(std::string_view username) {
+  // 1. Basic sanity checks
+  if (username.empty() || username.length() > 32)
     return false;
-  static const std::regex re("^[a-zA-Z0-9_\\.-]+$");
-  return std::regex_match(username, re);
+
+  // 2. Prevent Path Traversal (CRITICAL)
+  // Rejects ".." and hidden files starting with "."
+  if (username[0] == '.')
+    return false;
+
+  for (size_t i = 1; i < username.length(); ++i) {
+    if (username[i] == '.' && username[i - 1] == '.') {
+      return false; // Found ".."
+    }
+  }
+
+  // 3. Prevent Shell Injection & Enforce Linux Rules
+  // Allowed: a-z, A-Z, 0-9, _, ., -, $ (samba)
+  for (char c : username) {
+    bool is_lower = (c >= 'a' && c <= 'z');
+    bool is_upper = (c >= 'A' && c <= 'Z');
+    bool is_digit = (c >= '0' && c <= '9');
+    bool is_special = (c == '_' || c == '.' || c == '-' || c == '$');
+
+    if (!(is_lower || is_upper || is_digit || is_special)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 cv::Mat AuthEngine::captureFrame(Camera *cam) {

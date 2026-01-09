@@ -8,6 +8,7 @@
 #include <opencv2/dnn.hpp>
 #include <opencv2/opencv.hpp>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -115,7 +116,7 @@ private:
 
     // GPU sync options
     bool gpu_flush = false;
-    int gpu_throttle_ms = 0;
+    int gpu_throttle_ms = 20;
   } config;
 
   cv::Ptr<cv::FaceDetectorYN> detector;
@@ -139,7 +140,7 @@ private:
   void fallbackToCPU();
 
   // Security
-  [[nodiscard]] bool isValidUsername(const std::string &username);
+  [[nodiscard]] bool isValidUsername(std::string_view username);
 
   // Dynamic Loading
   [[nodiscard]] bool ensureModelsLoaded();

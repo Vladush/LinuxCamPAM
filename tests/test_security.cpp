@@ -12,7 +12,7 @@ using json = nlohmann::json;
 // ============================================================================
 
 // isValidUsername is defined in test_config.cpp
-extern bool isValidUsername(const std::string &username);
+extern bool isValidUsername(std::string_view username);
 
 // Camera path validation
 bool isValidCameraPath(const std::string &path) {
