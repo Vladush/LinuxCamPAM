@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <gtest/gtest.h>
 #include <string_view>
 
@@ -18,17 +19,14 @@ bool isValidUsername(std::string_view username) {
 
   // Standard Linux username chars (plus Samba's $)
   // strict allowlist prevents shell injection
-  for (char c : username) {
+  return std::all_of(username.begin(), username.end(), [](char c) {
     bool is_lower = (c >= 'a' && c <= 'z');
     bool is_upper = (c >= 'A' && c <= 'Z');
     bool is_digit = (c >= '0' && c <= '9');
     bool is_special = (c == '_' || c == '.' || c == '-' || c == '$');
 
-    if (!(is_lower || is_upper || is_digit || is_special)) {
-      return false;
-    }
-  }
-  return true;
+    return is_lower || is_upper || is_digit || is_special;
+  });
 }
 
 TEST(SecurityTest, UsernameSanitization) {
