@@ -10,16 +10,46 @@
 #include <numeric>
 #include <opencv2/core/utils/logger.hpp>
 #include <opencv2/photo.hpp>
+#include <spawn.h>
 #include <sys/ioctl.h>
+#include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
 #include <vector>
 
+// Required for posix_spawn environment inheritance
+extern char **environ;
+
 void Camera::triggerIrEmitter() {
   std::cerr << "[Camera] Triggering IR emitter" << std::endl;
-  std::string cmd = ir_emitter_path_ + " run 2>&1";
-  int ret = std::system(cmd.c_str());
-  std::cerr << "[Camera] IR emitter returned: " << ret << std::endl;
+
+  pid_t pid = 0;
+  std::string cmd = "run";
+  std::vector<char *> args;
+
+  // Prepare argv for posix_spawn (requires char*)
+  args.push_back(const_cast<char *>(ir_emitter_path_.data()));
+  args.push_back(const_cast<char *>(cmd.data()));
+  args.push_back(nullptr);
+
+  int status = posix_spawn(&pid, ir_emitter_path_.c_str(), nullptr, nullptr,
+                           args.data(), environ);
+
+  if (status == 0) {
+    // Block until process completes
+    if (waitpid(pid, &status, 0) != -1) {
+      if (WIFEXITED(status)) {
+        std::cerr << "[Camera] IR emitter exited with code: "
+                  << WEXITSTATUS(status) << std::endl;
+      } else {
+        std::cerr << "[Camera] IR emitter terminated abnormally." << std::endl;
+      }
+    } else {
+      std::cerr << "[Camera] Failed to wait for IR emitter." << std::endl;
+    }
+  } else {
+    std::cerr << "[Camera] posix_spawn failed: " << status << std::endl;
+  }
 }
 
 bool Camera::detectExposureSupport() {
