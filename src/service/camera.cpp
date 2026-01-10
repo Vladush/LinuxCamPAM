@@ -47,7 +47,8 @@ Camera::Camera(const std::string &device_path, bool is_ir,
 
   if (device_path.rfind("/dev/video", 0) == 0) {
     try {
-      device_id = std::stoi(device_path.substr(10));
+      device_id =
+          std::stoi(device_path.substr(std::string("/dev/video").length()));
     } catch (...) {
       device_id = 0;
     }
