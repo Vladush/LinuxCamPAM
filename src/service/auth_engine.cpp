@@ -170,8 +170,10 @@ bool AuthEngine::init(const std::string &config_path) {
 
   auto get = [&ini](const std::string &key,
                     const std::string &def = "") -> std::string {
-    auto it = ini.find(key);
-    return it != ini.end() ? it->second : def;
+    if (auto it = ini.find(key); it != ini.end()) {
+      return it->second;
+    }
+    return def;
   };
 
   std::string log_level_str = get("General.log_level", "");
@@ -480,33 +482,26 @@ void AuthEngine::fallbackToCPU() {
 }
 
 bool AuthEngine::isValidUsername(std::string_view username) {
-  // Basic sanity checks
   if (username.empty() || username.length() > 32)
     return false;
 
-  // Block path traversal and hidden files
-  if (username[0] == '.')
+  // Hidden files
+  if (username.front() == '.')
     return false;
 
-  for (size_t i = 1; i < username.length(); ++i) {
-    if (username[i] == '.' && username[i - 1] == '.') {
-      return false; // Found ".."
-    }
+  // Detect Path Traversal ("..")
+  if (std::adjacent_find(username.begin(), username.end(), [](char a, char b) {
+        return a == '.' && b == '.';
+      }) != username.end()) {
+    return false;
   }
 
-  // Standard Linux username chars (plus Samba's $)
-  // strict allowlist prevents shell injection
-  for (char c : username) {
-    bool is_lower = (c >= 'a' && c <= 'z');
-    bool is_upper = (c >= 'A' && c <= 'Z');
-    bool is_digit = (c >= '0' && c <= '9');
-    bool is_special = (c == '_' || c == '.' || c == '-' || c == '$');
-
-    if (!(is_lower || is_upper || is_digit || is_special)) {
-      return false;
-    }
-  }
-  return true;
+  // Strict allowlist (a-z, A-Z, 0-9, _, ., -, $)
+  return std::all_of(username.begin(), username.end(), [](char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+           (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-' ||
+           c == '$';
+  });
 }
 
 cv::Mat AuthEngine::captureFrame(Camera *cam) {
@@ -641,22 +636,33 @@ bool AuthEngine::verifyUser(const std::string &username) {
       double best_score = 0.0;
       match = false;
 
-      for (const auto &ref_vec : all_embeddings) {
-        cv::Mat ref_emb(
-            1, ref_vec.size(), CV_32F,
-            reinterpret_cast<void *>(const_cast<float *>(ref_vec.data())));
-        double score = recognizer->match(curr_emb, ref_emb,
-                                         cv::FaceRecognizerSF::FR_COSINE);
+      auto best_match_it = std::max_element(
+          all_embeddings.begin(), all_embeddings.end(),
+          [&](const auto &a, const auto &b) {
+            cv::Mat emb_a(
+                1, a.size(), CV_32F,
+                reinterpret_cast<void *>(const_cast<float *>(a.data())));
+            cv::Mat emb_b(
+                1, b.size(), CV_32F,
+                reinterpret_cast<void *>(const_cast<float *>(b.data())));
+            return recognizer->match(curr_emb, emb_a,
+                                     cv::FaceRecognizerSF::FR_COSINE) <
+                   recognizer->match(curr_emb, emb_b,
+                                     cv::FaceRecognizerSF::FR_COSINE);
+          });
 
-        LOG_DEBUG("  -> Match Score: " + std::to_string(score));
+      if (best_match_it != all_embeddings.end()) {
+        cv::Mat ref_emb(1, best_match_it->size(), CV_32F,
+                        reinterpret_cast<void *>(
+                            const_cast<float *>(best_match_it->data())));
+        best_score = recognizer->match(curr_emb, ref_emb,
+                                       cv::FaceRecognizerSF::FR_COSINE);
+      }
 
-        if (score > best_score)
-          best_score = score;
+      LOG_DEBUG("  -> Best Match Score: " + std::to_string(best_score));
 
-        if (score >= config.threshold) {
-          match = true;
-          break;
-        }
+      if (best_score >= config.threshold) {
+        match = true;
       }
 
       if (match) {
@@ -787,10 +793,21 @@ AuthResult AuthEngine::verifyUserWithDetails(const std::string &username) {
         recognizer->feature(aligned_face, curr_emb);
         gpuSync(config.gpu_flush, config.gpu_throttle_ms);
 
-        for (const auto &stored_vec : all_embeddings) {
-          cv::Mat stored_emb(1, stored_vec.size(), CV_32F,
-                             const_cast<float *>(stored_vec.data()));
-          float score = cosine_similarity(curr_emb, stored_emb);
+        if (!all_embeddings.empty()) {
+          auto best_it =
+              std::max_element(all_embeddings.begin(), all_embeddings.end(),
+                               [&](const auto &a, const auto &b) {
+                                 cv::Mat emb_a(1, a.size(), CV_32F,
+                                               const_cast<float *>(a.data()));
+                                 cv::Mat emb_b(1, b.size(), CV_32F,
+                                               const_cast<float *>(b.data()));
+                                 return cosine_similarity(curr_emb, emb_a) <
+                                        cosine_similarity(curr_emb, emb_b);
+                               });
+
+          cv::Mat best_ref_emb(1, best_it->size(), CV_32F,
+                               const_cast<float *>(best_it->data()));
+          float score = cosine_similarity(curr_emb, best_ref_emb);
           if (score > best_score)
             best_score = score;
         }
@@ -1271,7 +1288,7 @@ bool AuthEngine::isUserLockedOut(const std::string &username) {
   if (config.lockout_attempts <= 0)
     return false;
 
-  std::lock_guard<std::mutex> lock(lockout_mutex_);
+  std::scoped_lock lock(lockout_mutex_);
   auto it = lockout_map_.find(username);
   if (it == lockout_map_.end())
     return false;
@@ -1286,7 +1303,7 @@ void AuthEngine::recordAuthAttempt(const std::string &username, bool success) {
   if (config.lockout_attempts <= 0)
     return;
 
-  std::lock_guard<std::mutex> lock(lockout_mutex_);
+  std::scoped_lock lock(lockout_mutex_);
   auto &state = lockout_map_[username];
 
   if (success) {
