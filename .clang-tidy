@@ -1,0 +1,18 @@
+---
+Checks: '
+  clang-diagnostic-*,
+  clang-analyzer-*,
+  cppcoreguidelines-*,
+  cert-*,
+  bugprone-*,
+  performance-*,
+  security-*,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-type-vararg,
+  -cppcoreguidelines-avoid-c-arrays,
+  -cert-err58-cpp
+'
+WarningsAsErrors: '*'
+HeaderFilterRegex: 'src/.*|include/.*'
+FormatStyle: file
+...
