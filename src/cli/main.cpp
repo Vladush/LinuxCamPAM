@@ -32,7 +32,8 @@ std::string send_cmd(const std::string &cmd) {
   addr.sun_family = AF_UNIX;
   strncpy(addr.sun_path, linuxcampam::SOCKET_PATH, sizeof(addr.sun_path) - 1);
 
-  if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+  if (connect(sock, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) ==
+      -1) {
     std::cerr << "Could not connect to service at " << linuxcampam::SOCKET_PATH
               << ". Is linuxcampamd running?" << std::endl;
     close(sock);

@@ -80,7 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Model Version Tracking**: Embeddings now include `model_version` field for cross-machine portability validation
 - Improved camera warmup (10 frames + 100ms settling delay)
 
-### Improved
+### Improved in 0.9.1
 
 - **Overwrite Confirmation**: CLI now prompts before overwriting existing embeddings
 - Test command runs single capture cycle (was double, causing IR timing issues)

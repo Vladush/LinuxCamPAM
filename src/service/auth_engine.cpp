@@ -313,7 +313,7 @@ bool AuthEngine::init(const std::string &config_path) {
         } else if (!ir_path.empty()) {
           LOG_INFO("Detected Single IR Setup.");
           config.camera_defs.push_back({"ir", ir_path, "ir", 0, true});
-        } else if (!detected.empty()) {
+        } else {
           // Has some camera but couldn't classify - use first one
           const auto &[path, type] = detected[0];
           LOG_WARN("Could not classify cameras. Using " + path +
@@ -648,7 +648,9 @@ bool AuthEngine::verifyUser(const std::string &username) {
       match = false;
 
       for (const auto &ref_vec : all_embeddings) {
-        cv::Mat ref_emb(1, ref_vec.size(), CV_32F, (void *)ref_vec.data());
+        cv::Mat ref_emb(
+            1, ref_vec.size(), CV_32F,
+            reinterpret_cast<void *>(const_cast<float *>(ref_vec.data())));
         double score = recognizer->match(curr_emb, ref_emb,
                                          cv::FaceRecognizerSF::FR_COSINE);
 
@@ -782,7 +784,6 @@ AuthResult AuthEngine::verifyUserWithDetails(const std::string &username) {
     detector->detect(frame, faces);
     gpuSync(config.gpu_flush, config.gpu_throttle_ms);
 
-    bool match = false;
     if (faces.rows >= 1) {
       cv::Mat aligned_face, curr_emb;
       float best_score = 0.0f;
@@ -805,7 +806,6 @@ AuthResult AuthEngine::verifyUserWithDetails(const std::string &username) {
         overall_best_score = best_score;
 
       if (best_score >= config.threshold) {
-        match = true;
         successes++;
       } else {
         failures++;

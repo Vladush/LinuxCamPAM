@@ -1,3 +1,5 @@
+#include "constants.hpp"
+
 #include <cstring>
 #include <security/pam_ext.h>
 #include <security/pam_modules.h>
@@ -7,20 +9,29 @@
 #include <syslog.h>
 #include <unistd.h>
 
-#include "constants.hpp"
-
 PAM_EXTERN int pam_sm_setcred(pam_handle_t *pamh, int flags, int argc,
                               const char **argv) {
+  (void)pamh;
+  (void)flags;
+  (void)argc;
+  (void)argv;
   return PAM_SUCCESS;
 }
 
 PAM_EXTERN int pam_sm_acct_mgmt(pam_handle_t *pamh, int flags, int argc,
                                 const char **argv) {
+  (void)pamh;
+  (void)flags;
+  (void)argc;
+  (void)argv;
   return PAM_SUCCESS;
 }
 
 PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc,
                                    const char **argv) {
+  (void)flags;
+  (void)argc;
+  (void)argv;
   try {
     const char *user;
     int retval = pam_get_user(pamh, &user, NULL);
@@ -46,10 +57,13 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc,
     struct timeval tv;
     tv.tv_sec = 5;
     tv.tv_usec = 0;
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);
-    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (const char *)&tv, sizeof tv);
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO,
+               reinterpret_cast<const char *>(&tv), sizeof tv);
+    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO,
+               reinterpret_cast<const char *>(&tv), sizeof tv);
 
-    if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+    if (connect(sock, reinterpret_cast<struct sockaddr *>(&addr),
+                sizeof(addr)) == -1) {
       close(sock);
       // Service not running or unreachable -> Ignore
       return PAM_AUTHINFO_UNAVAIL;
@@ -84,7 +98,8 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc,
         msgp = &msg;
 
         const struct pam_conv *conv;
-        int ret = pam_get_item(pamh, PAM_CONV, (const void **)&conv);
+        int ret = pam_get_item(pamh, PAM_CONV,
+                               reinterpret_cast<const void **>(&conv));
         if (ret == PAM_SUCCESS && conv != NULL) {
           // Best effort message, ignore return code
           conv->conv(1, &msgp, &resp_pam, conv->appdata_ptr);

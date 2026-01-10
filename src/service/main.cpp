@@ -247,7 +247,8 @@ int main(int argc, char *argv[]) {
   strncpy(address.sun_path, socket_path.c_str(), sizeof(address.sun_path) - 1);
 
   unlink(socket_path.c_str()); // Remove old socket
-  if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+  if (bind(server_fd, reinterpret_cast<struct sockaddr *>(&address),
+           sizeof(address)) < 0) {
     perror("bind failed");
     return 1;
   }
@@ -284,8 +285,9 @@ int main(int argc, char *argv[]) {
     if (g_running && activity > 0 && FD_ISSET(server_fd, &readfds)) {
       int new_socket;
       int addrlen = sizeof(address);
-      if ((new_socket = accept(server_fd, (struct sockaddr *)&address,
-                               (socklen_t *)&addrlen)) >= 0) {
+      if ((new_socket =
+               accept(server_fd, reinterpret_cast<struct sockaddr *>(&address),
+                      reinterpret_cast<socklen_t *>(&addrlen))) >= 0) {
         // Handle in thread or blocking? Blocking for now - camera is
         // single-access anyway
         handle_client(new_socket, engine);
