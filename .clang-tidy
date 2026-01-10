@@ -1,5 +1,5 @@
 ---
-Checks: '
+Checks: |
   clang-diagnostic-*,
   clang-analyzer-*,
   cppcoreguidelines-*,
@@ -9,10 +9,7 @@ Checks: '
   security-*,
   -cppcoreguidelines-pro-bounds-pointer-arithmetic,
   -cppcoreguidelines-pro-type-vararg,
-  -cppcoreguidelines-avoid-c-arrays,
   -cert-err58-cpp
-'
-WarningsAsErrors: '*'
-HeaderFilterRegex: 'src/.*|include/.*'
+WarningsAsErrors: "*"
+HeaderFilterRegex: '^(src|include/(?!json\.hpp))'
 FormatStyle: file
-...

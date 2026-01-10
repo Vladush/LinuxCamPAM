@@ -73,7 +73,8 @@ bool Camera::openAndWarmup(cv::VideoCapture &temp_cap) {
       break;
     std::cerr << "[Camera] Device busy. Retrying (" << attempt + 1 << "/3)..."
               << std::endl;
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+    std::this_thread::sleep_for(
+        std::chrono::seconds(linuxcampam::CAPTURE_RETRY_DELAY_S));
   }
 
   if (!temp_cap.isOpened())
@@ -82,7 +83,8 @@ bool Camera::openAndWarmup(cv::VideoCapture &temp_cap) {
   // Now trigger IR emitter while camera is open
   if (is_ir_camera) {
     triggerIrEmitter();
-    std::this_thread::sleep_for(std::chrono::milliseconds(750));
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds(linuxcampam::IR_TRIGGER_DELAY_MS));
   }
 
   return true;
@@ -97,10 +99,11 @@ cv::Mat Camera::capture() {
 
   cv::Mat frame;
   // Discard initial frames for auto-exposure settling
-  for (int i = 0; i < 10; i++)
+  for (int i = 0; i < linuxcampam::CAMERA_WARMUP_FRAMES; i++)
     temp_cap.read(frame); // Read and discard
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  std::this_thread::sleep_for(
+      std::chrono::milliseconds(linuxcampam::CAMERA_WARMUP_DELAY_MS));
   temp_cap.read(frame);
 
   return frame.empty() ? cv::Mat() : frame.clone();

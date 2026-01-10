@@ -288,7 +288,7 @@ bool AuthEngine::init(const std::string &config_path) {
         // Keep service running for hot-plug scenarios
       } else {
         // Classify detected cameras
-        std::string ir_path, rgb_path;
+        std::string ir_path = "", rgb_path = "";
         for (const auto &[path, type] : detected) {
           LOG_INFO("Detected: " + path + " (type: " + type + ")");
           if (type == "ir" && ir_path.empty()) {
@@ -322,7 +322,7 @@ bool AuthEngine::init(const std::string &config_path) {
 
   std::string priority_str = get("Hardware.provider_priority", "");
   std::stringstream ss(priority_str);
-  std::string segment;
+  std::string segment = "";
   while (std::getline(ss, segment, ',')) {
     segment.erase(0, segment.find_first_not_of(" \t"));
     if (!segment.empty())
@@ -469,7 +469,8 @@ void AuthEngine::fallbackToCPU() {
   try {
     detector = cv::FaceDetectorYN::create(
         detection_model_path, "", cv::Size(320, 320),
-        config.detection_threshold, 0.3f, 5000, cv::dnn::DNN_BACKEND_OPENCV,
+        config.detection_threshold, linuxcampam::MIRROR_THRESHOLD_DEFAULT,
+        linuxcampam::MIRROR_NMS, cv::dnn::DNN_BACKEND_OPENCV,
         cv::dnn::DNN_TARGET_CPU);
     recognizer = cv::FaceRecognizerSF::create(recognition_model_path, "",
                                               cv::dnn::DNN_BACKEND_OPENCV,
@@ -482,7 +483,7 @@ void AuthEngine::fallbackToCPU() {
 }
 
 bool AuthEngine::isValidUsername(std::string_view username) {
-  if (username.empty() || username.length() > 32)
+  if (username.empty() || username.length() > linuxcampam::MAX_USERNAME_LENGTH)
     return false;
 
   // Hidden files
@@ -514,7 +515,7 @@ double AuthEngine::calculateBrightness(const cv::Mat &frame) {
   if (frame.empty())
     return 0.0;
   cv::Scalar means = cv::mean(frame);
-  return (means[0] + means[1] + means[2]) / 3.0;
+  return (means[0] + means[1] + means[2]) / linuxcampam::RGB_CHANNELS;
 }
 
 bool AuthEngine::verifyUser(const std::string &username) {
@@ -639,12 +640,10 @@ bool AuthEngine::verifyUser(const std::string &username) {
       auto best_match_it = std::max_element(
           all_embeddings.begin(), all_embeddings.end(),
           [&](const auto &a, const auto &b) {
-            cv::Mat emb_a(
-                1, a.size(), CV_32F,
-                reinterpret_cast<void *>(const_cast<float *>(a.data())));
-            cv::Mat emb_b(
-                1, b.size(), CV_32F,
-                reinterpret_cast<void *>(const_cast<float *>(b.data())));
+            cv::Mat emb_a(1, static_cast<int>(a.size()), CV_32F,
+                          const_cast<float *>(a.data()));
+            cv::Mat emb_b(1, static_cast<int>(b.size()), CV_32F,
+                          const_cast<float *>(b.data()));
             return recognizer->match(curr_emb, emb_a,
                                      cv::FaceRecognizerSF::FR_COSINE) <
                    recognizer->match(curr_emb, emb_b,
@@ -652,9 +651,8 @@ bool AuthEngine::verifyUser(const std::string &username) {
           });
 
       if (best_match_it != all_embeddings.end()) {
-        cv::Mat ref_emb(1, best_match_it->size(), CV_32F,
-                        reinterpret_cast<void *>(
-                            const_cast<float *>(best_match_it->data())));
+        cv::Mat ref_emb(1, static_cast<int>(best_match_it->size()), CV_32F,
+                        const_cast<float *>(best_match_it->data()));
         best_score = recognizer->match(curr_emb, ref_emb,
                                        cv::FaceRecognizerSF::FR_COSINE);
       }
@@ -835,9 +833,7 @@ AuthResult AuthEngine::verifyUserWithDetails(const std::string &username) {
   }
 
   bool auth_ok = false;
-  if (config.policy == AuthPolicy::STRICT_ALL)
-    auth_ok = (failures == 0);
-  else if (config.policy == AuthPolicy::LENIENT_ANY)
+  if (config.policy == AuthPolicy::LENIENT_ANY)
     auth_ok = (successes > 0);
   else
     auth_ok = (failures == 0);
@@ -851,7 +847,7 @@ AuthResult AuthEngine::verifyUserWithDetails(const std::string &username) {
   if (any_no_face) {
     result.reason = "No face detected";
   } else if (overall_best_score > 0) {
-    std::ostringstream oss;
+    std::ostringstream oss = {};
     oss << std::fixed << std::setprecision(2);
     oss << "Face mismatch (score: " << overall_best_score << ")";
     result.reason = oss.str();
@@ -953,7 +949,8 @@ AuthEngine::enrollUser(const std::string &username) {
   std::ofstream out(user_file);
   out << j.dump(4);
   out.close();
-  chmod(user_file.c_str(), 0600); // Restrict to root-only
+  chmod(user_file.c_str(),
+        linuxcampam::SECURE_FILE_MODE); // Restrict to root-only
   return {true, "Success"};
 }
 
@@ -1049,7 +1046,8 @@ bool AuthEngine::setLabel(const std::string &username,
     std::ofstream out(user_file);
     out << j.dump(4);
     out.close();
-    chmod(user_file.c_str(), 0600); // Restrict to root-only
+    chmod(user_file.c_str(),
+          linuxcampam::SECURE_FILE_MODE); // Restrict to root-only
     Logger::log(LogLevel::INFO, "Set label '" + label + "' for " + username);
   }
   return updated;
@@ -1173,7 +1171,8 @@ bool AuthEngine::trainUser(const std::string &username,
     std::ofstream out(user_file);
     out << j.dump(4);
     out.close();
-    chmod(user_file.c_str(), 0600); // Restrict to root-only
+    chmod(user_file.c_str(),
+          linuxcampam::SECURE_FILE_MODE); // Restrict to root-only
   }
   return updated_any;
 }
@@ -1251,7 +1250,8 @@ bool AuthEngine::removeEmbedding(const std::string &username,
     std::ofstream out(user_file);
     out << j.dump(4);
     out.close();
-    chmod(user_file.c_str(), 0600); // Restrict to root-only
+    chmod(user_file.c_str(),
+          linuxcampam::SECURE_FILE_MODE); // Restrict to root-only
     Logger::log(LogLevel::INFO,
                 "Removed embedding '" + label + "' for " + username);
   }
