@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Performance & Security
+
+- **Smoother Default experience**: Changed default `gpu_throttle_ms` to 20ms. This small pause between GPU operations prevents the dreaded "UI freeze" on laptops with integrated graphics during authentication.
+- **Faster First Login**: AI models are now pre-loaded when the service starts, rather than waiting for the first user to walk by.
+- **Hardened Validation**: Switched input validation from regex to a strict character-allowlist loop. This isn't visible to users, but it removes a potential ReDoS attack vector and makes path traversal protection bulletproof.
+
 ## [0.9.5] - 2026-01-06
 
 ### Fixed

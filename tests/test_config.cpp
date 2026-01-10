@@ -1,16 +1,35 @@
 #include <gtest/gtest.h>
-#include <regex>
 #include <string>
+#include <string_view>
 
-bool isValidUsername(const std::string &username) {
+bool isValidUsername(std::string_view username) {
+  // Basic sanity checks
   if (username.empty() || username.length() > 32)
     return false;
-  // Specific check for Path Traversal ".."
-  if (username == ".." || username == ".")
+
+  // Block path traversal and hidden files
+  if (username[0] == '.')
     return false;
-  // Allow a-z, A-Z, 0-9, ., -, _
-  static const std::regex user_regex("^[a-zA-Z0-9_\\.-]+$");
-  return std::regex_match(username, user_regex);
+
+  for (size_t i = 1; i < username.length(); ++i) {
+    if (username[i] == '.' && username[i - 1] == '.') {
+      return false; // Found ".."
+    }
+  }
+
+  // Standard Linux username chars (plus Samba's $)
+  // strict allowlist prevents shell injection
+  for (char c : username) {
+    bool is_lower = (c >= 'a' && c <= 'z');
+    bool is_upper = (c >= 'A' && c <= 'Z');
+    bool is_digit = (c >= '0' && c <= '9');
+    bool is_special = (c == '_' || c == '.' || c == '-' || c == '$');
+
+    if (!(is_lower || is_upper || is_digit || is_special)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 TEST(SecurityTest, UsernameSanitization) {
