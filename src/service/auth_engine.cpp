@@ -77,7 +77,10 @@ parse_ini(const std::string &path) {
         key.erase(key.find_last_not_of(" \t") + 1);
         std::string val = line.substr(eq + 1);
         val.erase(0, val.find_first_not_of(" \t"));
-        result[current_section + "." + key] = val;
+        std::string full_key = current_section;
+        full_key += ".";
+        full_key += key;
+        result[full_key] = val;
       }
     }
   }
@@ -290,7 +293,12 @@ bool AuthEngine::init(const std::string &config_path) {
         // Classify detected cameras
         std::string ir_path = "", rgb_path = "";
         for (const auto &[path, type] : detected) {
-          LOG_INFO("Detected: " + path + " (type: " + type + ")");
+          std::string msg = "Detected: ";
+          msg += path;
+          msg += " (type: ";
+          msg += type;
+          msg += ")";
+          LOG_INFO(msg);
           if (type == "ir" && ir_path.empty()) {
             ir_path = path;
           } else if ((type == "rgb" || type == "generic") && rgb_path.empty()) {
@@ -609,12 +617,18 @@ bool AuthEngine::verifyUser(const std::string &username) {
     }
 
     if (all_embeddings.empty()) {
-      Logger::log(LogLevel::WARN, "No embeddings found for " + ac.config.type);
+      std::string msg = "No embeddings found for ";
+      msg += ac.config.type;
+      Logger::log(LogLevel::WARN, msg);
       failures++;
-      if (config.save_fail)
-        cv::imwrite(config.log_dir + "fail_missing_" + id + "_" + username +
-                        ".jpg",
-                    frame);
+      if (config.save_fail) {
+        std::string fail_filename = config.log_dir + "fail_missing_";
+        fail_filename += id;
+        fail_filename += "_";
+        fail_filename += username;
+        fail_filename += ".jpg";
+        cv::imwrite(fail_filename, frame);
+      }
       continue;
     }
 
@@ -668,31 +682,55 @@ bool AuthEngine::verifyUser(const std::string &username) {
       }
 
       if (match) {
-        Logger::log(LogLevel::INFO, "Camera " + id + " MATCH (Score: " +
-                                        std::to_string(best_score) + ")");
+        std::string msg = "Camera ";
+        msg += id;
+        msg += " MATCH (Score: ";
+        msg += std::to_string(best_score);
+        msg += ")";
+        Logger::log(LogLevel::INFO, msg);
         successes++;
-        if (config.save_success)
-          cv::imwrite(config.log_dir + "success_" + id + "_" + username +
-                          ".jpg",
-                      frame);
+        if (config.save_success) {
+          std::string success_filename = config.log_dir + "success_";
+          success_filename += id;
+          success_filename += "_";
+          success_filename += username;
+          success_filename += ".jpg";
+          cv::imwrite(success_filename, frame);
+        }
       } else {
-        Logger::log(LogLevel::WARN, "Camera " + id + " NO MATCH (Best: " +
-                                        std::to_string(best_score) + ")");
+        std::string msg = "Camera ";
+        msg += id;
+        msg += " NO MATCH (Best: ";
+        msg += std::to_string(best_score);
+        msg += ")";
+        Logger::log(LogLevel::WARN, msg);
         failures++;
         // Save fail image
         if (config.save_fail) {
-          std::string filename = config.log_dir + "fail_mismatched_" + id +
-                                 "_" + username + ".jpg";
+          std::string filename = config.log_dir;
+          filename += "fail_mismatched_";
+          filename += id;
+          filename += "_";
+          filename += username;
+          filename += ".jpg";
           cv::imwrite(filename, frame);
           LOG_DEBUG("Saved mismatch image to: " + filename);
         }
       }
     } else {
-      LOG_WARN("Camera " + id + " NO_FACE_DETECTED in frame.");
+      std::string msg = "Camera ";
+      msg += id;
+      msg += " NO_FACE_DETECTED in frame.";
+      LOG_WARN(msg);
       failures++;
-      if (config.save_fail)
-        cv::imwrite(config.log_dir + "fail_" + id + "_" + username + ".jpg",
-                    frame);
+      if (config.save_fail) {
+        std::string fail_filename = config.log_dir + "fail_";
+        fail_filename += id;
+        fail_filename += "_";
+        fail_filename += username;
+        fail_filename += ".jpg";
+        cv::imwrite(fail_filename, frame);
+      }
     }
   }
 
@@ -807,7 +845,7 @@ AuthResult AuthEngine::verifyUserWithDetails(const std::string &username) {
                                         cosine_similarity(curr_emb, emb_b);
                                });
 
-          cv::Mat best_ref_emb(1, best_it->size(), CV_32F,
+          cv::Mat best_ref_emb(1, static_cast<int>(best_it->size()), CV_32F,
                                const_cast<float *>(best_it->data()));
           float score = cosine_similarity(curr_emb, best_ref_emb);
           if (score > best_score)
@@ -924,13 +962,19 @@ AuthEngine::enrollUser(const std::string &username) {
     gpuSync(config.gpu_flush, config.gpu_throttle_ms);
 
     if (faces.rows != 1) {
-      std::string err = "Found " + std::to_string(faces.rows) + " faces in " +
-                        id + ". Expecting exactly 1.";
+      std::string err = "Found ";
+      err += std::to_string(faces.rows);
+      err += " faces in ";
+      err += id;
+      err += ". Expecting exactly 1.";
       Logger::log(LogLevel::WARN, "Enroll failed: " + err);
       if (config.save_fail) {
-        cv::imwrite(config.log_dir + "failed_enroll_" + id + "_" + username +
-                        ".jpg",
-                    frame);
+        std::string fail_filename = config.log_dir + "failed_enroll_";
+        fail_filename += id;
+        fail_filename += "_";
+        fail_filename += username;
+        fail_filename += ".jpg";
+        cv::imwrite(fail_filename, frame);
       }
       return {false, err};
     }
@@ -1143,7 +1187,8 @@ bool AuthEngine::trainUser(const std::string &username,
       for (auto &entry : j[emb_array_key]) {
         if (entry["label"] == label) {
           std::vector<float> old_vec = entry["data"].get<std::vector<float>>();
-          cv::Mat old_emb(1, old_vec.size(), CV_32F, old_vec.data());
+          cv::Mat old_emb(1, static_cast<int>(old_vec.size()), CV_32F,
+                          old_vec.data());
           cv::Mat avg = old_emb + new_emb;
           cv::normalize(avg, avg);
           std::vector<float> avg_vec;
