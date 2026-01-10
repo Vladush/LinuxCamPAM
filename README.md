@@ -150,8 +150,8 @@ Shows the version of both the CLI client and the running daemon service.
 ```bash
 linuxcampam version
 # Output:
-# Client Version: 0.9.5
-# Daemon Version: 0.9.5
+# Client Version: 0.9.6
+# Daemon Version: 0.9.6
 ```
 
 ## Debugging

@@ -94,7 +94,6 @@ TOTAL_MEM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
 # 4GB = 4000000 KB roughly
 THRESHOLD_KB=4000000
 
-# Check for AVX (Modern CPU Proxy)
 # Check for AVX (Modern x86) or NEON/ASIMD (Modern ARM)
 HAS_FAST_CPU=false
 if grep -q "avx" /proc/cpuinfo; then
@@ -109,14 +108,14 @@ KEEP_ALIVE=0
 
 if [ "$TOTAL_MEM_KB" -lt "$THRESHOLD_KB" ]; then
     if [ "$HAS_FAST_CPU" = true ]; then
-        echo "[Setup] Low RAM ($TOTAL_MEM_KB kB) + Modern CPU (AVX/NEON). Enabling Hybrid Mode (60s)."
+        echo "[Setup] Low RAM ($TOTAL_MEM_KB kB) + Fast CPU. Enabling Hybrid Mode (60s)."
         KEEP_ALIVE=60
     else
-        echo "[Setup] Low RAM ($TOTAL_MEM_KB kB) but Older/Slow CPU. Forcing Instant Mode for speed."
+        echo "[Setup] Low RAM ($TOTAL_MEM_KB kB) and Slow CPU. Forcing Instant Mode."
         KEEP_ALIVE=0
     fi
 else
-    echo "[Setup] Sufficient RAM detected ($TOTAL_MEM_KB kB >= 4GB). specific Instant Mode."
+    echo "[Setup] Sufficient RAM ($TOTAL_MEM_KB kB). Using Instant Mode."
     KEEP_ALIVE=0
 fi
 
@@ -149,9 +148,7 @@ if ! grep -q "\[General\]" "$CONFIG_FILE"; then
         echo "log_file = $LOG_FILE" | sudo tee -a "$CONFIG_FILE"
     fi
 else
-    # Update existing
-    # Just ensure log_level is set if missing?
-    # For now, let's just make sure log_file matches our detection if not set
+    # Only set log_file if it's missing (respect existing user config)
     if [ -n "$LOG_FILE" ]; then
         if ! grep -q "log_file" "$CONFIG_FILE"; then
             echo "log_file = $LOG_FILE" | sudo tee -a "$CONFIG_FILE"

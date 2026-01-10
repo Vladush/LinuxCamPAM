@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <iostream>
 #include <linux/videodev2.h>
+#include <numeric>
 #include <opencv2/core/utils/logger.hpp>
 #include <opencv2/photo.hpp>
 #include <sys/ioctl.h>
@@ -140,8 +141,7 @@ cv::Mat Camera::captureAveraged(int num_frames) {
 
   // Average
   cv::Mat sum = cv::Mat::zeros(frames[0].size(), CV_32FC3);
-  for (const auto &f : frames)
-    sum += f;
+  sum = std::accumulate(frames.begin(), frames.end(), sum);
   sum /= static_cast<float>(frames.size());
 
   cv::Mat result;
@@ -178,8 +178,8 @@ cv::Mat Camera::captureHDR() {
 
   // Capture at different exposures
   std::vector<cv::Mat> exposures;
-  std::vector<float> times = {0.01f, 0.05f, 0.15f}; // Relative times
-  int exp_values[] = {50, 150, 400};                // Exposure values
+
+  int exp_values[] = {50, 150, 400}; // Exposure values
 
   for (int i = 0; i < 3; i++) {
     temp_cap.set(cv::CAP_PROP_EXPOSURE, exp_values[i]);

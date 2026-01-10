@@ -11,6 +11,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # --- Security Hardening ---
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(
+        -Wall -Wextra
         -fstack-protector-strong
         -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
         -fPIE
