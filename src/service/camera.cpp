@@ -2,6 +2,7 @@
 
 #include "constants.hpp"
 
+#include <array>
 #include <cstdlib>
 #include <fcntl.h>
 #include <iostream>
@@ -12,9 +13,10 @@
 #include <sys/ioctl.h>
 #include <thread>
 #include <unistd.h>
+#include <vector>
 
 void Camera::triggerIrEmitter() {
-  std::cerr << "[Camera] Triggering IR emitter..." << std::endl;
+  std::cerr << "[Camera] Triggering IR emitter" << std::endl;
   std::string cmd = ir_emitter_path_ + " run 2>&1";
   int ret = std::system(cmd.c_str());
   std::cerr << "[Camera] IR emitter returned: " << ret << std::endl;
@@ -118,7 +120,7 @@ cv::Mat Camera::captureAveraged(int num_frames) {
 
   // Warmup
   cv::Mat frame;
-  for (int i = 0; i < 10; i++)
+  for (int i = 0; i < linuxcampam::CAMERA_WARMUP_FRAMES; i++)
     temp_cap.read(frame);
 
   // Collect frames
@@ -157,7 +159,7 @@ cv::Mat Camera::captureHDR() {
   if (!supports_manual_exposure_) {
     std::cerr << "[Camera] HDR not supported, falling back to averaging"
               << std::endl;
-    return captureAveraged(5);
+    return captureAveraged(linuxcampam::CAMERA_AVERAGE_FRAMES);
   }
 
   cv::VideoCapture temp_cap;
@@ -168,7 +170,7 @@ cv::Mat Camera::captureHDR() {
 
   // Warmup
   cv::Mat frame;
-  for (int i = 0; i < 10; i++)
+  for (int i = 0; i < linuxcampam::CAMERA_WARMUP_FRAMES; i++)
     temp_cap.read(frame);
 
   // Save original auto-exposure mode
@@ -182,11 +184,14 @@ cv::Mat Camera::captureHDR() {
   // Capture at different exposures
   std::vector<cv::Mat> exposures;
 
-  int exp_values[] = {50, 150, 400}; // Exposure values
+  std::array<int, 3> exp_values = {linuxcampam::HDR_EXPOSURE_1,
+                                   linuxcampam::HDR_EXPOSURE_2,
+                                   linuxcampam::HDR_EXPOSURE_3};
 
-  for (int i = 0; i < 3; i++) {
-    temp_cap.set(cv::CAP_PROP_EXPOSURE, exp_values[i]);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  for (int exp : exp_values) {
+    temp_cap.set(cv::CAP_PROP_EXPOSURE, exp);
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds(linuxcampam::HDR_SETTLE_MS));
     for (int j = 0; j < 3; j++)
       temp_cap.read(frame); // Let it settle
     if (!frame.empty())
@@ -208,7 +213,7 @@ cv::Mat Camera::captureHDR() {
 
   // Convert to 8-bit
   cv::Mat result;
-  hdr.convertTo(result, CV_8U, 255);
+  hdr.convertTo(result, CV_8U, linuxcampam::HDR_BIT_DEPTH);
   std::cerr << "[Camera] HDR merged " << exposures.size() << " exposures"
             << std::endl;
   return result;
