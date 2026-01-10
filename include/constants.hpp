@@ -28,6 +28,7 @@ constexpr int HDR_EXPOSURE_2 = 150;
 constexpr int HDR_EXPOSURE_3 = 400;
 constexpr int HDR_SETTLE_MS = 100;
 constexpr int HDR_BIT_DEPTH = 255;
+constexpr int CAMERA_RGB_WEIGHT = 40;
 constexpr int CAPTURE_RETRY_ATTEMPTS = 3;
 
 constexpr float MIRROR_THRESHOLD_DEFAULT = 0.3f; // detection confidence

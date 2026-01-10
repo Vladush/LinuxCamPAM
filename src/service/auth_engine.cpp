@@ -302,7 +302,8 @@ bool AuthEngine::init(const std::string &config_path) {
         if (!ir_path.empty() && !rgb_path.empty()) {
           LOG_INFO("Detected Dual Setup (IR+RGB).");
           config.camera_defs.push_back({"ir", ir_path, "ir", 0, true});
-          config.camera_defs.push_back({"rgb", rgb_path, "rgb", 40, false});
+          config.camera_defs.push_back(
+              {"rgb", rgb_path, "rgb", linuxcampam::CAMERA_RGB_WEIGHT, false});
         } else if (!rgb_path.empty()) {
           LOG_INFO("Detected Single RGB Setup.");
           config.camera_defs.push_back({"rgb", rgb_path, "rgb", 0, true});
@@ -398,8 +399,10 @@ bool AuthEngine::loadModels() {
     LOG_INFO("Loading Recognizer: " + recognition_model_path);
 
     detector = cv::FaceDetectorYN::create(
-        detection_model_path, "", cv::Size(320, 320),
-        config.detection_threshold, 0.3f, 5000, backend_id, target_id);
+        detection_model_path, "",
+        cv::Size(linuxcampam::MIRROR_SIZE, linuxcampam::MIRROR_SIZE),
+        config.detection_threshold, linuxcampam::MIRROR_THRESHOLD_DEFAULT,
+        linuxcampam::MIRROR_NMS, backend_id, target_id);
 
     recognizer = cv::FaceRecognizerSF::create(recognition_model_path, "",
                                               backend_id, target_id);
@@ -468,7 +471,8 @@ void AuthEngine::fallbackToCPU() {
   Logger::log(LogLevel::WARN, "Attempting fallback to CPU backend...");
   try {
     detector = cv::FaceDetectorYN::create(
-        detection_model_path, "", cv::Size(320, 320),
+        detection_model_path, "",
+        cv::Size(linuxcampam::MIRROR_SIZE, linuxcampam::MIRROR_SIZE),
         config.detection_threshold, linuxcampam::MIRROR_THRESHOLD_DEFAULT,
         linuxcampam::MIRROR_NMS, cv::dnn::DNN_BACKEND_OPENCV,
         cv::dnn::DNN_TARGET_CPU);
