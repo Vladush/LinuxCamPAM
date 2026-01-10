@@ -15,19 +15,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.9.5] - 2026-01-06
 
-### Fixed
+### Fixed in 0.9.5
 
 - GPU sync option to prevent OpenCL hangs on some AMD GPUs
 - Missing i386/riscv64 debs in releases (CI extraction fix)
 - Auto-clear OpenCL kernel cache on startup to prevent issues after upgrades
 
-### Changed
+### Changed in 0.9.5
 
 - Added `.dockerignore` for cleaner cross-arch builds
 
 ## [0.9.3] - 2026-01-03
 
-### Fixed
+### Fixed in 0.9.3
 
 - Fixed Debian package build failure by downloading ONNX models before packaging.
 - Added `workflow_dispatch` trigger to Release workflow.
