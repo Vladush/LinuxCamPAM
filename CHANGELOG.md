@@ -13,6 +13,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Faster First Login**: AI models are now pre-loaded when the service starts, rather than waiting for the first user to walk by.
 - **Hardened Validation**: Switched input validation from regex to a strict character-allowlist loop. This isn't visible to users, but it removes a potential ReDoS attack vector and makes path traversal protection bulletproof.
 
+## [0.9.6] - 2026-01-07
+
+### Added in 0.9.6
+
+- **Dynamic Debug Logging**: Toggle debug logs at runtime with `linuxcampam debug on/off`.
+- **Version Command**: Check version with `linuxcampam version` or `linuxcampamd --version`.
+
+### Fixed in 0.9.6
+
+- Missing systemd service file in Debian package (`lib/systemd/system/linuxcampamd.service`).
+- Missing PAM config file in Debian package (`usr/share/pam-configs/linuxcampam`).
+- Removed unnecessary `-dev` dependencies (OpenCV, etc.) from runtime package.
+
 ## [0.9.5] - 2026-01-06
 
 ### Fixed in 0.9.5

@@ -16,7 +16,6 @@
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
-// Global shutdown flag
 std::atomic<bool> g_running(true);
 
 void signal_handler(int signum) {
@@ -27,7 +26,6 @@ void signal_handler(int signum) {
 
 struct Config {
   std::string socket_path = linuxcampam::SOCKET_PATH;
-  // Other config items loaded by AuthEngine directly or passed here
 };
 
 void handle_client(int client_fd, AuthEngine &engine) {
@@ -42,10 +40,8 @@ void handle_client(int client_fd, AuthEngine &engine) {
   LOG_DEBUG("Received Request: " + request);
 
   // Protocol: COMMAND argument
-  // e.g. "AUTH_REQUEST vlad"
-  //      "ADD_USER vlad"
-  //      "TRAIN_USER vlad"
-  //      "TEST_AUTH"
+  // e.g. AUTH_REQUEST vlad | ADD_USER vlad | TRAIN_USER vlad default |
+  // TEST_AUTH
 
   std::string response = "ERROR Unknown Command";
 

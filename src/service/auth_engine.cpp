@@ -8,22 +8,20 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fcntl.h>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <linux/videodev2.h>
 #include <opencv2/core/ocl.hpp>
 #include <sstream>
 #include <string_view>
-#include <thread>
-#include <unordered_map>
-
-// V4L2 for camera format detection
-#include <fcntl.h>
-#include <linux/videodev2.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <thread>
 #include <unistd.h>
+#include <unordered_map>
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
@@ -86,9 +84,7 @@ parse_ini(const std::string &path) {
   return result;
 }
 
-// Check if a video device is a valid capture device and classify its type
-// Returns: "ir" for IR cameras (GREY/Y8/Y10 formats), "rgb" for color cameras,
-// "" if not a capture device
+// Classify camera type (ir, rgb, or generic) based on V4L2 pixel formats
 std::string classifyCameraType(const std::string &device_path) {
   int fd = open(device_path.c_str(), O_RDONLY);
   if (fd < 0)
@@ -145,7 +141,6 @@ std::string classifyCameraType(const std::string &device_path) {
   return "generic"; // Unknown format, treat as generic
 }
 
-// Enumerate all video devices and return classified cameras
 std::vector<std::pair<std::string, std::string>> enumerateCameras() {
   std::vector<std::pair<std::string, std::string>> cameras;
 
@@ -181,7 +176,6 @@ bool AuthEngine::init(const std::string &config_path) {
 
   std::string log_level_str = get("General.log_level", "");
   if (!log_level_str.empty()) {
-    // Basic case-insensitive check or just lowercase assumption
     if (log_level_str == "debug") {
       Logger::setLevel(LogLevel::DEBUG);
       LOG_INFO("Log level set to DEBUG via config.ini");

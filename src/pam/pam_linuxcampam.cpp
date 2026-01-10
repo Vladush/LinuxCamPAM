@@ -39,7 +39,6 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc,
       return retval;
     }
 
-    // Connect to Service
     int sock = socket(AF_UNIX, SOCK_STREAM, 0);
     if (sock < 0) {
       // Service unavailable or socket error -> Ignore and fallback to password
@@ -51,8 +50,7 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc,
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, linuxcampam::SOCKET_PATH, sizeof(addr.sun_path) - 1);
 
-    // Set Timeout for connection
-    // This is set to 5s to exceed the detection timeout (default 3s)
+    // Set 5s timeout (exceeds detection timeout of 3s)
     // to avoid aborting while the camera is still looking.
     struct timeval tv;
     tv.tv_sec = 5;
@@ -69,14 +67,12 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc,
       return PAM_AUTHINFO_UNAVAIL;
     }
 
-    // Send Request
     std::string req = "AUTH_REQUEST " + std::string(user);
     if (send(sock, req.c_str(), req.length(), 0) < 0) {
       close(sock);
       return PAM_AUTHINFO_UNAVAIL;
     }
 
-    // Read resp
     char buffer[128] = {0};
     int valread = read(sock, buffer, 127);
     close(sock);
