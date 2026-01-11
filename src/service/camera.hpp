@@ -1,5 +1,7 @@
 #pragma once
 
+#include "constants.hpp"
+
 #include <opencv2/opencv.hpp>
 #include <string>
 
@@ -9,13 +11,19 @@ public:
                   const std::string &ir_cmd_path = "");
   ~Camera();
 
+  // Delete copy/move to enforce unique ownership (Rule of 5)
+  Camera(const Camera &) = delete;
+  Camera &operator=(const Camera &) = delete;
+  Camera(Camera &&) = delete;
+  Camera &operator=(Camera &&) = delete;
+
   void triggerIrEmitter();
 
   // Standard capture (for verification - fast)
   cv::Mat capture();
 
   // Enhanced capture methods (for enrollment - quality)
-  cv::Mat captureAveraged(int num_frames = 5);
+  cv::Mat captureAveraged(int num_frames = linuxcampam::CAMERA_AVERAGE_FRAMES);
   cv::Mat captureHDR(); // Multi-exposure, requires manual exposure support
 
   // Capability detection

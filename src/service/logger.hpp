@@ -12,18 +12,18 @@ enum class LogLevel { DEBUG, INFO, WARN, ERROR };
 class Logger {
 public:
   static void setLevel(LogLevel level) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     current_level_ = level;
   }
 
   static LogLevel getLevel() {
     // atomic read would be better, but mutex is fine for now
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     return current_level_;
   }
 
   static void setLogFile(const std::string &path) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (log_file_.is_open()) {
       log_file_.close();
     }
@@ -34,7 +34,7 @@ public:
   }
 
   static void log(LogLevel level, const std::string &msg) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (level < current_level_) {
       return;
     }
