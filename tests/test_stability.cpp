@@ -31,17 +31,20 @@ TEST(StabilityTest, ConfigResilience) {
 
 TEST(StabilityTest, CameraOpenFailure) {
   // Directly test Camera class resilience against invalid paths
-  Camera cam;
-  // Should handle failure gracefully (OpenCV returns false for missing device)
-  // This verifies the production code's error handling, not a mock.
-  EXPECT_FALSE(cam.open("/dev/video_fail_999"));
+  // Constructor requires device path
+  Camera cam("/dev/video_fail_999");
+
+  // capture() handles opening the device. If it fails, it returns empty Mat.
+  // This verifies the production code's error handling.
+  cv::Mat frame = cam.capture();
+  EXPECT_TRUE(frame.empty());
 }
 
 TEST(StabilityTest, IrEmitterInvalidPath) {
   // Test 3: IR Emitter Robustness
-  // Point to a non-existent executable
-  Camera cam;
-  cam.ir_emitter_path_ = "/tmp/non_existent_executable";
+  // Point to a non-existent executable.
+  // We use /dev/null as camera path since we only care about emitter trigger.
+  Camera cam("/dev/null", true, "/tmp/non_existent_executable");
 
   // Capturing stderr to avoid cluttering test output
   testing::internal::CaptureStderr();
@@ -60,13 +63,12 @@ TEST(StabilityTest, IrEmitterNonExecutable) {
   out.close();
   // chmod not applied, so not executable
 
-  Camera cam;
-  cam.ir_emitter_path_ = dummy_path;
+  Camera cam("/dev/null", true, dummy_path);
 
   testing::internal::CaptureStderr();
   EXPECT_NO_THROW(cam.triggerIrEmitter());
   std::string output = testing::internal::GetCapturedStderr();
 
-  // posix_spawn might fail with EACCES (13)
+  // posix_spawn might fail with EACCES (13) or similar
   EXPECT_NE(output.find("posix_spawn failed"), std::string::npos);
 }
