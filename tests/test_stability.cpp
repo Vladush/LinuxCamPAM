@@ -32,7 +32,10 @@ TEST(StabilityTest, ConfigResilience) {
 TEST(StabilityTest, CameraOpenFailure) {
   // Directly test Camera class resilience against invalid paths
   // Constructor requires device path
-  Camera cam("/dev/video_fail_999");
+  // Use a high index that parses correctly but is unlikely to exist.
+  // Using "_fail" would parse to 0 (default) in current Camera implementation,
+  // opening video0!
+  Camera cam("/dev/video999");
 
   // capture() handles opening the device. If it fails, it returns empty Mat.
   // This verifies the production code's error handling.
