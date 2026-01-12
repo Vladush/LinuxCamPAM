@@ -4,18 +4,6 @@
 #include <fstream>
 #include <gtest/gtest.h>
 
-// Mock Camera subclass to test open() failures safely without real hardware
-class MockCamera : public Camera {
-public:
-  using Camera::Camera;
-  bool open(const std::string &path) {
-    if (path == "/dev/video_fail") {
-      return false; // Simulate failure
-    }
-    return true; // Simulate success
-  }
-};
-
 // ============================================================================
 // STABILITY TESTS
 // ============================================================================
@@ -33,18 +21,20 @@ TEST(StabilityTest, ConfigResilience) {
 
   // 2. Load it
   AuthEngine engine;
-  bool init_result = engine.init(config_path);
 
   // 3. Verify it didn't crash and set reasonable defaults
-  // Init might return false due to missing hardware checks in init(),
-  // but we are testing that it DOES NOT CRASH during parsing.
-  EXPECT_NO_THROW({ engine.init(config_path); });
+  // We use EXPECT_NO_THROW to ensure robustness.
+  // We explicitly ignore the return value as we are testing for crashes, not
+  // success.
+  EXPECT_NO_THROW({ [[maybe_unused]] bool result = engine.init(config_path); });
 }
 
 TEST(StabilityTest, CameraOpenFailure) {
-  MockCamera cam;
-  // Should handle failure gracefully
-  EXPECT_FALSE(cam.open("/dev/video_fail"));
+  // Directly test Camera class resilience against invalid paths
+  Camera cam;
+  // Should handle failure gracefully (OpenCV returns false for missing device)
+  // This verifies the production code's error handling, not a mock.
+  EXPECT_FALSE(cam.open("/dev/video_fail_999"));
 }
 
 TEST(StabilityTest, IrEmitterInvalidPath) {
