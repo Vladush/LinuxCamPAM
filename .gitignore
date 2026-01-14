@@ -41,10 +41,13 @@ compile_commands.json
 
 # Debian packaging
 debian/linuxcampam/
+debian/.debhelper/
+debian/*.debhelper
 debian/*.log
 debian/*.substvars
 debian/files
 debian/debhelper-build-stamp
+obj-*/
 *.deb
 *.ddeb
 *.changes

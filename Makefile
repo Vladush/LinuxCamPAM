@@ -54,6 +54,32 @@ deb:
 	@echo "Package generated in parent directory:"
 	@ls -lh ../linuxcampam_*.deb
 
+
+# Docker Build Targets
+docker-amd64:
+	@echo "Building Docker (amd64)..."
+	@docker build --platform linux/amd64 -t linuxcampam:amd64 .
+	@echo "Verifying..."
+	@docker run --rm --platform linux/amd64 --entrypoint /usr/bin/linuxcampam linuxcampam:amd64 help
+
+docker-arm64:
+	@echo "Building Docker (arm64)..."
+	@docker build --platform linux/arm64 -t linuxcampam:aarch64 -f docker/Dockerfile.aarch64 .
+	@echo "Verifying..."
+	@docker run --rm --platform linux/arm64 --entrypoint /usr/bin/linuxcampam linuxcampam:aarch64 help
+
+docker-riscv64:
+	@echo "Building Docker (riscv64) - This may take a long time..."
+	@docker build --platform linux/riscv64 -t linuxcampam:riscv64 -f docker/Dockerfile.riscv64 .
+	@echo "Verifying..."
+	@docker run --rm --platform linux/riscv64 --entrypoint /usr/bin/linuxcampam linuxcampam:riscv64 help
+
+docker-i386:
+	@echo "Building Docker (i386)..."
+	@docker build --platform linux/386 -t linuxcampam:i386 -f docker/Dockerfile.i386 .
+	@echo "Verifying..."
+	@docker run --rm --platform linux/386 --entrypoint /usr/bin/linuxcampam linuxcampam:i386 help
+
 test:
 	@echo "Running authentication test..."
 	@linuxcampam test
