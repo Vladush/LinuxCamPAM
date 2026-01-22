@@ -10,7 +10,9 @@ RUN apt-get update && apt-get install -y \
     libopencv-dev \
     libpam0g-dev \
     libjsoncpp-dev \
+    libjsoncpp-dev \
     nlohmann-json3-dev \
+    libgtest-dev \
     v4l-utils \
     git \
     wget \
@@ -26,8 +28,17 @@ WORKDIR /app
 # Copy Source Code
 COPY . /app
 
-# Download models (ensures they're included even if buildx context differs)
+# Download models
 RUN ./scripts/download_models.sh
+
+# Explicit Regression Testing
+ENV TEST_IN_DOCKER=1
+# Build and run tests before packaging to ensure quality
+RUN mkdir build_testing && cd build_testing && \
+    cmake .. && \
+    make -j$(nproc) linuxcampam_tests && \
+    ./linuxcampam_tests && \
+    cd .. && rm -rf build_testing
 
 # Ensure Clean Build
 RUN rm -rf build && mkdir build
