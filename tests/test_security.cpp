@@ -293,7 +293,15 @@ TEST(SecurityTest, SimilarityOverflowBehavior) {
   float sim = cosine_similarity(large_vals, large_vals);
 
   // Document current behavior: overflow produces NaN
-  EXPECT_TRUE(std::isnan(sim));
+  // On x86 (i386) with extended precision (80-bit), 1e30*1e30 might NOT
+  // overflow the intermediate registers, resulting in a valid 1.0f calculation.
+  // We accept either NaN (standard overflow) or 1.0 (precision handling).
+  if (std::isnan(sim)) {
+    SUCCEED();
+  } else {
+    // If it didn't overflow to NaN, it must be correct (self-similarity = 1.0)
+    EXPECT_NEAR(sim, 1.0f, 0.001f);
+  }
 
   // Normal-range values should work correctly
   std::vector<float> normal_vals(128, 0.5f);
