@@ -90,7 +90,7 @@ find_package(GTest)
 if(GTest_FOUND)
     add_executable(linuxcampam_tests
         tests/main.cpp
-        tests/test_config.cpp
+        tests/test_auth_config.cpp
         tests/test_model_version.cpp
         tests/test_embeddings.cpp
         tests/test_security.cpp

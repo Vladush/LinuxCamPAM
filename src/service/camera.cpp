@@ -1,11 +1,12 @@
 #include "camera.hpp"
 
 #include "constants.hpp"
+#include "logger.hpp"
+#include "utils.hpp"
 
 #include <array>
 #include <cstdlib>
 #include <fcntl.h>
-#include <iostream>
 #include <linux/videodev2.h>
 #include <numeric>
 #include <opencv2/core/utils/logger.hpp>
@@ -21,16 +22,27 @@
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 extern char **environ;
 
+namespace {
+using linuxcampam::FileDescriptor;
+}
+
 void Camera::triggerIrEmitter() {
-  std::cerr << "[Camera] Triggering IR emitter" << std::endl;
+  log_info("[Camera] Triggering IR emitter");
 
   pid_t pid = 0;
   std::string cmd = "run";
   std::vector<char *> args;
 
-  // Prepare argv for posix_spawn (requires char*)
-  args.push_back(const_cast<char *>(ir_emitter_path_.data()));
-  args.push_back(const_cast<char *>(cmd.data()));
+  // Prepare argv for posix_spawn (requires mutable char* array)
+  // We copy strings into mutable buffers, then create pointers to them.
+  std::vector<char> path_buf(ir_emitter_path_.begin(), ir_emitter_path_.end());
+  path_buf.push_back('\0');
+
+  std::vector<char> cmd_buf(cmd.begin(), cmd.end());
+  cmd_buf.push_back('\0');
+
+  args.push_back(path_buf.data());
+  args.push_back(cmd_buf.data());
   args.push_back(nullptr);
 
   int status = posix_spawn(&pid, ir_emitter_path_.c_str(), nullptr, nullptr,
@@ -40,29 +52,29 @@ void Camera::triggerIrEmitter() {
     // Block until process completes
     if (waitpid(pid, &status, 0) != -1) {
       if (WIFEXITED(status)) {
-        std::cerr << "[Camera] IR emitter exited with code: "
-                  << WEXITSTATUS(status) << std::endl;
+        log_info("[Camera] IR emitter exited with code: " +
+                 std::to_string(WEXITSTATUS(status)));
       } else {
-        std::cerr << "[Camera] IR emitter terminated abnormally." << std::endl;
+        log_error("[Camera] IR emitter terminated abnormally.");
       }
     } else {
-      std::cerr << "[Camera] Failed to wait for IR emitter." << std::endl;
+      log_error("[Camera] Failed to wait for IR emitter.");
     }
   } else {
-    std::cerr << "[Camera] posix_spawn failed: " << status << std::endl;
+    log_error("[Camera] posix_spawn failed: " + std::to_string(status));
   }
 }
 
 bool Camera::detectExposureSupport() {
-  int fd = open(device_path.c_str(), O_RDWR);
-  if (fd < 0)
+  FileDescriptor fd_wrapper(open(device_path.c_str(), O_RDWR));
+  if (!fd_wrapper.isValid())
     return false;
 
   struct v4l2_queryctrl queryctrl = {};
   queryctrl.id = V4L2_CID_EXPOSURE_ABSOLUTE;
-  bool supported = (ioctl(fd, VIDIOC_QUERYCTRL, &queryctrl) == 0) &&
-                   !(queryctrl.flags & V4L2_CTRL_FLAG_DISABLED);
-  close(fd);
+  bool supported =
+      (ioctl(fd_wrapper.get(), VIDIOC_QUERYCTRL, &queryctrl) == 0) &&
+      !(queryctrl.flags & V4L2_CTRL_FLAG_DISABLED);
   return supported;
 }
 
@@ -88,8 +100,7 @@ Camera::Camera(const std::string &device_path, bool is_ir,
   // Detect exposure control support
   supports_manual_exposure_ = detectExposureSupport();
   if (supports_manual_exposure_) {
-    std::cerr << "[Camera] " << device_path << " supports manual exposure"
-              << std::endl;
+    log_info("[Camera] " + device_path + " supports manual exposure");
   }
 }
 
@@ -105,8 +116,8 @@ bool Camera::openAndWarmup(cv::VideoCapture &temp_cap) {
   for (int attempt = 0; attempt < 3; ++attempt) {
     if (temp_cap.open(device_id, cv::CAP_V4L2))
       break;
-    std::cerr << "[Camera] Device busy. Retrying (" << attempt + 1 << "/3)..."
-              << std::endl;
+    log_warn("[Camera] Device busy. Retrying (" + std::to_string(attempt + 1) +
+             "/3)...");
     std::this_thread::sleep_for(
         std::chrono::seconds(linuxcampam::CAPTURE_RETRY_DELAY_S));
   }
@@ -127,7 +138,7 @@ bool Camera::openAndWarmup(cv::VideoCapture &temp_cap) {
 cv::Mat Camera::capture() {
   cv::VideoCapture temp_cap;
   if (!openAndWarmup(temp_cap)) {
-    std::cerr << "[Camera] Failed to open " << device_path << std::endl;
+    log_error("[Camera] Failed to open " + device_path);
     return cv::Mat();
   }
 
@@ -146,7 +157,7 @@ cv::Mat Camera::capture() {
 cv::Mat Camera::captureAveraged(int num_frames) {
   cv::VideoCapture temp_cap;
   if (!openAndWarmup(temp_cap)) {
-    std::cerr << "[Camera] Failed to open for averaging" << std::endl;
+    log_error("[Camera] Failed to open for averaging");
     return cv::Mat();
   }
 
@@ -183,20 +194,19 @@ cv::Mat Camera::captureAveraged(int num_frames) {
 
   cv::Mat result;
   sum.convertTo(result, CV_8UC3);
-  std::cerr << "[Camera] Averaged " << frames.size() << " frames" << std::endl;
+  log_info("[Camera] Averaged " + std::to_string(frames.size()) + " frames");
   return result;
 }
 
 cv::Mat Camera::captureHDR() {
   if (!supports_manual_exposure_) {
-    std::cerr << "[Camera] HDR not supported, falling back to averaging"
-              << std::endl;
+    log_warn("[Camera] HDR not supported, falling back to averaging");
     return captureAveraged(linuxcampam::CAMERA_AVERAGE_FRAMES);
   }
 
   cv::VideoCapture temp_cap;
   if (!openAndWarmup(temp_cap)) {
-    std::cerr << "[Camera] Failed to open for HDR" << std::endl;
+    log_error("[Camera] Failed to open for HDR");
     return cv::Mat();
   }
 
@@ -234,7 +244,7 @@ cv::Mat Camera::captureHDR() {
   temp_cap.set(cv::CAP_PROP_AUTO_EXPOSURE, original_auto_exp);
 
   if (exposures.size() < 2) {
-    std::cerr << "[Camera] HDR failed, using last frame" << std::endl;
+    log_error("[Camera] HDR failed, using last frame");
     return frame.empty() ? cv::Mat() : frame.clone();
   }
 
@@ -246,7 +256,7 @@ cv::Mat Camera::captureHDR() {
   // Convert to 8-bit
   cv::Mat result;
   hdr.convertTo(result, CV_8U, linuxcampam::HDR_BIT_DEPTH);
-  std::cerr << "[Camera] HDR merged " << exposures.size() << " exposures"
-            << std::endl;
+  log_info("[Camera] HDR merged " + std::to_string(exposures.size()) +
+           " exposures");
   return result;
 }

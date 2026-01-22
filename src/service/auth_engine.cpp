@@ -5,6 +5,7 @@
 #include "constants.hpp"
 #include "json.hpp"
 #include "logger.hpp"
+#include "utils.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -89,20 +90,18 @@ parse_ini(const std::string &path) {
 
 // Classify camera type (ir, rgb, or generic) based on V4L2 pixel formats
 std::string classifyCameraType(const std::string &device_path) {
-  int fd = open(device_path.c_str(), O_RDONLY);
-  if (fd < 0)
+  linuxcampam::FileDescriptor fd(open(device_path.c_str(), O_RDONLY));
+  if (!fd.isValid())
     return "";
 
   // Check if it's a capture device
   struct v4l2_capability cap = {};
   if (ioctl(fd, VIDIOC_QUERYCAP, &cap) < 0) {
-    close(fd);
     return "";
   }
 
   // Must support video capture
   if (!(cap.device_caps & V4L2_CAP_VIDEO_CAPTURE)) {
-    close(fd);
     return "";
   }
 
@@ -130,8 +129,6 @@ std::string classifyCameraType(const std::string &device_path) {
     }
     fmt.index++;
   }
-
-  close(fd);
 
   // Prefer classification: if has grey but no color, it's IR
   if (has_grey_format && !has_color_format)
@@ -179,6 +176,30 @@ bool AuthEngine::init(const std::string &config_path) {
     return def;
   };
 
+  auto get_float = [&](const std::string &key, float def_val) {
+    try {
+      std::string val = get(key);
+      if (val.empty())
+        return def_val;
+      return std::stof(val);
+    } catch (...) {
+      log_warn("Invalid float for " + key + ", using default.");
+      return def_val;
+    }
+  };
+
+  auto get_int = [&](const std::string &key, int def_val) {
+    try {
+      std::string val = get(key);
+      if (val.empty())
+        return def_val;
+      return std::stoi(val);
+    } catch (...) {
+      log_warn("Invalid int for " + key + ", using default.");
+      return def_val;
+    }
+  };
+
   std::string log_level_str = get("General.log_level", "");
   if (!log_level_str.empty()) {
     if (log_level_str == "debug") {
@@ -193,10 +214,10 @@ bool AuthEngine::init(const std::string &config_path) {
     }
   }
 
-  config.threshold = std::stof(get("Auth.threshold", "0.4"));
+  config.threshold = get_float("Auth.threshold", DEFAULT_THRESHOLD);
   config.detection_threshold =
-      std::stof(get("Auth.detection_threshold", "0.6"));
-  config.timeout_ms = std::stoi(get("Auth.timeout_ms", "3000"));
+      get_float("Auth.detection_threshold", DEFAULT_DETECTION_THRESHOLD);
+  config.timeout_ms = get_int("Auth.timeout_ms", DEFAULT_TIMEOUT_MS);
 
   // Parse Policy
   std::string policy_str = get("Auth.policy", "adaptive");
@@ -207,7 +228,8 @@ bool AuthEngine::init(const std::string &config_path) {
   else
     config.policy = AuthPolicy::ADAPTIVE;
 
-  config.max_embeddings = std::stoi(get("Auth.max_embeddings", "5"));
+  config.max_embeddings =
+      get_int("Auth.max_embeddings", DEFAULT_MAX_EMBEDDINGS);
 
   // Capture settings
   config.enroll_hdr = get("Capture.enroll_hdr", "auto");
