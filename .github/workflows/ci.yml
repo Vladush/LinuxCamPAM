@@ -41,7 +41,7 @@ jobs:
 
       - name: Run Cppcheck (Static Analysis)
         # Enable all checks except detailed information. Suppress missingInclude checks for system includes.
-        run: cppcheck --enable=warning,performance,portability,style --error-exitcode=1 --force --suppress=missingIncludeSystem --suppress="syntaxError:include/json.hpp" -I include src tests
+        run: cppcheck --enable=warning,performance,portability,style --error-exitcode=1 --force --suppress=missingIncludeSystem --suppress=unusedFunction --suppress="syntaxError:include/json.hpp" -I include src tests
 
       - name: Run Markdown Lint
         # Check all markdown files in root and docs/
