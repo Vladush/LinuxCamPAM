@@ -24,12 +24,12 @@ public:
   void triggerIrEmitter() override;
 
   // Standard capture (for verification - fast)
-  cv::Mat capture() override;
+  [[nodiscard]] cv::Mat capture() override;
 
   // Enhanced capture methods (for enrollment - quality)
-  cv::Mat
+  [[nodiscard]] cv::Mat
   captureAveraged(int num_frames = linuxcampam::CAMERA_AVERAGE_FRAMES) override;
-  cv::Mat
+  [[nodiscard]] cv::Mat
   captureHDR() override; // Multi-exposure, requires manual exposure support
 
   // Capability detection

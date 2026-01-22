@@ -15,7 +15,33 @@
 namespace {
 constexpr size_t BUFFER_SIZE = 128;
 constexpr int TIMEOUT_SEC = 5;
-// Duplicate removed
+
+struct SocketDescriptor {
+  int fd = -1;
+  explicit SocketDescriptor(int f) : fd(f) {}
+  ~SocketDescriptor() {
+    if (fd >= 0) {
+      close(fd);
+    }
+  }
+  SocketDescriptor(const SocketDescriptor &) = delete;
+  SocketDescriptor &operator=(const SocketDescriptor &) = delete;
+  SocketDescriptor(SocketDescriptor &&other) noexcept : fd(other.fd) {
+    other.fd = -1;
+  }
+  SocketDescriptor &operator=(SocketDescriptor &&other) noexcept {
+    if (this != &other) {
+      if (fd >= 0) {
+        close(fd);
+      }
+      fd = other.fd;
+      other.fd = -1;
+    }
+    return *this;
+  }
+  [[nodiscard]] int get() const { return fd; }
+  [[nodiscard]] bool isValid() const { return fd >= 0; }
+};
 
 struct SyslogManager {
   SyslogManager() {
@@ -28,41 +54,36 @@ struct SyslogManager {
   SyslogManager &operator=(SyslogManager &&) = delete;
 };
 
-// Manage syslog lifecycle.
+// RAII handles openlog/closelog automatically
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static SyslogManager syslog_manager;
 } // namespace
 
 // NOLINTBEGIN(bugprone-easily-swappable-parameters)
-PAM_EXTERN int pam_sm_setcred(pam_handle_t *pamh, int flags, int argc,
-                              const char **argv) {
+PAM_EXTERN int pam_sm_setcred([[maybe_unused]] pam_handle_t *pamh,
+                              [[maybe_unused]] int flags,
+                              [[maybe_unused]] int argc,
+                              [[maybe_unused]] const char **argv) {
   // NOLINTEND(bugprone-easily-swappable-parameters)
-  (void)pamh;
-  (void)flags;
-  (void)argc;
-  (void)argv;
   return PAM_SUCCESS;
 }
 
 // NOLINTBEGIN(bugprone-easily-swappable-parameters)
-PAM_EXTERN int pam_sm_acct_mgmt(pam_handle_t *pamh, int flags, int argc,
-                                const char **argv) {
+PAM_EXTERN int pam_sm_acct_mgmt([[maybe_unused]] pam_handle_t *pamh,
+                                [[maybe_unused]] int flags,
+                                [[maybe_unused]] int argc,
+                                [[maybe_unused]] const char **argv) {
   // NOLINTEND(bugprone-easily-swappable-parameters)
-  (void)pamh;
-  (void)flags;
-  (void)argc;
-  (void)argv;
   return PAM_SUCCESS;
 }
 
 // NOLINTBEGIN(bugprone-easily-swappable-parameters)
-PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc,
-                                   const char **argv)
+PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
+                                   [[maybe_unused]] int flags,
+                                   [[maybe_unused]] int argc,
+                                   [[maybe_unused]] const char **argv)
 // NOLINTEND(bugprone-easily-swappable-parameters)
 {
-  (void)flags;
-  (void)argc;
-  (void)argv;
   try {
     const char *user = nullptr;
     int retval = pam_get_user(pamh, &user, NULL);
@@ -70,10 +91,8 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc,
       return retval;
     }
 
-    int sock = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (sock < 0) {
-      // Service unavailable or socket error -> Ignore and fallback to
-      // password
+    SocketDescriptor sock(socket(AF_UNIX, SOCK_STREAM, 0));
+    if (!sock.isValid()) {
       syslog(LOG_ERR, "Failed to create socket: %m");
       return PAM_AUTHINFO_UNAVAIL;
     }
@@ -90,33 +109,29 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc,
     tv.tv_sec = TIMEOUT_SEC;
     tv.tv_usec = 0;
     // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO,
+    setsockopt(sock.get(), SOL_SOCKET, SO_RCVTIMEO,
                reinterpret_cast<const char *>(&tv), sizeof tv);
-    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO,
+    setsockopt(sock.get(), SOL_SOCKET, SO_SNDTIMEO,
                reinterpret_cast<const char *>(&tv), sizeof tv);
     // NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
 
     // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
-    if (connect(sock, reinterpret_cast<struct sockaddr *>(&addr),
+    if (connect(sock.get(), reinterpret_cast<struct sockaddr *>(&addr),
                 sizeof(addr)) == -1) {
       // NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
-      close(sock);
-      // Service not running or unreachable -> Ignore
       syslog(LOG_INFO, "Could not connect to linuxcampamd socket - service may "
                        "not be running");
       return PAM_AUTHINFO_UNAVAIL;
     }
 
     std::string req = "AUTH_REQUEST " + std::string(user);
-    if (send(sock, req.c_str(), req.length(), 0) < 0) {
+    if (send(sock.get(), req.c_str(), req.length(), 0) < 0) {
       syslog(LOG_ERR, "Failed to send auth request: %m");
-      close(sock);
       return PAM_AUTHINFO_UNAVAIL;
     }
 
     std::array<char, BUFFER_SIZE> buffer = {};
-    ssize_t valread = read(sock, buffer.data(), buffer.size() - 1);
-    close(sock);
+    ssize_t valread = read(sock.get(), buffer.data(), buffer.size() - 1);
 
     if (valread > 0) {
       std::string resp(buffer.data());

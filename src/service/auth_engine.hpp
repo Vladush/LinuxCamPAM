@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <functional>
 #include <mutex>
 #include <opencv2/dnn.hpp>
 #include <opencv2/opencv.hpp>
@@ -89,13 +90,25 @@ private:
   // Internal helper to capture from a specific camera instance
   cv::Mat captureFrame(ICamera *cam);
 
+  // Helper to initialize active cameras from config
+  void initializeActiveCameras();
+
+  using PerCameraCallback =
+      std::function<void(const std::string &cam_id, const cv::Mat &frame,
+                         bool success, float score, const std::string &msg)>;
+
+  // Core verification logic (PAM + CLI)
+  [[nodiscard]] AuthResult
+  verifyUserCore(const std::string &username,
+                 const PerCameraCallback &callback = nullptr);
+
   // Helper to match a face in a frame against a stored embedding
   // Returns score (0.0 - 1.0)
-  float matchFace(const cv::Mat &frame, const cv::Mat &stored_emb,
-                  cv::Mat &out_face);
+  [[nodiscard]] float matchFace(const cv::Mat &frame, const cv::Mat &stored_emb,
+                                cv::Mat &out_face);
 
   // Helper to calculate brightness
-  double calculateBrightness(const cv::Mat &frame);
+  [[nodiscard]] double calculateBrightness(const cv::Mat &frame);
   void fallbackToCPU();
 
   // Security
@@ -115,6 +128,6 @@ private:
   };
   std::unordered_map<std::string, LockoutState> lockout_map_;
   mutable std::mutex lockout_mutex_;
-  bool isUserLockedOut(const std::string &username);
+  [[nodiscard]] bool isUserLockedOut(const std::string &username);
   void recordAuthAttempt(const std::string &username, bool success);
 };

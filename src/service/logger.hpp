@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <fstream>
 #include <iomanip>
@@ -13,14 +14,11 @@ enum class LogLevel { DEBUG, INFO, WARN, ERROR };
 class Logger {
 public:
   static void setLevel(LogLevel level) {
-    std::scoped_lock lock(mutex_);
-    current_level_ = level;
+    current_level_.store(level, std::memory_order_relaxed);
   }
 
   static LogLevel getLevel() {
-    // atomic read would be better, but mutex is fine for now
-    std::scoped_lock lock(mutex_);
-    return current_level_;
+    return current_level_.load(std::memory_order_relaxed);
   }
 
   static void setLogFile(const std::string &path) {
@@ -105,14 +103,14 @@ public:
 
 private:
   static inline std::mutex mutex_;
-  static inline LogLevel current_level_ = LogLevel::INFO;
+  static inline std::atomic<LogLevel> current_level_{LogLevel::INFO};
   static inline std::ofstream log_file_;
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
   static inline bool syslog_enabled_ = false;
 };
 
-// Helper functions to replace macros
-// These check the level first to avoid unnecessary logging overhead
+// Template helpers (replacing macros) to skip processing if log level is too
+// low. Checks level first to avoid overhead.
 template <typename T>
 inline void log_debug(const T &msg) {
   if (Logger::getLevel() <= LogLevel::DEBUG) {

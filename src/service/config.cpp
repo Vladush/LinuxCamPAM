@@ -3,6 +3,7 @@
 #include "logger.hpp"
 #include "utils.hpp"
 
+#include <charconv>
 #include <fcntl.h>
 #include <fstream>
 #include <iostream>
@@ -50,6 +51,31 @@ parse_ini_file(const fs::path &path) {
   return result;
 }
 
+// Safe int parsing without exceptions
+inline bool parse_int(const std::string &str, int &out) {
+  if (str.empty())
+    return false;
+  auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), out);
+  return ec == std::errc{};
+}
+
+// Safe float parsing (from_chars float support varies by compiler)
+inline bool parse_float(const std::string &str, float &out) {
+  if (str.empty())
+    return false;
+#if defined(__cpp_lib_to_chars) && __cpp_lib_to_chars >= 201611L
+  auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), out);
+  return ec == std::errc{};
+#else
+  try {
+    out = std::stof(str);
+    return true;
+  } catch (...) {
+    return false;
+  }
+#endif
+}
+
 } // namespace
 
 bool Configuration::load(const fs::path &config_path) {
@@ -63,24 +89,15 @@ void Configuration::parse_ini_into_self(const fs::path &path) {
     return ini.count(key) ? ini.at(key) : def;
   };
 
-  // Parsing logic derived from AuthEngine::init
+  // Logic ported from AuthEngine::init
   // General
-  try {
-    threshold =
-        std::stof(get("General.threshold", std::to_string(DEFAULT_THRESHOLD)));
-  } catch (...) {
-  }
-  try {
-    detection_threshold =
-        std::stof(get("General.detection_threshold",
-                      std::to_string(DEFAULT_DETECTION_THRESHOLD)));
-  } catch (...) {
-  }
-  try {
-    timeout_ms = std::stoi(
-        get("General.timeout_ms", std::to_string(DEFAULT_TIMEOUT_MS)));
-  } catch (...) {
-  }
+  parse_float(get("General.threshold", std::to_string(DEFAULT_THRESHOLD)),
+              threshold);
+  parse_float(get("General.detection_threshold",
+                  std::to_string(DEFAULT_DETECTION_THRESHOLD)),
+              detection_threshold);
+  parse_int(get("General.timeout_ms", std::to_string(DEFAULT_TIMEOUT_MS)),
+            timeout_ms);
 
   // Auth Policy
   std::string method =
@@ -105,11 +122,9 @@ void Configuration::parse_ini_into_self(const fs::path &path) {
     ir_emitter_path = get("Paths.ir_emitter_path");
 
   // Limits
-  try {
-    max_embeddings = std::stoi(
-        get("General.max_embeddings", std::to_string(DEFAULT_MAX_EMBEDDINGS)));
-  } catch (...) {
-  }
+  parse_int(
+      get("General.max_embeddings", std::to_string(DEFAULT_MAX_EMBEDDINGS)),
+      max_embeddings);
 
   // Cameras
   std::string cam_names = get("Cameras.names", "");
@@ -165,12 +180,11 @@ void Configuration::parse_ini_into_self(const fs::path &path) {
       auto detected = linuxcampam::enumerateCameras();
       if (!detected.empty()) {
         std::string ir_p, rgb_p;
-        for (auto &d : detected) {
-          if (d.second == "ir" && ir_p.empty())
-            ir_p = d.first;
-          else if ((d.second == "rgb" || d.second == "generic") &&
-                   rgb_p.empty())
-            rgb_p = d.first;
+        for (auto &[path, type] : detected) {
+          if (type == "ir" && ir_p.empty())
+            ir_p = path;
+          else if ((type == "rgb" || type == "generic") && rgb_p.empty())
+            rgb_p = path;
         }
         if (!ir_p.empty() && !rgb_p.empty()) {
           camera_defs.push_back({"ir", ir_p, "ir", 0, true});
@@ -207,25 +221,11 @@ void Configuration::parse_ini_into_self(const fs::path &path) {
   // Other settings
   save_success = (get("Storage.save_success_images") == "true");
   save_fail = (get("Storage.save_fail_images") == "true");
-  try {
-    model_keep_alive_sec =
-        std::stoi(get("Performance.model_keep_alive_sec", "0"));
-  } catch (...) {
-  }
-  try {
-    lockout_attempts = std::stoi(get("Security.lockout_attempts", "5"));
-  } catch (...) {
-  }
-  try {
-    lockout_duration_sec =
-        std::stoi(get("Security.lockout_duration_sec", "300"));
-  } catch (...) {
-  }
+  parse_int(get("Performance.model_keep_alive_sec", "0"), model_keep_alive_sec);
+  parse_int(get("Security.lockout_attempts", "5"), lockout_attempts);
+  parse_int(get("Security.lockout_duration_sec", "300"), lockout_duration_sec);
   gpu_flush = (get("Performance.gpu_flush", "on") == "on");
-  try {
-    gpu_throttle_ms = std::stoi(get("Performance.gpu_throttle_ms", "20"));
-  } catch (...) {
-  }
+  parse_int(get("Performance.gpu_throttle_ms", "20"), gpu_throttle_ms);
 }
 
 std::string Configuration::toString() const {
