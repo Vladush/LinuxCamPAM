@@ -1,16 +1,19 @@
 #pragma once
 
-#include "camera_interface.hpp"
 #include "constants.hpp"
+#include "icamera.hpp"
 
+#include <filesystem>
 #include <opencv2/opencv.hpp>
 #include <string>
+
+namespace fs = std::filesystem;
 
 class Camera : public ICamera {
 public:
   explicit Camera(const std::string &device_path, bool is_ir = false,
-                  const std::string &ir_cmd_path = "");
-  ~Camera();
+                  const fs::path &ir_cmd_path = "");
+  ~Camera() override;
 
   // Delete copy/move to enforce unique ownership (Rule of 5)
   Camera(const Camera &) = delete;
@@ -36,7 +39,7 @@ public:
 
 private:
   std::string device_path;
-  std::string ir_emitter_path_;
+  fs::path ir_emitter_path_;
   int device_id = 0;
   bool is_ir_camera = false;
   bool supports_manual_exposure_ = false;

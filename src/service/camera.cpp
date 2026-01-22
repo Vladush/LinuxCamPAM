@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdlib>
 #include <fcntl.h>
+#include <filesystem>
 #include <linux/videodev2.h>
 #include <numeric>
 #include <opencv2/core/utils/logger.hpp>
@@ -17,6 +18,8 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
+
+namespace fs = std::filesystem;
 
 // Required for posix_spawn environment inheritance
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
@@ -35,7 +38,8 @@ void Camera::triggerIrEmitter() {
 
   // Prepare argv for posix_spawn (requires mutable char* array)
   // We copy strings into mutable buffers, then create pointers to them.
-  std::vector<char> path_buf(ir_emitter_path_.begin(), ir_emitter_path_.end());
+  std::string path_str = ir_emitter_path_.string();
+  std::vector<char> path_buf(path_str.begin(), path_str.end());
   path_buf.push_back('\0');
 
   std::vector<char> cmd_buf(cmd.begin(), cmd.end());
@@ -79,7 +83,7 @@ bool Camera::detectExposureSupport() {
 }
 
 Camera::Camera(const std::string &device_path, bool is_ir,
-               const std::string &ir_cmd_path)
+               const fs::path &ir_cmd_path)
     : device_path(device_path), is_ir_camera(is_ir) {
   if (ir_cmd_path.empty()) {
     ir_emitter_path_ = linuxcampam::IR_EMITTER_PATH;

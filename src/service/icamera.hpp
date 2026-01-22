@@ -8,6 +8,13 @@ class ICamera {
 public:
   virtual ~ICamera() = default;
 
+  // Rule of 5
+  ICamera() = default;
+  ICamera(const ICamera &) = delete;
+  ICamera &operator=(const ICamera &) = delete;
+  ICamera(ICamera &&) = delete;
+  ICamera &operator=(ICamera &&) = delete;
+
   virtual void triggerIrEmitter() = 0;
 
   // Standard capture (for verification - fast)

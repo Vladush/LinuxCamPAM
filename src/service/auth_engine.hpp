@@ -1,8 +1,7 @@
 #pragma once
 
-#include "camera.hpp"
-#include "camera_interface.hpp"
 #include "constants.hpp"
+#include "icamera.hpp"
 
 #include <chrono>
 #include <filesystem>
