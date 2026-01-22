@@ -180,11 +180,11 @@ void Configuration::parse_ini_into_self(const fs::path &path) {
       auto detected = linuxcampam::enumerateCameras();
       if (!detected.empty()) {
         std::string ir_p, rgb_p;
-        for (auto &[path, type] : detected) {
+        for (auto &[device_path, type] : detected) {
           if (type == "ir" && ir_p.empty())
-            ir_p = path;
+            ir_p = device_path;
           else if ((type == "rgb" || type == "generic") && rgb_p.empty())
-            rgb_p = path;
+            rgb_p = device_path;
         }
         if (!ir_p.empty() && !rgb_p.empty()) {
           camera_defs.push_back({"ir", ir_p, "ir", 0, true});

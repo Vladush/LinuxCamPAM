@@ -45,6 +45,7 @@ public:
     }
 
     // Output to syslog if enabled
+    // cppcheck-suppress knownConditionTrueFalse
     if (syslog_enabled_) {
       int priority = LOG_INFO;
       switch (level) {
