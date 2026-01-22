@@ -1,0 +1,76 @@
+#pragma once
+
+#include "constants.hpp"
+
+#include <filesystem>
+#include <string>
+#include <vector>
+
+namespace fs = std::filesystem;
+
+class Configuration {
+public:
+  // Defaults
+  // TODO: Move defaults to cpp or keep here? Keeping here for easy reference
+  // akin to previous struct
+  static constexpr float DEFAULT_THRESHOLD = 0.363f;
+  static constexpr float DEFAULT_DETECTION_THRESHOLD = 0.9f;
+  static constexpr int DEFAULT_TIMEOUT_MS = 3000;
+  static constexpr int DEFAULT_MAX_EMBEDDINGS = 5;
+  static constexpr int DEFAULT_ENROLL_AVG_FRAMES = 5;
+  static constexpr int DEFAULT_VERIFY_AVG_FRAMES = 3;
+  static constexpr int DEFAULT_LOCKOUT_ATTEMPTS = 5;
+  static constexpr int DEFAULT_LOCKOUT_DURATION_SEC = 300;
+  static constexpr int DEFAULT_GPU_THROTTLE_MS = 20;
+
+  enum class AuthPolicy { STRICT_ALL, LENIENT_ANY, ADAPTIVE };
+
+  struct CameraDefinition {
+    std::string id;
+    std::string path;
+    std::string type; // "ir", "rgb"
+    int min_brightness = 0;
+    bool mandatory = false;
+    std::string enroll_hdr = "";
+    std::string enroll_averaging = "";
+    int enroll_average_frames = 0;
+  };
+
+  // Data Members
+  float threshold = DEFAULT_THRESHOLD;
+  float detection_threshold = DEFAULT_DETECTION_THRESHOLD;
+  int timeout_ms = DEFAULT_TIMEOUT_MS;
+  int max_embeddings = DEFAULT_MAX_EMBEDDINGS;
+
+  AuthPolicy policy = AuthPolicy::ADAPTIVE;
+  std::vector<CameraDefinition> camera_defs;
+
+  bool save_success = false;
+  bool save_fail = false;
+  std::string log_dir = "/var/log/linuxcampam/";
+  std::vector<std::string> provider_priority;
+  int model_keep_alive_sec = 0;
+
+  std::string enroll_hdr = "auto";
+  bool enroll_averaging = true;
+  int enroll_average_frames = DEFAULT_ENROLL_AVG_FRAMES;
+  bool verify_averaging = false;
+  int verify_average_frames = DEFAULT_VERIFY_AVG_FRAMES;
+
+  fs::path users_dir = linuxcampam::USERS_DIR;
+  fs::path models_dir = linuxcampam::MODELS_DIR;
+  fs::path ir_emitter_path = linuxcampam::IR_EMITTER_PATH;
+
+  int lockout_attempts = DEFAULT_LOCKOUT_ATTEMPTS;
+  int lockout_duration_sec = DEFAULT_LOCKOUT_DURATION_SEC;
+
+  bool gpu_flush = false;
+  int gpu_throttle_ms = DEFAULT_GPU_THROTTLE_MS;
+
+  // Methods
+  bool load(const fs::path &config_path);
+  [[nodiscard]] std::string toString() const;
+
+private:
+  void parse_ini_into_self(const fs::path &path);
+};

@@ -29,12 +29,10 @@ constexpr int HDR_EXPOSURE_3 = 400;
 constexpr int HDR_SETTLE_MS = 100;
 constexpr int HDR_BIT_DEPTH = 255;
 constexpr int CAMERA_RGB_WEIGHT = 40;
+constexpr int DEFAULT_MIN_BRIGHTNESS = 40;
 constexpr int CAPTURE_RETRY_ATTEMPTS = 3;
 
 constexpr float MIRROR_THRESHOLD_DEFAULT = 0.3f; // detection confidence
 constexpr int MIRROR_SIZE = 320;
-constexpr int MIRROR_NMS =
-    5000; // Not sure what 5000 is yet, likely NMS or scale?
-// Actually line 402 is `detector->detect(frame, faces);` ? No.
-// Looking at error context: `320 is a magic number`.
+constexpr int MIRROR_NMS = 5000; // keep top K bboxes before NMS .
 } // namespace linuxcampam

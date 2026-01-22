@@ -1,7 +1,9 @@
 #pragma once
 
+#include <string>
 #include <unistd.h>
-
+#include <utility>
+#include <vector>
 namespace linuxcampam {
 
 struct FileDescriptor {
@@ -37,5 +39,9 @@ struct FileDescriptor {
   [[nodiscard]] bool isValid() const { return fd >= 0; }
   operator int() const { return fd; }
 };
+
+// Camera Utilities
+std::string classifyCameraType(const std::string &device_path);
+std::vector<std::pair<std::string, std::string>> enumerateCameras();
 
 } // namespace linuxcampam

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "constants.hpp"
+#include "config.hpp"
 #include "icamera.hpp"
 
 #include <chrono>
@@ -70,85 +70,19 @@ public:
   [[nodiscard]] std::string getConfigString() const;
 
 private:
-  static constexpr float DEFAULT_THRESHOLD = 0.363f;
-  static constexpr float DEFAULT_DETECTION_THRESHOLD = 0.9f;
-  static constexpr int DEFAULT_TIMEOUT_MS = 3000;
-  static constexpr int DEFAULT_MAX_EMBEDDINGS = 5;
-  static constexpr int DEFAULT_ENROLL_AVG_FRAMES = 5;
-  static constexpr int DEFAULT_VERIFY_AVG_FRAMES = 3;
-  static constexpr int DEFAULT_LOCKOUT_ATTEMPTS = 5;
-  static constexpr int DEFAULT_LOCKOUT_DURATION_SEC = 300;
-  static constexpr int DEFAULT_GPU_THROTTLE_MS = 20;
-
-  enum class AuthPolicy {
-    STRICT_ALL,  // All cameras must match
-    LENIENT_ANY, // At least one camera must match
-    ADAPTIVE     // Legacy logic: IR mandatory, RGB conditional
-  };
-
-  struct CameraDefinition {
-    std::string id;
-    std::string path;
-    std::string type; // "ir", "rgb"
-    int min_brightness = 0;
-    bool mandatory = false; // For ADAPTIVE policy
-
-    // Per-camera capture settings (override global if set)
-    std::string enroll_hdr = ""; // "", "auto", "on", "off" - empty = use global
-    std::string enroll_averaging = ""; // "", "on", "off" - empty = use global
-    int enroll_average_frames = 0;     // 0 = use global
-  };
-
-  // Helper struct to hold a running camera and its config
-  struct ActiveCamera {
-    std::unique_ptr<ICamera> cam;
-    CameraDefinition config;
-  };
-
-  struct Config {
-    float threshold = DEFAULT_THRESHOLD;
-    float detection_threshold = DEFAULT_DETECTION_THRESHOLD;
-    int timeout_ms = DEFAULT_TIMEOUT_MS;
-    int max_embeddings = DEFAULT_MAX_EMBEDDINGS; // 0 = unlimited
-
-    AuthPolicy policy = AuthPolicy::ADAPTIVE;
-    std::vector<CameraDefinition> camera_defs;
-
-    bool save_success = false;
-    bool save_fail = false;
-    std::string log_dir = "/var/log/linuxcampam/";
-    std::vector<std::string> provider_priority;
-    int model_keep_alive_sec = 0; // 0 = Always loaded
-
-    // Capture settings
-    std::string enroll_hdr = "auto"; // auto | on | off
-    bool enroll_averaging = true;
-    int enroll_average_frames = DEFAULT_ENROLL_AVG_FRAMES;
-    bool verify_averaging = false;
-    int verify_average_frames = DEFAULT_VERIFY_AVG_FRAMES;
-
-    // Paths
-    // Paths
-    fs::path users_dir = linuxcampam::USERS_DIR;
-    fs::path models_dir = linuxcampam::MODELS_DIR;
-    fs::path ir_emitter_path = linuxcampam::IR_EMITTER_PATH;
-
-    // Security / Rate Limiting
-    int lockout_attempts =
-        DEFAULT_LOCKOUT_ATTEMPTS; // Lock after N failures. 0 = disabled.
-    int lockout_duration_sec =
-        DEFAULT_LOCKOUT_DURATION_SEC; // Lockout duration (5 min default)
-
-    // GPU sync options
-    bool gpu_flush = false;
-    int gpu_throttle_ms = DEFAULT_GPU_THROTTLE_MS;
-  } config;
+  Configuration config;
 
   cv::Ptr<cv::FaceDetectorYN> detector;
   cv::Ptr<cv::FaceRecognizerSF> recognizer;
 
   fs::path detection_model_path;
   fs::path recognition_model_path;
+
+  // Helper struct to hold a running camera and its config
+  struct ActiveCamera {
+    std::unique_ptr<ICamera> cam;
+    Configuration::CameraDefinition config;
+  };
 
   std::vector<ActiveCamera> active_cameras;
 

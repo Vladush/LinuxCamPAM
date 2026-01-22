@@ -59,6 +59,9 @@ add_executable(linuxcampamd
     src/service/auth_engine.hpp
     src/service/camera.cpp
     src/service/camera.hpp
+    src/service/config.cpp
+    src/service/config.hpp
+    src/service/utils.cpp
 )
 target_include_directories(linuxcampamd PRIVATE include ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(linuxcampamd PRIVATE 
@@ -95,8 +98,11 @@ if(GTest_FOUND)
         tests/test_embeddings.cpp
         tests/test_security.cpp
         tests/test_stability.cpp
+        tests/test_stability.cpp
         src/service/auth_engine.cpp
         src/service/camera.cpp
+        src/service/config.cpp
+        src/service/utils.cpp
     )
     # We need to compile auth_engine.cpp without main(), which is fine since main is in main.cpp.
     # However, auth_engine might have dependencies.
