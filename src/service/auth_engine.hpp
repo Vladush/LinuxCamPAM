@@ -4,6 +4,7 @@
 #include "constants.hpp"
 
 #include <chrono>
+#include <filesystem>
 #include <mutex>
 #include <opencv2/dnn.hpp>
 #include <opencv2/opencv.hpp>
@@ -11,6 +12,8 @@
 #include <string_view>
 #include <unordered_map>
 #include <vector>
+
+namespace fs = std::filesystem;
 
 // Constants moved to AuthEngine class to avoid anonymous namespace in header
 
@@ -42,7 +45,7 @@ public:
   AuthEngine(AuthEngine &&) = delete;
   AuthEngine &operator=(AuthEngine &&) = delete;
 
-  [[nodiscard]] bool init(const std::string &config_path);
+  [[nodiscard]] bool init(const fs::path &config_path);
 
   // Operations
   [[nodiscard]] bool verifyUser(const std::string &username);
@@ -125,9 +128,10 @@ private:
     int verify_average_frames = DEFAULT_VERIFY_AVG_FRAMES;
 
     // Paths
-    std::string users_dir = linuxcampam::USERS_DIR;
-    std::string models_dir = linuxcampam::MODELS_DIR;
-    std::string ir_emitter_path = linuxcampam::IR_EMITTER_PATH;
+    // Paths
+    fs::path users_dir = linuxcampam::USERS_DIR;
+    fs::path models_dir = linuxcampam::MODELS_DIR;
+    fs::path ir_emitter_path = linuxcampam::IR_EMITTER_PATH;
 
     // Security / Rate Limiting
     int lockout_attempts =
@@ -143,8 +147,8 @@ private:
   cv::Ptr<cv::FaceDetectorYN> detector;
   cv::Ptr<cv::FaceRecognizerSF> recognizer;
 
-  std::string detection_model_path;
-  std::string recognition_model_path;
+  fs::path detection_model_path;
+  fs::path recognition_model_path;
 
   std::vector<ActiveCamera> active_cameras;
 

@@ -42,9 +42,8 @@ inline void gpuSync(bool do_flush, int delay_ms) {
 }
 
 // Extract version from model filename (e.g. sface_2021dec)
-inline std::string getModelVersion(const std::string &model_path) {
-  fs::path p(model_path);
-  std::string filename = p.stem().string();
+inline std::string getModelVersion(const fs::path &model_path) {
+  std::string filename = model_path.stem().string();
   const std::string prefix = "face_recognition_";
   if (filename.rfind(prefix, 0) == 0) {
     return filename.substr(prefix.length());
@@ -52,8 +51,7 @@ inline std::string getModelVersion(const std::string &model_path) {
   return filename;
 }
 
-std::unordered_map<std::string, std::string>
-parse_ini(const std::string &path) {
+std::unordered_map<std::string, std::string> parse_ini(const fs::path &path) {
   std::unordered_map<std::string, std::string> result;
   std::ifstream file(path);
   if (!file.is_open())
@@ -165,7 +163,7 @@ std::vector<std::pair<std::string, std::string>> enumerateCameras() {
 AuthEngine::AuthEngine() {}
 AuthEngine::~AuthEngine() {}
 
-bool AuthEngine::init(const std::string &config_path) {
+bool AuthEngine::init(const fs::path &config_path) {
   auto ini = parse_ini(config_path);
 
   auto get = [&ini](const std::string &key,
@@ -250,9 +248,9 @@ bool AuthEngine::init(const std::string &config_path) {
   // Note: If user supplies full path in config in future, handle that.
   // For now assuming models_dir + filename.
   detection_model_path =
-      config.models_dir + "/face_detection_yunet_2022mar.onnx";
+      config.models_dir / "face_detection_yunet_2022mar.onnx";
   recognition_model_path =
-      config.models_dir + "/face_recognition_sface_2021dec.onnx";
+      config.models_dir / "face_recognition_sface_2021dec.onnx";
 
   // Parse Cameras
   std::string cam_names = get("Cameras.names", "");
@@ -425,8 +423,8 @@ bool AuthEngine::loadModels() {
   }
 
   try {
-    log_info("Loading Detector: " + detection_model_path);
-    log_info("Loading Recognizer: " + recognition_model_path);
+    log_info("Loading Detector: " + detection_model_path.string());
+    log_info("Loading Recognizer: " + recognition_model_path.string());
 
     detector = cv::FaceDetectorYN::create(
         detection_model_path, "",
