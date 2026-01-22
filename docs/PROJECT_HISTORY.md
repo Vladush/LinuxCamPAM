@@ -136,6 +136,19 @@ These frustrations led to the decision to architect a new solution from scratch:
 **Decision:** Renamed to `linuxcampamd`.
 **Reasoning:** Aligns with standard Unix convention where background daemons carry a `d` suffix (`systemd`, `sshd`, `fprintd`).
 
+### Decision: Dual Logging Strategy
+
+**Context:** A unified `Logger` class is convenient, but typical logging features (printing to `stdout`/`stderr`) are fatal for PAM modules, which must remain silent to avoid corrupting the auth conversation.
+**Decision:** The logging architecture was split into two distinct implementations:
+
+1. **Service (`linuxcampamd`):** Uses a full-featured `Logger` singleton that outputs to `stdout`/`stderr` (for debugging) and `syslog` (via `LOG_DAEMON`).
+2. **PAM Module (`pam_linuxcampam.so`):** Uses a strictly isolated `SyslogManager` utility that outputs *only* to `syslog` (via `LOG_AUTHPRIV`).
+**Reasoning:**
+
+* **Isolation:** Ensures the PAM module never accidentally writes to console streams.
+* **Security:** `LOG_AUTHPRIV` is the correct facility for authentication events, while `LOG_DAEMON` is appropriate for the background service.
+* **Dependencies:** Keeps the PAM module minimal, avoiding `iostream` overhead.
+
 ## 7. Roadmap / Future Work
 
 ### Goal: Native NPU Support (Ryzen AI / XDNA)
