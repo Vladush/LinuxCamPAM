@@ -1,12 +1,18 @@
 #include "constants.hpp"
 
+#include <array>
 #include <cstring>
 #include <ctime>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+
+namespace {
+constexpr size_t BUFFER_SIZE = 4096;
+}
 
 std::string get_current_user() {
   const char *sudo_user = std::getenv("SUDO_USER");
@@ -27,13 +33,14 @@ std::string send_cmd(const std::string &cmd) {
     return "";
   }
 
-  struct sockaddr_un addr;
-  memset(&addr, 0, sizeof(addr));
+  struct sockaddr_un addr = {};
   addr.sun_family = AF_UNIX;
-  strncpy(addr.sun_path, linuxcampam::SOCKET_PATH, sizeof(addr.sun_path) - 1);
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-array-to-pointer-decay)
+  (void)std::snprintf(addr.sun_path, sizeof(addr.sun_path), "%s",
+                      linuxcampam::SOCKET_PATH);
 
-  if (connect(sock, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) ==
-      -1) {
+  if (connect(sock, static_cast<struct sockaddr *>(static_cast<void *>(&addr)),
+              sizeof(addr)) == -1) {
     std::cerr << "Could not connect to service at " << linuxcampam::SOCKET_PATH
               << ". Is linuxcampamd running?" << std::endl;
     close(sock);
@@ -42,12 +49,12 @@ std::string send_cmd(const std::string &cmd) {
 
   send(sock, cmd.c_str(), cmd.length(), 0);
 
-  char buffer[4096] = {0};
-  ssize_t bytes_read = read(sock, buffer, sizeof(buffer) - 1);
+  std::array<char, BUFFER_SIZE> buffer = {};
+  ssize_t bytes_read = read(sock, buffer.data(), buffer.size() - 1);
   close(sock);
 
   if (bytes_read > 0) {
-    return std::string(buffer);
+    return std::string(buffer.data());
   }
   return "";
 }
@@ -90,7 +97,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  std::string op = argv[1];
+  std::string_view op = argv[1];
 
   if (op == "add") {
     if (argc < 3) {

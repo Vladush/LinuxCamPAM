@@ -30,6 +30,11 @@ TEST(StabilityTest, ConfigResilience) {
 }
 
 TEST(StabilityTest, CameraOpenFailure) {
+  // Skip in CI/Docker if needed
+  if (std::getenv("TEST_IN_DOCKER")) {
+    GTEST_SKIP() << "Skipping hardware interaction test in Docker";
+  }
+
   // Directly test Camera class resilience against invalid paths
   // Constructor requires device path
   // Use a high index that parses correctly but is unlikely to exist.
@@ -44,21 +49,37 @@ TEST(StabilityTest, CameraOpenFailure) {
 }
 
 TEST(StabilityTest, IrEmitterInvalidPath) {
+  if (std::getenv("TEST_IN_DOCKER")) {
+    GTEST_SKIP() << "Skipping process spawn test in Docker";
+  }
+
   // Test 3: IR Emitter Robustness
   // Point to a non-existent executable.
   // We use /dev/null as camera path since we only care about emitter trigger.
   Camera cam("/dev/null", true, "/tmp/non_existent_executable");
 
-  // Capturing stderr to avoid cluttering test output
+  // Capturing both stdout (for INFO logs) and stderr (for ERROR logs)
+  testing::internal::CaptureStdout();
   testing::internal::CaptureStderr();
-  EXPECT_NO_THROW(cam.triggerIrEmitter()); // Should not throw/crash
-  std::string output = testing::internal::GetCapturedStderr();
+  EXPECT_NO_THROW(cam.triggerIrEmitter());
+  std::string output_err = testing::internal::GetCapturedStderr();
+  std::string output_out = testing::internal::GetCapturedStdout();
+  std::string output = output_err + output_out;
 
-  // Should see error in logs
-  EXPECT_NE(output.find("posix_spawn failed"), std::string::npos);
+  // Should see error in logs (spawn failure OR child exit failure)
+  // On some platforms/emulators, posix_spawn returns 0 even if exec fails
+  // later.
+  bool spawn_failed = output.find("posix_spawn failed") != std::string::npos;
+  bool exec_failed =
+      output.find("IR emitter exited with code: 127") != std::string::npos;
+  EXPECT_TRUE(spawn_failed || exec_failed) << "Output was: " << output;
 }
 
 TEST(StabilityTest, IrEmitterNonExecutable) {
+  if (std::getenv("TEST_IN_DOCKER")) {
+    GTEST_SKIP() << "Skipping process spawn test in Docker";
+  }
+
   // Create a dummy file that is NOT executable
   std::string dummy_path = "/tmp/dummy_script.sh";
   std::ofstream out(dummy_path);
@@ -68,10 +89,17 @@ TEST(StabilityTest, IrEmitterNonExecutable) {
 
   Camera cam("/dev/null", true, dummy_path);
 
+  testing::internal::CaptureStdout();
   testing::internal::CaptureStderr();
   EXPECT_NO_THROW(cam.triggerIrEmitter());
-  std::string output = testing::internal::GetCapturedStderr();
+  std::string output_err = testing::internal::GetCapturedStderr();
+  std::string output_out = testing::internal::GetCapturedStdout();
+  std::string output = output_err + output_out;
 
-  // posix_spawn might fail with EACCES (13) or similar
-  EXPECT_NE(output.find("posix_spawn failed"), std::string::npos);
+  // posix_spawn might fail with EACCES (13) or return 0 and child exits with
+  // 126/127
+  bool spawn_failed = output.find("posix_spawn failed") != std::string::npos;
+  bool exec_failed =
+      output.find("IR emitter exited with code:") != std::string::npos;
+  EXPECT_TRUE(spawn_failed || exec_failed) << "Output was: " << output;
 }

@@ -2,6 +2,7 @@
 #include "auth_engine.hpp"
 
 #include "camera.hpp"
+#include "config.hpp"
 #include "constants.hpp"
 #include "json.hpp"
 #include "logger.hpp"
@@ -41,9 +42,8 @@ inline void gpuSync(bool do_flush, int delay_ms) {
 }
 
 // Extract version from model filename (e.g. sface_2021dec)
-inline std::string getModelVersion(const std::string &model_path) {
-  fs::path p(model_path);
-  std::string filename = p.stem().string();
+inline std::string getModelVersion(const fs::path &model_path) {
+  std::string filename = model_path.stem().string();
   const std::string prefix = "face_recognition_";
   if (filename.rfind(prefix, 0) == 0) {
     return filename.substr(prefix.length());
@@ -51,314 +51,51 @@ inline std::string getModelVersion(const std::string &model_path) {
   return filename;
 }
 
-std::unordered_map<std::string, std::string>
-parse_ini(const std::string &path) {
-  std::unordered_map<std::string, std::string> result;
-  std::ifstream file(path);
-  if (!file.is_open())
-    return result;
-
-  std::string line, current_section;
-  while (std::getline(file, line)) {
-    // Trim
-    line.erase(0, line.find_first_not_of(" \t"));
-    if (line.empty() || line[0] == ';')
-      continue;
-    auto last = line.find_last_not_of(" \t");
-    if (last != std::string::npos)
-      line.erase(last + 1);
-
-    if (line[0] == '[' && line.back() == ']') {
-      current_section = line.substr(1, line.size() - 2);
-    } else {
-      size_t eq = line.find('=');
-      if (eq != std::string::npos) {
-        std::string key = line.substr(0, eq);
-        key.erase(key.find_last_not_of(" \t") + 1);
-        std::string val = line.substr(eq + 1);
-        val.erase(0, val.find_first_not_of(" \t"));
-        std::string full_key = current_section;
-        full_key += ".";
-        full_key += key;
-        result[full_key] = val;
-      }
-    }
-  }
-  return result;
-}
-
-// Classify camera type (ir, rgb, or generic) based on V4L2 pixel formats
-std::string classifyCameraType(const std::string &device_path) {
-  int fd = open(device_path.c_str(), O_RDONLY);
-  if (fd < 0)
-    return "";
-
-  // Check if it's a capture device
-  struct v4l2_capability cap = {};
-  if (ioctl(fd, VIDIOC_QUERYCAP, &cap) < 0) {
-    close(fd);
-    return "";
-  }
-
-  // Must support video capture
-  if (!(cap.device_caps & V4L2_CAP_VIDEO_CAPTURE)) {
-    close(fd);
-    return "";
-  }
-
-  // Enumerate formats to detect IR vs RGB
-  bool has_grey_format = false;
-  bool has_color_format = false;
-
-  struct v4l2_fmtdesc fmt = {};
-  fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-
-  while (ioctl(fd, VIDIOC_ENUM_FMT, &fmt) == 0) {
-    // IR cameras typically use grayscale formats
-    if (fmt.pixelformat == V4L2_PIX_FMT_GREY ||
-        fmt.pixelformat == V4L2_PIX_FMT_Y10 ||
-        fmt.pixelformat == V4L2_PIX_FMT_Y12 ||
-        fmt.pixelformat == V4L2_PIX_FMT_Y16) {
-      has_grey_format = true;
-    }
-    // Color formats
-    if (fmt.pixelformat == V4L2_PIX_FMT_MJPEG ||
-        fmt.pixelformat == V4L2_PIX_FMT_YUYV ||
-        fmt.pixelformat == V4L2_PIX_FMT_RGB24 ||
-        fmt.pixelformat == V4L2_PIX_FMT_BGR24) {
-      has_color_format = true;
-    }
-    fmt.index++;
-  }
-
-  close(fd);
-
-  // Prefer classification: if has grey but no color, it's IR
-  if (has_grey_format && !has_color_format)
-    return "ir";
-  if (has_color_format)
-    return "rgb";
-  if (has_grey_format)
-    return "ir"; // Grey-only is likely IR
-
-  return "generic"; // Unknown format, treat as generic
-}
-
-std::vector<std::pair<std::string, std::string>> enumerateCameras() {
-  std::vector<std::pair<std::string, std::string>> cameras;
-
-  if (!fs::exists("/dev"))
-    return cameras;
-
-  for (const auto &entry : fs::directory_iterator("/dev")) {
-    std::string name = entry.path().filename().string();
-    if (name.rfind("video", 0) == 0) {
-      std::string type = classifyCameraType(entry.path().string());
-      if (!type.empty()) {
-        cameras.push_back({entry.path().string(), type});
-      }
-    }
-  }
-
-  // Sort by device path for consistent ordering
-  std::sort(cameras.begin(), cameras.end());
-  return cameras;
-}
+// Check for explicit legacy behavior, otherwise skip
 
 AuthEngine::AuthEngine() {}
 AuthEngine::~AuthEngine() {}
 
-bool AuthEngine::init(const std::string &config_path) {
-  auto ini = parse_ini(config_path);
-
-  auto get = [&ini](const std::string &key,
-                    const std::string &def = "") -> std::string {
-    if (auto it = ini.find(key); it != ini.end()) {
-      return it->second;
-    }
-    return def;
-  };
-
-  std::string log_level_str = get("General.log_level", "");
-  if (!log_level_str.empty()) {
-    if (log_level_str == "debug") {
-      Logger::setLevel(LogLevel::DEBUG);
-      LOG_INFO("Log level set to DEBUG via config.ini");
-    } else if (log_level_str == "info") {
-      Logger::setLevel(LogLevel::INFO);
-    } else if (log_level_str == "warning" || log_level_str == "warn") {
-      Logger::setLevel(LogLevel::WARN);
-    } else if (log_level_str == "error") {
-      Logger::setLevel(LogLevel::ERROR);
-    }
+bool AuthEngine::init(const fs::path &config_path) {
+  if (!config.load(config_path)) {
+    log_warn("Failed to load config from " + config_path.string() +
+             ". Using defaults.");
   }
 
-  config.threshold = std::stof(get("Auth.threshold", "0.4"));
-  config.detection_threshold =
-      std::stof(get("Auth.detection_threshold", "0.6"));
-  config.timeout_ms = std::stoi(get("Auth.timeout_ms", "3000"));
-
-  // Parse Policy
-  std::string policy_str = get("Auth.policy", "adaptive");
-  if (policy_str == "strict")
-    config.policy = AuthPolicy::STRICT_ALL;
-  else if (policy_str == "lenient")
-    config.policy = AuthPolicy::LENIENT_ANY;
-  else
-    config.policy = AuthPolicy::ADAPTIVE;
-
-  config.max_embeddings = std::stoi(get("Auth.max_embeddings", "5"));
-
-  // Capture settings
-  config.enroll_hdr = get("Capture.enroll_hdr", "auto");
-  config.enroll_averaging = (get("Capture.enroll_averaging", "on") == "on");
-  config.enroll_average_frames =
-      std::stoi(get("Capture.enroll_average_frames", "5"));
-  config.verify_averaging = (get("Capture.verify_averaging", "off") == "on");
-  config.verify_average_frames =
-      std::stoi(get("Capture.verify_average_frames", "3"));
-
-  // Parse Paths
-  config.users_dir = get("Paths.users_dir", config.users_dir);
-  config.models_dir = get("Paths.models_dir", linuxcampam::MODELS_DIR);
-  config.ir_emitter_path =
-      get("Paths.ir_emitter_path", linuxcampam::IR_EMITTER_PATH);
+  // Initialize last activity
+  last_activity_ = std::chrono::steady_clock::now();
 
   // Initialize model paths dynamic vars
   // Note: If user supplies full path in config in future, handle that.
   // For now assuming models_dir + filename.
   detection_model_path =
-      config.models_dir + "/face_detection_yunet_2022mar.onnx";
+      config.models_dir / "face_detection_yunet_2022mar.onnx";
   recognition_model_path =
-      config.models_dir + "/face_recognition_sface_2021dec.onnx";
+      config.models_dir / "face_recognition_sface_2021dec.onnx";
 
-  // Parse Cameras
-  std::string cam_names = get("Cameras.names", "");
-  if (!cam_names.empty()) {
-    std::stringstream ss(cam_names);
-    std::string id;
-    while (std::getline(ss, id, ',')) {
-      // trim
-      id.erase(0, id.find_first_not_of(" \t"));
-      id.erase(id.find_last_not_of(" \t") + 1);
-      if (id.empty())
-        continue;
+  // Initialize Cameras if any
+  // Note: config.load() already populated config.camera_defs via auto-detection
+  // if needed.
+  initializeActiveCameras();
 
-      CameraDefinition def;
-      def.id = id;
-      def.path = get("Camera." + id + ".path", "/dev/video0");
-      def.type = get("Camera." + id + ".type", "generic");
-      def.min_brightness =
-          std::stoi(get("Camera." + id + ".min_brightness", "0"));
-      std::string mand_str = get("Camera." + id + ".mandatory", "false");
-      def.mandatory = (mand_str == "true");
-
-      // Per-camera capture settings (empty = use global)
-      def.enroll_hdr = get("Camera." + id + ".enroll_hdr", "");
-      def.enroll_averaging = get("Camera." + id + ".enroll_averaging", "");
-      std::string avg_frames =
-          get("Camera." + id + ".enroll_average_frames", "0");
-      def.enroll_average_frames = std::stoi(avg_frames);
-
-      config.camera_defs.push_back(def);
-    }
-  } else {
-    // Smart Auto-Detection Fallback
-    std::string path_ir = get("Hardware.camera_path_ir", "");
-    std::string path_rgb = get("Hardware.camera_path_rgb", "");
-
-    bool explicit_legacy = (!path_ir.empty() || !path_rgb.empty());
-
-    if (explicit_legacy) {
-      // Backward compatibility for explicit old config keys
-      // Note: We no longer fall back to hardcoded paths if one is missing
-      if (!path_ir.empty())
-        config.camera_defs.push_back({"ir", path_ir, "ir", 0, true});
-      if (!path_rgb.empty())
-        config.camera_defs.push_back(
-            {"rgb", path_rgb, "rgb",
-             std::stoi(get("Hardware.min_brightness", "40")), false});
-    } else {
-      // No config at all: Auto-detect using V4L2
-      LOG_INFO("Auto-detecting cameras via V4L2...");
-
-      auto detected = enumerateCameras();
-
-      if (detected.empty()) {
-        LOG_ERROR("No cameras detected! Face authentication will not work.");
-        LOG_ERROR(
-            "Troubleshooting: Run 'v4l2-ctl --list-devices' to check cameras.");
-        // Keep service running for hot-plug scenarios
-      } else {
-        // Classify detected cameras
-        std::string ir_path = "", rgb_path = "";
-        for (const auto &[path, type] : detected) {
-          std::string msg = "Detected: ";
-          msg += path;
-          msg += " (type: ";
-          msg += type;
-          msg += ")";
-          LOG_INFO(msg);
-          if (type == "ir" && ir_path.empty()) {
-            ir_path = path;
-          } else if ((type == "rgb" || type == "generic") && rgb_path.empty()) {
-            rgb_path = path;
-          }
-        }
-
-        // Build camera definitions based on what was found
-        if (!ir_path.empty() && !rgb_path.empty()) {
-          LOG_INFO("Detected Dual Setup (IR+RGB).");
-          config.camera_defs.push_back({"ir", ir_path, "ir", 0, true});
-          config.camera_defs.push_back(
-              {"rgb", rgb_path, "rgb", linuxcampam::CAMERA_RGB_WEIGHT, false});
-        } else if (!rgb_path.empty()) {
-          LOG_INFO("Detected Single RGB Setup.");
-          config.camera_defs.push_back({"rgb", rgb_path, "rgb", 0, true});
-        } else if (!ir_path.empty()) {
-          LOG_INFO("Detected Single IR Setup.");
-          config.camera_defs.push_back({"ir", ir_path, "ir", 0, true});
-        } else {
-          // Has some camera but couldn't classify - use first one
-          const auto &[path, type] = detected[0];
-          LOG_WARN("Could not classify cameras. Using " + path +
-                   " as generic.");
-          config.camera_defs.push_back({"cam0", path, "generic", 0, true});
-        }
-      }
-    }
-  }
-
-  std::string priority_str = get("Hardware.provider_priority", "");
-  std::stringstream ss(priority_str);
-  std::string segment = "";
-  while (std::getline(ss, segment, ',')) {
-    segment.erase(0, segment.find_first_not_of(" \t"));
-    if (!segment.empty())
-      config.provider_priority.push_back(segment);
-  }
-  if (config.provider_priority.empty())
-    config.provider_priority = {"OpenCL", "OpenVINO", "CUDA", "CPU"};
-
-  config.save_success = (get("Storage.save_success_images") == "true");
-  config.save_fail = (get("Storage.save_fail_images") == "true");
-
-  std::string ka_str = get("Performance.model_keep_alive_sec", "0");
-  config.model_keep_alive_sec = std::stoi(ka_str);
-
-  // Security / Rate Limiting
-  config.lockout_attempts = std::stoi(get("Security.lockout_attempts", "5"));
-  config.lockout_duration_sec =
-      std::stoi(get("Security.lockout_duration_sec", "300"));
-
-  // GPU sync options
-  config.gpu_flush = (get("Performance.gpu_flush", "on") == "on");
-  config.gpu_throttle_ms = std::stoi(get("Performance.gpu_throttle_ms", "20"));
-
-  last_activity_ = std::chrono::steady_clock::now();
-
-  // 2. Initialize Models (Delegated)
   return loadModels();
+}
+
+void AuthEngine::initializeActiveCameras() {
+  if (active_cameras.empty()) {
+    active_cameras.reserve(config.camera_defs.size());
+    std::transform(config.camera_defs.begin(), config.camera_defs.end(),
+                   std::back_inserter(active_cameras), [&](const auto &def) {
+                     ActiveCamera ac;
+                     ac.config = def; // Copy config
+                     log_info("Initializing Camera: " + def.id + " (" +
+                              def.type + ") at " + def.path);
+                     ac.cam = std::make_unique<Camera>(
+                         def.path, def.type == "ir",
+                         config.ir_emitter_path.string());
+                     return ac;
+                   });
+  }
 }
 
 bool AuthEngine::loadModels() {
@@ -375,25 +112,25 @@ bool AuthEngine::loadModels() {
       if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
         backend_id = cv::dnn::DNN_BACKEND_CUDA;
         target_id = cv::dnn::DNN_TARGET_CUDA;
-        LOG_INFO("Selecting CUDA Backend.");
+        log_info("Selecting CUDA Backend.");
         break;
       }
     } else if (prov == "OpenVINO") {
       backend_id = cv::dnn::DNN_BACKEND_INFERENCE_ENGINE;
       target_id = cv::dnn::DNN_TARGET_CPU;
-      LOG_INFO("Selecting OpenVINO Backend.");
+      log_info("Selecting OpenVINO Backend.");
       break;
     } else if (prov == "OpenCL") {
       if (cv::ocl::haveOpenCL()) {
         cv::ocl::setUseOpenCL(true);
         backend_id = cv::dnn::DNN_BACKEND_OPENCV;
         target_id = cv::dnn::DNN_TARGET_OPENCL;
-        LOG_INFO("Selecting OpenCL Backend.");
+        log_info("Selecting OpenCL Backend.");
         // Log the OpenCL device name for assurance
         cv::ocl::Device dev = cv::ocl::Device::getDefault();
-        LOG_INFO("Hardware Device: " + dev.name() + " " + dev.version());
+        log_info("Hardware Device: " + dev.name() + " " + dev.version());
       } else {
-        LOG_WARN("OpenCL requested but not "
+        log_warn("OpenCL requested but not "
                  "detected. Falling back to CPU.");
         backend_id = cv::dnn::DNN_BACKEND_OPENCV;
         target_id = cv::dnn::DNN_TARGET_CPU;
@@ -403,8 +140,8 @@ bool AuthEngine::loadModels() {
   }
 
   try {
-    LOG_INFO("Loading Detector: " + detection_model_path);
-    LOG_INFO("Loading Recognizer: " + recognition_model_path);
+    log_info("Loading Detector: " + detection_model_path.string());
+    log_info("Loading Recognizer: " + recognition_model_path.string());
 
     detector = cv::FaceDetectorYN::create(
         detection_model_path, "",
@@ -419,20 +156,9 @@ bool AuthEngine::loadModels() {
     // but maybe camera connection should be re-verified?
     // For now, Camera object holds a persistent path. `Camera` ctor doesn't
     // open stream until `capture`. So active_cameras list is fine to persist.
-    if (active_cameras.empty()) {
-      active_cameras.clear();
-      for (const auto &def : config.camera_defs) {
-        ActiveCamera ac;
-        ac.config = def;
-        LOG_INFO("Initializing Camera: " + def.id + " (" + def.type + ") at " +
-                 def.path);
-        ac.cam = std::make_unique<Camera>(def.path, def.type == "ir",
-                                          config.ir_emitter_path);
-        active_cameras.push_back(std::move(ac));
-      }
-    }
+    initializeActiveCameras();
   } catch (const cv::Exception &e) {
-    LOG_ERROR("Error loading models: " + std::string(e.what()));
+    log_error("Error loading models: " + std::string(e.what()));
     return false;
   }
 
@@ -517,7 +243,7 @@ bool AuthEngine::isValidUsername(std::string_view username) {
   });
 }
 
-cv::Mat AuthEngine::captureFrame(Camera *cam) {
+cv::Mat AuthEngine::captureFrame(ICamera *cam) {
   if (!cam)
     return cv::Mat();
   return cam->capture();
@@ -530,226 +256,8 @@ double AuthEngine::calculateBrightness(const cv::Mat &frame) {
   return (means[0] + means[1] + means[2]) / linuxcampam::RGB_CHANNELS;
 }
 
-bool AuthEngine::verifyUser(const std::string &username) {
-  if (!ensureModelsLoaded()) {
-    std::cerr << "[AuthEngine] CRITICAL: Failed to load models!" << std::endl;
-    return false;
-  }
-  if (!isValidUsername(username)) {
-    LOG_WARN("Security Warn: Invalid username string: " + username);
-    return false;
-  }
-  if (isUserLockedOut(username)) {
-    Logger::log(LogLevel::WARN, "User " + username + " is locked out");
-    return false;
-  }
-  std::string user_file =
-      std::string(config.users_dir) + "/" + username + ".json";
-  if (!fs::exists(user_file))
-    return false;
-
-  std::ifstream f(user_file);
-  json j;
-  f >> j;
-
-  int participants = 0;
-  int successes = 0;
-  int failures = 0;
-
-  LOG_INFO("Verifying user " + username + " with policy " +
-           std::to_string((int)config.policy));
-  LOG_DEBUG("Required successes: " + std::to_string(config.threshold));
-
-  for (auto &ac : active_cameras) {
-    std::string id = ac.config.id;
-    // Capture
-    cv::Mat frame = captureFrame(ac.cam.get());
-
-    // Participation Check
-    if (frame.empty()) {
-      std::cout << "[AuthEngine] Camera " << id << " failed to capture."
-                << std::endl;
-      if (config.policy == AuthPolicy::STRICT_ALL)
-        return false;
-      if (config.policy == AuthPolicy::ADAPTIVE && ac.config.mandatory) {
-        Logger::log(LogLevel::WARN,
-                    "Critical Mandatory Camera " + id + " failed. Abort.");
-        return false;
-      }
-      continue;
-    }
-
-    if (ac.config.min_brightness > 0) {
-      double b = calculateBrightness(frame);
-      if (b < ac.config.min_brightness) {
-        if (config.policy == AuthPolicy::ADAPTIVE && ac.config.mandatory) {
-          Logger::log(LogLevel::WARN,
-                      "Mandatory Camera " + id + " is too dark (" +
-                          std::to_string(b) + " < " +
-                          std::to_string(ac.config.min_brightness) +
-                          "). Failing.");
-          return false;
-        }
-        Logger::log(LogLevel::DEBUG,
-                    "Camera " + id + " too dark (" + std::to_string(b) + " < " +
-                        std::to_string(ac.config.min_brightness) +
-                        "). Skipping.");
-        continue;
-      }
-    }
-
-    participants++;
-
-    // Load embeddings (multi-format first, then legacy)
-    std::string emb_array_key = "embeddings_" + ac.config.type;
-    std::string emb_key = "embedding_" + ac.config.type;
-
-    std::vector<std::vector<float>> all_embeddings;
-
-    if (j.contains(emb_array_key) && j[emb_array_key].is_array()) {
-      for (const auto &entry : j[emb_array_key]) {
-        if (entry.contains("data")) {
-          all_embeddings.push_back(entry["data"].get<std::vector<float>>());
-        }
-      }
-    } else if (j.contains(emb_key)) {
-      all_embeddings.push_back(j[emb_key].get<std::vector<float>>());
-    }
-
-    if (all_embeddings.empty()) {
-      std::string msg = "No embeddings found for ";
-      msg += ac.config.type;
-      Logger::log(LogLevel::WARN, msg);
-      failures++;
-      if (config.save_fail) {
-        std::string fail_filename = config.log_dir + "fail_missing_";
-        fail_filename += id;
-        fail_filename += "_";
-        fail_filename += username;
-        fail_filename += ".jpg";
-        cv::imwrite(fail_filename, frame);
-      }
-      continue;
-    }
-
-    // Detect faces
-    cv::Mat faces;
-    detector->setInputSize(frame.size());
-    detector->detect(frame, faces);
-    gpuSync(config.gpu_flush, config.gpu_throttle_ms);
-
-    bool match = false;
-    if (faces.rows >= 1) {
-      // Log if multiple faces found
-      if (faces.rows > 1) {
-        LOG_WARN("Multiple faces detected (" + std::to_string(faces.rows) +
-                 "), using largest.");
-      }
-
-      cv::Mat aligned_face, curr_emb;
-      // Use largest face (row 0)
-      recognizer->alignCrop(frame, faces.row(0), aligned_face);
-      recognizer->feature(aligned_face, curr_emb);
-      gpuSync(config.gpu_flush, config.gpu_throttle_ms);
-
-      double best_score = 0.0;
-      match = false;
-
-      auto best_match_it = std::max_element(
-          all_embeddings.begin(), all_embeddings.end(),
-          [&](const auto &a, const auto &b) {
-            cv::Mat emb_a(1, static_cast<int>(a.size()), CV_32F,
-                          const_cast<float *>(a.data()));
-            cv::Mat emb_b(1, static_cast<int>(b.size()), CV_32F,
-                          const_cast<float *>(b.data()));
-            return recognizer->match(curr_emb, emb_a,
-                                     cv::FaceRecognizerSF::FR_COSINE) <
-                   recognizer->match(curr_emb, emb_b,
-                                     cv::FaceRecognizerSF::FR_COSINE);
-          });
-
-      if (best_match_it != all_embeddings.end()) {
-        cv::Mat ref_emb(1, static_cast<int>(best_match_it->size()), CV_32F,
-                        const_cast<float *>(best_match_it->data()));
-        best_score = recognizer->match(curr_emb, ref_emb,
-                                       cv::FaceRecognizerSF::FR_COSINE);
-      }
-
-      LOG_DEBUG("  -> Best Match Score: " + std::to_string(best_score));
-
-      if (best_score >= config.threshold) {
-        match = true;
-      }
-
-      if (match) {
-        std::string msg = "Camera ";
-        msg += id;
-        msg += " MATCH (Score: ";
-        msg += std::to_string(best_score);
-        msg += ")";
-        Logger::log(LogLevel::INFO, msg);
-        successes++;
-        if (config.save_success) {
-          std::string success_filename = config.log_dir + "success_";
-          success_filename += id;
-          success_filename += "_";
-          success_filename += username;
-          success_filename += ".jpg";
-          cv::imwrite(success_filename, frame);
-        }
-      } else {
-        std::string msg = "Camera ";
-        msg += id;
-        msg += " NO MATCH (Best: ";
-        msg += std::to_string(best_score);
-        msg += ")";
-        Logger::log(LogLevel::WARN, msg);
-        failures++;
-        // Save fail image
-        if (config.save_fail) {
-          std::string filename = config.log_dir;
-          filename += "fail_mismatched_";
-          filename += id;
-          filename += "_";
-          filename += username;
-          filename += ".jpg";
-          cv::imwrite(filename, frame);
-          LOG_DEBUG("Saved mismatch image to: " + filename);
-        }
-      }
-    } else {
-      std::string msg = "Camera ";
-      msg += id;
-      msg += " NO_FACE_DETECTED in frame.";
-      LOG_WARN(msg);
-      failures++;
-      if (config.save_fail) {
-        std::string fail_filename = config.log_dir + "fail_";
-        fail_filename += id;
-        fail_filename += "_";
-        fail_filename += username;
-        fail_filename += ".jpg";
-        cv::imwrite(fail_filename, frame);
-      }
-    }
-  }
-
-  if (participants == 0) {
-    Logger::log(LogLevel::WARN, "No cameras verified (all failed or skipped).");
-    return false;
-  }
-
-  if (config.policy == AuthPolicy::STRICT_ALL)
-    return failures == 0;
-  if (config.policy == AuthPolicy::LENIENT_ANY)
-    return successes > 0;
-
-  bool success = (failures == 0);
-  recordAuthAttempt(username, success);
-  return success;
-}
-
-AuthResult AuthEngine::verifyUserWithDetails(const std::string &username) {
+AuthResult AuthEngine::verifyUserCore(const std::string &username,
+                                      const PerCameraCallback &callback) {
   AuthResult result;
   result.success = false;
   result.best_score = 0.0f;
@@ -760,6 +268,8 @@ AuthResult AuthEngine::verifyUserWithDetails(const std::string &username) {
   }
   if (!isValidUsername(username)) {
     result.reason = "Invalid username";
+    if (callback)
+      callback("security", cv::Mat(), false, 0, result.reason);
     return result;
   }
   if (isUserLockedOut(username)) {
@@ -783,17 +293,50 @@ AuthResult AuthEngine::verifyUserWithDetails(const std::string &username) {
   bool any_no_face = false;
   float overall_best_score = 0.0f;
 
+  log_info("Verifying user " + username + " with policy " +
+           std::to_string((int)config.policy));
+
   for (auto &ac : active_cameras) {
     std::string id = ac.config.id;
     cv::Mat frame = captureFrame(ac.cam.get());
 
     if (frame.empty()) {
-      if (config.policy == AuthPolicy::STRICT_ALL ||
-          (config.policy == AuthPolicy::ADAPTIVE && ac.config.mandatory)) {
+      std::string msg = "Capture failed";
+      if (callback)
+        callback(id, frame, false, 0.0f, msg);
+
+      if (config.policy == Configuration::AuthPolicy::STRICT_ALL) {
         result.reason = "Camera " + id + " failed to capture";
         return result;
       }
+      if (config.policy == Configuration::AuthPolicy::ADAPTIVE &&
+          ac.config.mandatory) {
+        Logger::log(LogLevel::WARN,
+                    "Critical Mandatory Camera " + id + " failed. Abort.");
+        result.reason = "Mandatory Camera " + id + " failed";
+        return result;
+      }
       continue;
+    }
+
+    // Brightness Check
+    if (ac.config.min_brightness > 0) {
+      double b = calculateBrightness(frame);
+      if (b < ac.config.min_brightness) {
+        std::string msg = "Too dark (" + std::to_string(b) + " < " +
+                          std::to_string(ac.config.min_brightness) + ")";
+        if (callback)
+          callback(id, frame, false, 0.0f, msg);
+
+        if (config.policy == Configuration::AuthPolicy::ADAPTIVE &&
+            ac.config.mandatory) {
+          Logger::log(LogLevel::WARN,
+                      "Mandatory Camera " + id + " is too dark. Failing.");
+          result.reason = "Mandatory Camera " + id + " too dark";
+          return result;
+        }
+        continue; // Skip dark camera
+      }
     }
 
     participants++;
@@ -814,6 +357,8 @@ AuthResult AuthEngine::verifyUserWithDetails(const std::string &username) {
     }
 
     if (all_embeddings.empty()) {
+      if (callback)
+        callback(id, frame, false, 0.0f, "No embeddings found");
       failures++;
       continue;
     }
@@ -825,79 +370,131 @@ AuthResult AuthEngine::verifyUserWithDetails(const std::string &username) {
     gpuSync(config.gpu_flush, config.gpu_throttle_ms);
 
     if (faces.rows >= 1) {
-      cv::Mat aligned_face, curr_emb;
-      float best_score = 0.0f;
-
-      for (int i = 0; i < faces.rows; i++) {
-        recognizer->alignCrop(frame, faces.row(i), aligned_face);
-        recognizer->feature(aligned_face, curr_emb);
-        gpuSync(config.gpu_flush, config.gpu_throttle_ms);
-
-        if (!all_embeddings.empty()) {
-          auto best_it =
-              std::max_element(all_embeddings.begin(), all_embeddings.end(),
-                               [&](const auto &a, const auto &b) {
-                                 cv::Mat emb_a(1, a.size(), CV_32F,
-                                               const_cast<float *>(a.data()));
-                                 cv::Mat emb_b(1, b.size(), CV_32F,
-                                               const_cast<float *>(b.data()));
-                                 return cosine_similarity(curr_emb, emb_a) <
-                                        cosine_similarity(curr_emb, emb_b);
-                               });
-
-          cv::Mat best_ref_emb(1, static_cast<int>(best_it->size()), CV_32F,
-                               const_cast<float *>(best_it->data()));
-          float score = cosine_similarity(curr_emb, best_ref_emb);
-          if (score > best_score)
-            best_score = score;
-        }
+      if (faces.rows > 1) {
+        log_warn("Multiple faces detected (" + std::to_string(faces.rows) +
+                 "), using largest.");
       }
 
-      if (best_score > overall_best_score)
-        overall_best_score = best_score;
+      cv::Mat aligned_face, curr_emb;
+      // Use largest face (row 0)
+      recognizer->alignCrop(frame, faces.row(0), aligned_face);
+      recognizer->feature(aligned_face, curr_emb);
+      gpuSync(config.gpu_flush, config.gpu_throttle_ms);
 
-      if (best_score >= config.threshold) {
+      float best_camera_score = 0.0f;
+
+      // Match against all embeddings
+      // Using direct match logic for efficiency
+      for (const auto &emb_vec : all_embeddings) {
+        cv::Mat emb_ref(1, static_cast<int>(emb_vec.size()), CV_32F);
+        std::memcpy(emb_ref.data, emb_vec.data(),
+                    emb_vec.size() * sizeof(float));
+        float score = static_cast<float>(recognizer->match(
+            curr_emb, emb_ref, cv::FaceRecognizerSF::FR_COSINE));
+        if (score > best_camera_score)
+          best_camera_score = score;
+      }
+
+      if (best_camera_score > overall_best_score)
+        overall_best_score = best_camera_score;
+
+      bool match = (best_camera_score >= config.threshold);
+      if (match) {
         successes++;
       } else {
         failures++;
       }
+
+      if (callback)
+        callback(id, frame, match, best_camera_score,
+                 match ? "MATCH" : "NO MATCH");
+
     } else {
       any_no_face = true;
       failures++;
+      if (callback)
+        callback(id, frame, false, 0.0f, "NO_FACE_DETECTED");
     }
   }
 
   result.best_score = overall_best_score;
 
   if (participants == 0) {
+    Logger::log(LogLevel::WARN, "No cameras verified (all failed or skipped).");
     result.reason = "No cameras participated";
     return result;
   }
 
   bool auth_ok = false;
-  if (config.policy == AuthPolicy::LENIENT_ANY)
-    auth_ok = (successes > 0);
+  if (config.policy == Configuration::AuthPolicy::STRICT_ALL)
+    auth_ok = (failures == 0 && successes > 0);
   else
-    auth_ok = (failures == 0);
+    auth_ok = (successes > 0);
 
   if (auth_ok) {
     result.success = true;
-    return result;
+  } else {
+    if (any_no_face) {
+      result.reason = "No face detected";
+    } else if (overall_best_score > 0) {
+      std::ostringstream oss;
+      oss << std::fixed << std::setprecision(2);
+      oss << "Face mismatch (score: " << overall_best_score << ")";
+      result.reason = oss.str();
+    } else {
+      result.reason = "Authentication failed";
+    }
   }
 
-  // Determine failure reason
-  if (any_no_face) {
-    result.reason = "No face detected";
-  } else if (overall_best_score > 0) {
-    std::ostringstream oss = {};
-    oss << std::fixed << std::setprecision(2);
-    oss << "Face mismatch (score: " << overall_best_score << ")";
-    result.reason = oss.str();
-  } else {
-    result.reason = "Authentication failed";
-  }
   recordAuthAttempt(username, result.success);
   return result;
+}
+
+bool AuthEngine::verifyUser(const std::string &username) {
+  AuthResult res = verifyUserCore(
+      username, [&](const std::string &id, const cv::Mat &frame, bool success,
+                    float score, const std::string &msg) {
+        // Logging & Saving Logic (from original verifyUser)
+        if (msg == "Capture failed") {
+          std::cout << "[AuthEngine] Camera " << id << " failed to capture."
+                    << std::endl;
+          return;
+        }
+
+        std::string full_msg = "Camera " + id + " " + msg;
+        if (score > 0)
+          full_msg += " (Score: " + std::to_string(score) + ")";
+
+        if (success) {
+          Logger::log(LogLevel::INFO, full_msg);
+          if (config.save_success) {
+            std::string fn =
+                config.log_dir + "success_" + id + "_" + username + ".jpg";
+            if (!frame.empty())
+              cv::imwrite(fn, frame);
+          }
+        } else {
+          Logger::log(LogLevel::WARN, full_msg);
+          if (config.save_fail) {
+            std::string prefix = (msg == "NO_FACE_DETECTED") ? "fail_"
+                                 : (msg == "No embeddings found")
+                                     ? "fail_missing_"
+                                     : "fail_mismatched_";
+            std::string fn =
+                config.log_dir + prefix + id + "_" + username + ".jpg";
+            if (!frame.empty()) {
+              cv::imwrite(fn, frame);
+              log_debug("Saved fail image to: " + fn);
+            }
+          }
+        }
+      });
+  return res.success;
+}
+
+AuthResult AuthEngine::verifyUserWithDetails(const std::string &username) {
+  // Used by CLI test command - skips image logging
+  return verifyUserCore(username, nullptr);
 }
 
 std::pair<bool, std::string>
@@ -1046,17 +643,16 @@ bool AuthEngine::setLabel(const std::string &username,
           j[emb_array_key].size() >=
               static_cast<size_t>(config.max_embeddings)) {
         // Find and replace same label, or reject
-        bool found = false;
-        for (auto &entry : j[emb_array_key]) {
-          if (entry["label"] == label) {
-            entry["data"] = embedding_data;
-            entry["created"] = std::time(nullptr);
-            entry["model_version"] = getModelVersion(recognition_model_path);
-            found = true;
-            break;
-          }
-        }
-        if (!found) {
+        auto &arr = j[emb_array_key];
+        auto it = std::find_if(arr.begin(), arr.end(), [&](const json &entry) {
+          return entry["label"] == label;
+        });
+
+        if (it != arr.end()) {
+          (*it)["data"] = embedding_data;
+          (*it)["created"] = std::time(nullptr);
+          (*it)["model_version"] = getModelVersion(recognition_model_path);
+        } else {
           Logger::log(LogLevel::WARN,
                       "Max embeddings (" +
                           std::to_string(config.max_embeddings) +
@@ -1106,7 +702,7 @@ bool AuthEngine::trainUser(const std::string &username,
   if (!ensureModelsLoaded())
     return false;
   if (!isValidUsername(username)) {
-    LOG_WARN("Security Warn: Invalid username string: " + username);
+    log_warn("Security Warn: Invalid username string: " + username);
     return false;
   }
   std::string user_file =
@@ -1128,7 +724,7 @@ bool AuthEngine::trainUser(const std::string &username,
 
     cv::Mat frame = captureFrame(ac.cam.get());
     if (frame.empty()) {
-      LOG_WARN("Train: Camera " + id + " failed capture.");
+      log_warn("Train: Camera " + id + " failed capture.");
       continue;
     }
 
@@ -1137,7 +733,7 @@ bool AuthEngine::trainUser(const std::string &username,
     detector->detect(frame, faces);
     gpuSync(config.gpu_flush, config.gpu_throttle_ms);
     if (faces.rows != 1) {
-      LOG_WARN("Train: Expected 1 face, found " + std::to_string(faces.rows));
+      log_warn("Train: Expected 1 face, found " + std::to_string(faces.rows));
       continue;
     }
 
@@ -1338,13 +934,9 @@ bool AuthEngine::isUserLockedOut(const std::string &username) {
     return false;
 
   std::scoped_lock lock(lockout_mutex_);
-  auto it = lockout_map_.find(username);
-  if (it == lockout_map_.end())
-    return false;
-
-  if (std::chrono::steady_clock::now() < it->second.lockout_until)
-    return true;
-
+  if (auto it = lockout_map_.find(username); it != lockout_map_.end()) {
+    return std::chrono::steady_clock::now() < it->second.lockout_until;
+  }
   return false;
 }
 
@@ -1369,14 +961,5 @@ void AuthEngine::recordAuthAttempt(const std::string &username, bool success) {
 }
 
 std::string AuthEngine::getConfigString() const {
-  std::ostringstream ss;
-  ss << "threshold = " << config.threshold << "\n"
-     << "detection_threshold = " << config.detection_threshold << "\n"
-     << "timeout_ms = " << config.timeout_ms << "\n"
-     << "max_embeddings = " << config.max_embeddings << "\n"
-     << "model_keep_alive_sec = " << config.model_keep_alive_sec << "\n"
-     << "lockout_attempts = " << config.lockout_attempts << "\n"
-     << "lockout_duration_sec = " << config.lockout_duration_sec << "\n"
-     << "cameras = " << active_cameras.size();
-  return ss.str();
+  return config.toString();
 }

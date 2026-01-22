@@ -11,7 +11,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # --- Security Hardening ---
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(
-        -Wall -Wextra
+        -Wall -Wextra -Werror
         -fstack-protector-strong
         -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
         -fPIE
@@ -59,6 +59,9 @@ add_executable(linuxcampamd
     src/service/auth_engine.hpp
     src/service/camera.cpp
     src/service/camera.hpp
+    src/service/config.cpp
+    src/service/config.hpp
+    src/service/utils.cpp
 )
 target_include_directories(linuxcampamd PRIVATE include ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(linuxcampamd PRIVATE 
@@ -90,13 +93,16 @@ find_package(GTest)
 if(GTest_FOUND)
     add_executable(linuxcampam_tests
         tests/main.cpp
-        tests/test_config.cpp
+        tests/test_auth_config.cpp
         tests/test_model_version.cpp
         tests/test_embeddings.cpp
         tests/test_security.cpp
         tests/test_stability.cpp
+        tests/test_stability.cpp
         src/service/auth_engine.cpp
         src/service/camera.cpp
+        src/service/config.cpp
+        src/service/utils.cpp
     )
     # We need to compile auth_engine.cpp without main(), which is fine since main is in main.cpp.
     # However, auth_engine might have dependencies.

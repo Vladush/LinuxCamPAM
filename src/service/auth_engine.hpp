@@ -1,9 +1,11 @@
 #pragma once
 
-#include "camera.hpp"
-#include "constants.hpp"
+#include "config.hpp"
+#include "icamera.hpp"
 
 #include <chrono>
+#include <filesystem>
+#include <functional>
 #include <mutex>
 #include <opencv2/dnn.hpp>
 #include <opencv2/opencv.hpp>
@@ -12,12 +14,16 @@
 #include <unordered_map>
 #include <vector>
 
+namespace fs = std::filesystem;
+
+// Constants moved to AuthEngine class to avoid anonymous namespace in header
+
 // Helper: Cosine similarity between two feature vectors.
 // NOTE: With extreme values (>1e30), overflow to inf/inf produces NaN.
 // This is acceptable since real embeddings are normalized to [-1, 1] range.
 // If hardening is needed, use double precision or pre-normalize inputs.
 inline float cosine_similarity(const cv::Mat &a, const cv::Mat &b) {
-  return a.dot(b) / (cv::norm(a) * cv::norm(b));
+  return static_cast<float>(a.dot(b) / (cv::norm(a) * cv::norm(b)));
 }
 
 // Detailed auth result for diagnostics
@@ -33,7 +39,14 @@ public:
   AuthEngine();
   ~AuthEngine();
 
-  [[nodiscard]] bool init(const std::string &config_path);
+  // Rule of 5: Resource management (OpenCV pointers, mutexes) requires explicit
+  // handling
+  AuthEngine(const AuthEngine &) = delete;
+  AuthEngine &operator=(const AuthEngine &) = delete;
+  AuthEngine(AuthEngine &&) = delete;
+  AuthEngine &operator=(AuthEngine &&) = delete;
+
+  [[nodiscard]] bool init(const fs::path &config_path);
 
   // Operations
   [[nodiscard]] bool verifyUser(const std::string &username);
@@ -58,85 +71,44 @@ public:
   [[nodiscard]] std::string getConfigString() const;
 
 private:
-  enum class AuthPolicy {
-    STRICT_ALL,  // All cameras must match
-    LENIENT_ANY, // At least one camera must match
-    ADAPTIVE     // Legacy logic: IR mandatory, RGB conditional
-  };
-
-  struct CameraDefinition {
-    std::string id;
-    std::string path;
-    std::string type; // "ir", "rgb"
-    int min_brightness = 0;
-    bool mandatory = false; // For ADAPTIVE policy
-
-    // Per-camera capture settings (override global if set)
-    std::string enroll_hdr = ""; // "", "auto", "on", "off" - empty = use global
-    std::string enroll_averaging = ""; // "", "on", "off" - empty = use global
-    int enroll_average_frames = 0;     // 0 = use global
-  };
-
-  // Helper struct to hold a running camera and its config
-  struct ActiveCamera {
-    std::unique_ptr<Camera> cam;
-    CameraDefinition config;
-  };
-
-  struct Config {
-    float threshold = 0.363f;
-    float detection_threshold = 0.9f;
-    int timeout_ms = 3000;
-    int max_embeddings = 5; // 0 = unlimited
-
-    AuthPolicy policy = AuthPolicy::ADAPTIVE;
-    std::vector<CameraDefinition> camera_defs;
-
-    bool save_success = false;
-    bool save_fail = false;
-    std::string log_dir = "/var/log/linuxcampam/";
-    std::vector<std::string> provider_priority;
-    int model_keep_alive_sec = 0; // 0 = Always loaded
-
-    // Capture settings
-    std::string enroll_hdr = "auto"; // auto | on | off
-    bool enroll_averaging = true;
-    int enroll_average_frames = 5;
-    bool verify_averaging = false;
-    int verify_average_frames = 3;
-
-    // Paths
-    std::string users_dir = linuxcampam::USERS_DIR;
-    std::string models_dir = linuxcampam::MODELS_DIR;
-    std::string ir_emitter_path = linuxcampam::IR_EMITTER_PATH;
-
-    // Security / Rate Limiting
-    int lockout_attempts = 5;       // Lock after N failures. 0 = disabled.
-    int lockout_duration_sec = 300; // Lockout duration (5 min default)
-
-    // GPU sync options
-    bool gpu_flush = false;
-    int gpu_throttle_ms = 20;
-  } config;
+  Configuration config;
 
   cv::Ptr<cv::FaceDetectorYN> detector;
   cv::Ptr<cv::FaceRecognizerSF> recognizer;
 
-  std::string detection_model_path;
-  std::string recognition_model_path;
+  fs::path detection_model_path;
+  fs::path recognition_model_path;
+
+  // Helper struct to hold a running camera and its config
+  struct ActiveCamera {
+    std::unique_ptr<ICamera> cam;
+    Configuration::CameraDefinition config;
+  };
 
   std::vector<ActiveCamera> active_cameras;
 
   // Internal helper to capture from a specific camera instance
-  cv::Mat captureFrame(Camera *cam);
+  cv::Mat captureFrame(ICamera *cam);
+
+  // Helper to initialize active cameras from config
+  void initializeActiveCameras();
+
+  using PerCameraCallback =
+      std::function<void(const std::string &cam_id, const cv::Mat &frame,
+                         bool success, float score, const std::string &msg)>;
+
+  // Core verification logic (PAM + CLI)
+  [[nodiscard]] AuthResult
+  verifyUserCore(const std::string &username,
+                 const PerCameraCallback &callback = nullptr);
 
   // Helper to match a face in a frame against a stored embedding
   // Returns score (0.0 - 1.0)
-  float matchFace(const cv::Mat &frame, const cv::Mat &stored_emb,
-                  cv::Mat &out_face);
+  [[nodiscard]] float matchFace(const cv::Mat &frame, const cv::Mat &stored_emb,
+                                cv::Mat &out_face);
 
   // Helper to calculate brightness
-  double calculateBrightness(const cv::Mat &frame);
+  [[nodiscard]] double calculateBrightness(const cv::Mat &frame);
   void fallbackToCPU();
 
   // Security
@@ -156,6 +128,6 @@ private:
   };
   std::unordered_map<std::string, LockoutState> lockout_map_;
   mutable std::mutex lockout_mutex_;
-  bool isUserLockedOut(const std::string &username);
+  [[nodiscard]] bool isUserLockedOut(const std::string &username);
   void recordAuthAttempt(const std::string &username, bool success);
 };

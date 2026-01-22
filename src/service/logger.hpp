@@ -1,25 +1,24 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <mutex>
 #include <string>
+#include <syslog.h>
 
 enum class LogLevel { DEBUG, INFO, WARN, ERROR };
 
 class Logger {
 public:
   static void setLevel(LogLevel level) {
-    std::scoped_lock lock(mutex_);
-    current_level_ = level;
+    current_level_.store(level, std::memory_order_relaxed);
   }
 
   static LogLevel getLevel() {
-    // atomic read would be better, but mutex is fine for now
-    std::scoped_lock lock(mutex_);
-    return current_level_;
+    return current_level_.load(std::memory_order_relaxed);
   }
 
   static void setLogFile(const std::string &path) {
@@ -33,10 +32,36 @@ public:
     }
   }
 
+  static void enableSyslog(const std::string &ident) {
+    std::scoped_lock lock(mutex_);
+    syslog_enabled_ = true;
+    openlog(ident.c_str(), LOG_PID | LOG_NDELAY, LOG_DAEMON);
+  }
+
   static void log(LogLevel level, const std::string &msg) {
     std::scoped_lock lock(mutex_);
     if (level < current_level_) {
       return;
+    }
+
+    // Output to syslog if enabled
+    if (syslog_enabled_) {
+      int priority = LOG_INFO;
+      switch (level) {
+      case LogLevel::DEBUG:
+        priority = LOG_DEBUG;
+        break;
+      case LogLevel::INFO:
+        priority = LOG_INFO;
+        break;
+      case LogLevel::WARN:
+        priority = LOG_WARNING;
+        break;
+      case LogLevel::ERROR:
+        priority = LOG_ERR;
+        break;
+      }
+      syslog(priority, "%s", msg.c_str());
     }
 
     // Get timestamp
@@ -78,28 +103,41 @@ public:
 
 private:
   static inline std::mutex mutex_;
-  static inline LogLevel current_level_ = LogLevel::INFO;
+  static inline std::atomic<LogLevel> current_level_{LogLevel::INFO};
   static inline std::ofstream log_file_;
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+  static inline bool syslog_enabled_ = false;
 };
 
-// Logging Macros
-// These macros ensure that we don't pay the cost of string construction
-// or function calls if the log level is not met.
-//
-// Usage: LOG_DEBUG("Value: " + std::to_string(x));
-//
-#define LOG_DEBUG(msg)                                                         \
-  if (Logger::getLevel() <= LogLevel::DEBUG)                                   \
-  Logger::log(LogLevel::DEBUG, msg)
+// Template helpers (replacing macros) to skip processing if log level is too
+// low. Checks level first to avoid overhead.
+template <typename T>
+inline void log_debug(const T &msg) {
+  if (Logger::getLevel() <= LogLevel::DEBUG) {
+    Logger::log(LogLevel::DEBUG, msg);
+  }
+}
 
-#define LOG_INFO(msg)                                                          \
-  if (Logger::getLevel() <= LogLevel::INFO)                                    \
-  Logger::log(LogLevel::INFO, msg)
+template <typename T>
+inline void log_info(const T &msg) {
+  if (Logger::getLevel() <= LogLevel::INFO) {
+    Logger::log(LogLevel::INFO, msg);
+  }
+}
 
-#define LOG_WARN(msg)                                                          \
-  if (Logger::getLevel() <= LogLevel::WARN)                                    \
-  Logger::log(LogLevel::WARN, msg)
+template <typename T>
+inline void log_warn(const T &msg) {
+  if (Logger::getLevel() <= LogLevel::WARN) {
+    Logger::log(LogLevel::WARN, msg);
+  }
+}
 
-#define LOG_ERROR(msg)                                                         \
-  if (Logger::getLevel() <= LogLevel::ERROR)                                   \
-  Logger::log(LogLevel::ERROR, msg)
+template <typename T>
+inline void log_error(const T &msg) {
+  if (Logger::getLevel() <= LogLevel::ERROR) {
+    Logger::log(LogLevel::ERROR, msg);
+  }
+}
+
+// Macros removed to avoid conflict with syslog.h
+// Use log_debug(), log_info(), log_warn(), log_error() directly.
