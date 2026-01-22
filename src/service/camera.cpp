@@ -18,6 +18,7 @@
 #include <vector>
 
 // Required for posix_spawn environment inheritance
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 extern char **environ;
 
 void Camera::triggerIrEmitter() {

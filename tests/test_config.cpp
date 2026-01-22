@@ -2,9 +2,11 @@
 #include <gtest/gtest.h>
 #include <string_view>
 
+constexpr size_t MAX_USERNAME_LENGTH = 32;
+
 bool isValidUsername(std::string_view username) {
   // Basic sanity checks
-  if (username.empty() || username.length() > 32)
+  if (username.empty() || username.length() > MAX_USERNAME_LENGTH)
     return false;
 
   // Block path traversal and hidden files

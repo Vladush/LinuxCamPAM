@@ -1,8 +1,10 @@
+
 #include "auth_engine.hpp"
 #include "constants.hpp"
 #include "json.hpp"
 #include "logger.hpp"
 
+#include <array>
 #include <atomic>
 #include <csignal>
 #include <filesystem>
@@ -16,7 +18,13 @@
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
+namespace {
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 std::atomic<bool> g_running(true);
+constexpr size_t BUFFER_SIZE = 1024;
+constexpr int SOCKET_PERMS = 0666;
+constexpr int BACKLOG = 5;
+} // namespace
 
 void signal_handler(int signum) {
   Logger::log(LogLevel::INFO,
@@ -29,15 +37,15 @@ struct Config {
 };
 
 void handle_client(int client_fd, AuthEngine &engine) {
-  char buffer[1024] = {0};
-  ssize_t valread = read(client_fd, buffer, 1024);
+  std::array<char, BUFFER_SIZE> buffer = {};
+  ssize_t valread = read(client_fd, buffer.data(), buffer.size());
   if (valread <= 0) {
     close(client_fd);
     return;
   }
 
-  std::string request(buffer);
-  LOG_DEBUG("Received Request: " + request);
+  std::string request(buffer.data());
+  log_debug("Received Request: " + request);
 
   // Protocol: COMMAND argument
   // e.g. AUTH_REQUEST vlad | ADD_USER vlad | TRAIN_USER vlad default |
@@ -145,11 +153,11 @@ void handle_client(int client_fd, AuthEngine &engine) {
       if (levelStr == "DEBUG") {
         Logger::setLevel(LogLevel::DEBUG);
         response = "LOG_LEVEL_DEBUG";
-        LOG_INFO("Log level set to DEBUG via socket.");
+        log_info("Log level set to DEBUG via socket.");
       } else if (levelStr == "INFO") {
         Logger::setLevel(LogLevel::INFO);
         response = "LOG_LEVEL_INFO";
-        LOG_INFO("Log level set to INFO via socket.");
+        log_info("Log level set to INFO via socket.");
       } else {
         response = "ERROR Invalid Log Level";
       }
@@ -177,15 +185,15 @@ void handle_client(int client_fd, AuthEngine &engine) {
 }
 
 int main(int argc, char *argv[]) {
-  signal(SIGINT, signal_handler);
-  signal(SIGTERM, signal_handler);
+  (void)signal(SIGINT, signal_handler);
+  (void)signal(SIGTERM, signal_handler);
 
   // Parse args
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
     if (arg == "--debug" || arg == "-d") {
       Logger::setLevel(LogLevel::DEBUG);
-      LOG_DEBUG("Debug logging enabled via command line.");
+      log_debug("Debug logging enabled via command line.");
     }
   }
 
@@ -231,28 +239,36 @@ int main(int argc, char *argv[]) {
   }
 
   // Socket Setup
-  int server_fd;
-  struct sockaddr_un address;
+  int server_fd = 0;
+  struct sockaddr_un address = {};
 
-  if ((server_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == 0) {
+  server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  if (server_fd == 0) {
     perror("socket failed");
     return 1;
   }
 
   address.sun_family = AF_UNIX;
-  strncpy(address.sun_path, socket_path.c_str(), sizeof(address.sun_path) - 1);
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-array-to-pointer-decay)
+  (void)std::snprintf(address.sun_path, sizeof(address.sun_path), "%s",
+                      socket_path.c_str());
 
-  unlink(socket_path.c_str()); // Remove old socket
+  (void)unlink(socket_path.c_str()); // Remove old socket
+  // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
   if (bind(server_fd, reinterpret_cast<struct sockaddr *>(&address),
            sizeof(address)) < 0) {
+    // NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
     perror("bind failed");
     return 1;
   }
 
-  // World-readable socket (0666) allows console users to trigger authentication
-  chmod(socket_path.c_str(), 0666);
+  // Enable syslog for daemon logging
+  Logger::enableSyslog("linuxcampamd");
 
-  if (listen(server_fd, 5) < 0) {
+  // World-readable socket allows console users to trigger authentication
+  chmod(socket_path.c_str(), SOCKET_PERMS);
+
+  if (listen(server_fd, BACKLOG) < 0) {
     perror("listen");
     return 1;
   }
@@ -265,7 +281,7 @@ int main(int argc, char *argv[]) {
     FD_SET(server_fd, &readfds);
 
     // Timeout for select to allow checking g_running
-    struct timeval timeout;
+    struct timeval timeout = {};
     timeout.tv_sec = 1;
     timeout.tv_usec = 0;
 
@@ -279,11 +295,14 @@ int main(int argc, char *argv[]) {
     }
 
     if (g_running && activity > 0 && FD_ISSET(server_fd, &readfds)) {
-      int new_socket;
+      int new_socket = 0;
       int addrlen = sizeof(address);
-      if ((new_socket =
-               accept(server_fd, reinterpret_cast<struct sockaddr *>(&address),
-                      reinterpret_cast<socklen_t *>(&addrlen))) >= 0) {
+      // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
+      new_socket =
+          accept(server_fd, reinterpret_cast<struct sockaddr *>(&address),
+                 reinterpret_cast<socklen_t *>(&addrlen));
+      // NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
+      if (new_socket >= 0) {
         // Handle in thread or blocking? Blocking for now - camera is
         // single-access anyway
         handle_client(new_socket, engine);
@@ -292,7 +311,7 @@ int main(int argc, char *argv[]) {
   }
 
   close(server_fd);
-  unlink(socket_path.c_str());
+  (void)unlink(socket_path.c_str());
   Logger::log(LogLevel::INFO, "Stopped.");
   return 0;
 }

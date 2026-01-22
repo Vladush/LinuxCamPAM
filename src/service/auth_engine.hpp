@@ -12,12 +12,14 @@
 #include <unordered_map>
 #include <vector>
 
+// Constants moved to AuthEngine class to avoid anonymous namespace in header
+
 // Helper: Cosine similarity between two feature vectors.
 // NOTE: With extreme values (>1e30), overflow to inf/inf produces NaN.
 // This is acceptable since real embeddings are normalized to [-1, 1] range.
 // If hardening is needed, use double precision or pre-normalize inputs.
 inline float cosine_similarity(const cv::Mat &a, const cv::Mat &b) {
-  return a.dot(b) / (cv::norm(a) * cv::norm(b));
+  return static_cast<float>(a.dot(b) / (cv::norm(a) * cv::norm(b)));
 }
 
 // Detailed auth result for diagnostics
@@ -32,6 +34,13 @@ class AuthEngine {
 public:
   AuthEngine();
   ~AuthEngine();
+
+  // Rule of 5: Resource management (OpenCV pointers, mutexes) requires explicit
+  // handling
+  AuthEngine(const AuthEngine &) = delete;
+  AuthEngine &operator=(const AuthEngine &) = delete;
+  AuthEngine(AuthEngine &&) = delete;
+  AuthEngine &operator=(AuthEngine &&) = delete;
 
   [[nodiscard]] bool init(const std::string &config_path);
 
@@ -58,6 +67,16 @@ public:
   [[nodiscard]] std::string getConfigString() const;
 
 private:
+  static constexpr float DEFAULT_THRESHOLD = 0.363f;
+  static constexpr float DEFAULT_DETECTION_THRESHOLD = 0.9f;
+  static constexpr int DEFAULT_TIMEOUT_MS = 3000;
+  static constexpr int DEFAULT_MAX_EMBEDDINGS = 5;
+  static constexpr int DEFAULT_ENROLL_AVG_FRAMES = 5;
+  static constexpr int DEFAULT_VERIFY_AVG_FRAMES = 3;
+  static constexpr int DEFAULT_LOCKOUT_ATTEMPTS = 5;
+  static constexpr int DEFAULT_LOCKOUT_DURATION_SEC = 300;
+  static constexpr int DEFAULT_GPU_THROTTLE_MS = 20;
+
   enum class AuthPolicy {
     STRICT_ALL,  // All cameras must match
     LENIENT_ANY, // At least one camera must match
@@ -84,10 +103,10 @@ private:
   };
 
   struct Config {
-    float threshold = 0.363f;
-    float detection_threshold = 0.9f;
-    int timeout_ms = 3000;
-    int max_embeddings = 5; // 0 = unlimited
+    float threshold = DEFAULT_THRESHOLD;
+    float detection_threshold = DEFAULT_DETECTION_THRESHOLD;
+    int timeout_ms = DEFAULT_TIMEOUT_MS;
+    int max_embeddings = DEFAULT_MAX_EMBEDDINGS; // 0 = unlimited
 
     AuthPolicy policy = AuthPolicy::ADAPTIVE;
     std::vector<CameraDefinition> camera_defs;
@@ -101,9 +120,9 @@ private:
     // Capture settings
     std::string enroll_hdr = "auto"; // auto | on | off
     bool enroll_averaging = true;
-    int enroll_average_frames = 5;
+    int enroll_average_frames = DEFAULT_ENROLL_AVG_FRAMES;
     bool verify_averaging = false;
-    int verify_average_frames = 3;
+    int verify_average_frames = DEFAULT_VERIFY_AVG_FRAMES;
 
     // Paths
     std::string users_dir = linuxcampam::USERS_DIR;
@@ -111,12 +130,14 @@ private:
     std::string ir_emitter_path = linuxcampam::IR_EMITTER_PATH;
 
     // Security / Rate Limiting
-    int lockout_attempts = 5;       // Lock after N failures. 0 = disabled.
-    int lockout_duration_sec = 300; // Lockout duration (5 min default)
+    int lockout_attempts =
+        DEFAULT_LOCKOUT_ATTEMPTS; // Lock after N failures. 0 = disabled.
+    int lockout_duration_sec =
+        DEFAULT_LOCKOUT_DURATION_SEC; // Lockout duration (5 min default)
 
     // GPU sync options
     bool gpu_flush = false;
-    int gpu_throttle_ms = 20;
+    int gpu_throttle_ms = DEFAULT_GPU_THROTTLE_MS;
   } config;
 
   cv::Ptr<cv::FaceDetectorYN> detector;
