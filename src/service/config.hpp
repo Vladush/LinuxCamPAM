@@ -68,7 +68,7 @@ public:
   int gpu_throttle_ms = DEFAULT_GPU_THROTTLE_MS;
 
   // Methods
-  bool load(const fs::path &config_path);
+  [[nodiscard]] bool load(const fs::path &config_path);
   [[nodiscard]] std::string toString() const;
 
 private:

@@ -41,7 +41,8 @@ struct FileDescriptor {
 };
 
 // Camera Utilities
-std::string classifyCameraType(const std::string &device_path);
-std::vector<std::pair<std::string, std::string>> enumerateCameras();
+[[nodiscard]] std::string classifyCameraType(const std::string &device_path);
+[[nodiscard]] std::vector<std::pair<std::string, std::string>>
+enumerateCameras();
 
 } // namespace linuxcampam

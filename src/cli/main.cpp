@@ -5,6 +5,7 @@
 #include <ctime>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -96,7 +97,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  std::string op = argv[1];
+  std::string_view op = argv[1];
 
   if (op == "add") {
     if (argc < 3) {

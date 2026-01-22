@@ -13,21 +13,20 @@ namespace fs = std::filesystem;
 namespace linuxcampam {
 
 std::string classifyCameraType(const std::string &device_path) {
-  int fd = open(device_path.c_str(), O_RDONLY);
-  if (fd < 0)
+  FileDescriptor fd(open(device_path.c_str(), O_RDONLY));
+  if (!fd.isValid())
     return "";
 
   struct v4l2_capability cap = {};
-  if (ioctl(fd, VIDIOC_QUERYCAP, &cap) < 0 ||
+  if (ioctl(fd.get(), VIDIOC_QUERYCAP, &cap) < 0 ||
       !(cap.device_caps & V4L2_CAP_VIDEO_CAPTURE)) {
-    close(fd);
     return "";
   }
 
   bool has_grey = false, has_color = false;
   struct v4l2_fmtdesc fmt = {};
   fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-  while (ioctl(fd, VIDIOC_ENUM_FMT, &fmt) == 0) {
+  while (ioctl(fd.get(), VIDIOC_ENUM_FMT, &fmt) == 0) {
     if (fmt.pixelformat == V4L2_PIX_FMT_GREY ||
         fmt.pixelformat == V4L2_PIX_FMT_Y10 ||
         fmt.pixelformat == V4L2_PIX_FMT_Y12 ||
@@ -40,7 +39,6 @@ std::string classifyCameraType(const std::string &device_path) {
       has_color = true;
     fmt.index++;
   }
-  close(fd);
 
   if (has_grey && !has_color)
     return "ir";

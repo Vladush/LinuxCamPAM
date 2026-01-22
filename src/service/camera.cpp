@@ -1,9 +1,7 @@
 #include "camera.hpp"
-
 #include "constants.hpp"
 #include "logger.hpp"
 #include "utils.hpp"
-
 #include <array>
 #include <cstdlib>
 #include <fcntl.h>
@@ -12,8 +10,10 @@
 #include <opencv2/core/utils/logger.hpp>
 #include <opencv2/photo.hpp>
 #include <spawn.h>
+#include <sstream>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
+#include <system_error>
 #include <thread>
 #include <unistd.h>
 #include <vector>
@@ -64,7 +64,10 @@ void Camera::triggerIrEmitter() {
       log_error("[Camera] Failed to wait for IR emitter.");
     }
   } else {
-    log_error("[Camera] posix_spawn failed: " + std::to_string(status));
+    std::ostringstream oss;
+    oss << "[Camera] posix_spawn failed for " << ir_emitter_path_ << ": "
+        << std::system_category().message(status) << " (" << status << ")";
+    log_error(oss.str());
   }
 }
 
