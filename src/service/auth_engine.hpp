@@ -1,6 +1,7 @@
 #pragma once
 
 #include "camera.hpp"
+#include "camera_interface.hpp"
 #include "constants.hpp"
 
 #include <chrono>
@@ -101,7 +102,7 @@ private:
 
   // Helper struct to hold a running camera and its config
   struct ActiveCamera {
-    std::unique_ptr<Camera> cam;
+    std::unique_ptr<ICamera> cam;
     CameraDefinition config;
   };
 
@@ -153,7 +154,7 @@ private:
   std::vector<ActiveCamera> active_cameras;
 
   // Internal helper to capture from a specific camera instance
-  cv::Mat captureFrame(Camera *cam);
+  cv::Mat captureFrame(ICamera *cam);
 
   // Helper to match a face in a frame against a stored embedding
   // Returns score (0.0 - 1.0)

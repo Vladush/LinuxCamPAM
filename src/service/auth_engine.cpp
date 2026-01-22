@@ -447,7 +447,7 @@ bool AuthEngine::loadModels() {
         log_info("Initializing Camera: " + def.id + " (" + def.type + ") at " +
                  def.path);
         ac.cam = std::make_unique<Camera>(def.path, def.type == "ir",
-                                          config.ir_emitter_path);
+                                          config.ir_emitter_path.string());
         active_cameras.push_back(std::move(ac));
       }
     }
@@ -537,7 +537,7 @@ bool AuthEngine::isValidUsername(std::string_view username) {
   });
 }
 
-cv::Mat AuthEngine::captureFrame(Camera *cam) {
+cv::Mat AuthEngine::captureFrame(ICamera *cam) {
   if (!cam)
     return cv::Mat();
   return cam->capture();

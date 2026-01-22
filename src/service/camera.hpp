@@ -1,11 +1,12 @@
 #pragma once
 
+#include "camera_interface.hpp"
 #include "constants.hpp"
 
 #include <opencv2/opencv.hpp>
 #include <string>
 
-class Camera {
+class Camera : public ICamera {
 public:
   explicit Camera(const std::string &device_path, bool is_ir = false,
                   const std::string &ir_cmd_path = "");
@@ -17,17 +18,21 @@ public:
   Camera(Camera &&) = delete;
   Camera &operator=(Camera &&) = delete;
 
-  void triggerIrEmitter();
+  void triggerIrEmitter() override;
 
   // Standard capture (for verification - fast)
-  cv::Mat capture();
+  cv::Mat capture() override;
 
   // Enhanced capture methods (for enrollment - quality)
-  cv::Mat captureAveraged(int num_frames = linuxcampam::CAMERA_AVERAGE_FRAMES);
-  cv::Mat captureHDR(); // Multi-exposure, requires manual exposure support
+  cv::Mat
+  captureAveraged(int num_frames = linuxcampam::CAMERA_AVERAGE_FRAMES) override;
+  cv::Mat
+  captureHDR() override; // Multi-exposure, requires manual exposure support
 
   // Capability detection
-  bool supportsManualExposure() const { return supports_manual_exposure_; }
+  bool supportsManualExposure() const override {
+    return supports_manual_exposure_;
+  }
 
 private:
   std::string device_path;
