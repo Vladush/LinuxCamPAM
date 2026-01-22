@@ -43,7 +43,6 @@ private:
   int device_id = 0;
   bool is_ir_camera = false;
   bool supports_manual_exposure_ = false;
-  cv::VideoCapture cap;
 
   bool detectExposureSupport();
   bool openAndWarmup(cv::VideoCapture &cap);

@@ -9,7 +9,6 @@
 #include <fcntl.h>
 #include <filesystem>
 #include <linux/videodev2.h>
-#include <numeric>
 #include <opencv2/core/utils/logger.hpp>
 #include <opencv2/photo.hpp>
 #include <spawn.h>
@@ -108,11 +107,7 @@ Camera::Camera(const std::string &device_path, bool is_ir,
   }
 }
 
-Camera::~Camera() {
-  if (cap.isOpened()) {
-    cap.release();
-  }
-}
+Camera::~Camera() {}
 
 bool Camera::openAndWarmup(cv::VideoCapture &temp_cap) {
   // Open camera FIRST, then trigger IR emitter
@@ -170,35 +165,37 @@ cv::Mat Camera::captureAveraged(int num_frames) {
   for (int i = 0; i < linuxcampam::CAMERA_WARMUP_FRAMES; i++)
     temp_cap.read(frame);
 
-  // Collect frames
-  std::vector<cv::Mat> frames;
+  // Accumulate frames in-place
+  cv::Mat sum;
+  int count = 0;
   cv::Size expected_size;
+
   for (int i = 0; i < num_frames; i++) {
-    cv::Mat f;
-    temp_cap.read(f);
-    if (!f.empty()) {
-      if (frames.empty()) {
-        expected_size = f.size();
-      }
-      if (f.size() == expected_size) {
-        cv::Mat f32;
-        f.convertTo(f32, CV_32FC3);
-        frames.push_back(f32);
-      }
+    temp_cap.read(frame);
+    if (frame.empty())
+      continue;
+
+    if (count == 0) {
+      expected_size = frame.size();
+      frame.convertTo(sum, CV_32FC3);
+      count++;
+    } else if (frame.size() == expected_size) {
+      cv::Mat f32;
+      frame.convertTo(f32, CV_32FC3);
+      cv::add(sum, f32, sum);
+      count++;
     }
   }
 
-  if (frames.empty())
+  if (count == 0 || sum.empty())
     return cv::Mat();
 
   // Average
-  cv::Mat sum = cv::Mat::zeros(frames[0].size(), CV_32FC3);
-  sum = std::accumulate(frames.begin(), frames.end(), sum);
-  sum /= static_cast<float>(frames.size());
+  sum /= static_cast<float>(count);
 
   cv::Mat result;
   sum.convertTo(result, CV_8UC3);
-  log_info("[Camera] Averaged " + std::to_string(frames.size()) + " frames");
+  log_info("[Camera] Averaged " + std::to_string(count) + " frames");
   return result;
 }
 
