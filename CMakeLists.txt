@@ -98,7 +98,7 @@ if(GTest_FOUND)
         tests/test_embeddings.cpp
         tests/test_security.cpp
         tests/test_stability.cpp
-        tests/test_stability.cpp
+        tests/test_camera_detection.cpp
         src/service/auth_engine.cpp
         src/service/camera.cpp
         src/service/config.cpp
