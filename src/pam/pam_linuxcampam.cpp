@@ -1,5 +1,5 @@
 #include "constants.hpp"
-
+#include "ipc_protocol.hpp"
 #include <array>
 #include <cstring>
 #include <memory>
@@ -124,8 +124,12 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
       return PAM_AUTHINFO_UNAVAIL;
     }
 
-    std::string req = "AUTH_REQUEST " + std::string(user);
-    if (send(sock.get(), req.c_str(), req.length(), 0) < 0) {
+    // Use protocol to serialize request
+    linuxcampam::protocol::Request req{
+        linuxcampam::protocol::Command::AUTH_REQUEST, {user}};
+    std::string reqStr = req.serialize();
+
+    if (send(sock.get(), reqStr.c_str(), reqStr.length(), 0) < 0) {
       syslog(LOG_ERR, "Failed to send auth request: %m");
       return PAM_AUTHINFO_UNAVAIL;
     }

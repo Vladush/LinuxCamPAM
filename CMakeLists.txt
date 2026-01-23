@@ -48,7 +48,7 @@ configure_file(${CMAKE_SOURCE_DIR}/config/config.ini ${CMAKE_BINARY_DIR}/config.
 
 # PAM Module
 add_library(pam_linuxcampam SHARED src/pam/pam_linuxcampam.cpp)
-target_include_directories(pam_linuxcampam PRIVATE include ${PAM_INCLUDE_DIR})
+target_include_directories(pam_linuxcampam PRIVATE include src/common ${PAM_INCLUDE_DIR})
 target_link_libraries(pam_linuxcampam PRIVATE ${PAM_LIBRARY})
 set_target_properties(pam_linuxcampam PROPERTIES PREFIX "") # pam_ modules often don't want strict lib prefix, though standard is usually ok. PAM expects filename to match config.
 
@@ -59,7 +59,7 @@ add_library(service_core STATIC
     src/service/config.cpp
     src/service/utils.cpp
 )
-target_include_directories(service_core PUBLIC include ${OpenCV_INCLUDE_DIRS})
+target_include_directories(service_core PUBLIC include src src/common ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(service_core PUBLIC 
     ${OpenCV_LIBS} 
     Threads::Threads
@@ -84,10 +84,21 @@ add_executable(check_opencl src/tools/check_opencl.cpp)
 target_link_libraries(check_opencl PRIVATE ${OpenCV_LIBS})
 
 # --- Testing ---
+# --- Testing ---
 enable_testing()
-find_package(GTest)
 
-if(GTest_FOUND)
+include(FetchContent)
+FetchContent_Declare(
+  googletest
+  URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+  DOWNLOAD_EXTRACT_TIMESTAMP true
+)
+# Prevent overriding the parent project's compiler/linker settings
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(googletest)
+
+if(TARGET gtest)
     add_executable(linuxcampam_tests
         tests/main.cpp
         tests/test_auth_config.cpp
@@ -97,12 +108,14 @@ if(GTest_FOUND)
         tests/test_stability.cpp
         tests/test_camera_detection.cpp
         tests/test_config_detection.cpp
+        tests/test_auth_logic.cpp
+        tests/test_protocol.cpp
     )
     
     # We link against the service_core library to test internal logic without 
     # duplicating compilation units or pulling in the main service entry point.
     target_link_libraries(linuxcampam_tests PRIVATE 
-        GTest::GTest GTest::Main 
+        gtest gtest_main gmock
         service_core
     )
     

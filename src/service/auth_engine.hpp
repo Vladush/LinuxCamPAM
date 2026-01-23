@@ -70,8 +70,15 @@ public:
   // Config visibility
   [[nodiscard]] std::string getConfigString() const;
 
+  // Allows to swap out the camera implementation (e.g., using a mock for
+  // testing).
+  using CameraFactory = std::function<std::unique_ptr<ICamera>(
+      const Configuration::CameraDefinition &)>;
+  void setCameraFactory(CameraFactory factory);
+
 private:
   Configuration config;
+  CameraFactory camera_factory_;
 
   cv::Ptr<cv::FaceDetectorYN> detector;
   cv::Ptr<cv::FaceRecognizerSF> recognizer;

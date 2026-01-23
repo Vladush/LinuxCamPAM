@@ -1,6 +1,7 @@
 
 #include "auth_engine.hpp"
 #include "constants.hpp"
+#include "ipc_protocol.hpp"
 #include "json.hpp"
 #include "logger.hpp"
 
@@ -47,86 +48,92 @@ void handle_client(int client_fd, AuthEngine &engine) {
   std::string request(buffer.data());
   log_debug("Received Request: " + request);
 
-  // Protocol: COMMAND argument
-  // e.g. AUTH_REQUEST vlad | ADD_USER vlad | TRAIN_USER vlad default |
+  // Protocol: COMMAND argument via ipc_protocol.hpp
+  // e.g. AUTH_REQUEST john | ADD_USER john | TRAIN_USER john default |
   // TEST_AUTH
 
   std::string response = "ERROR Unknown Command";
-
-  std::istringstream iss(request);
-  std::string cmd;
-  iss >> cmd;
+  using namespace linuxcampam::protocol;
+  std::string cmd = "UNKNOWN";
 
   try {
-    if (cmd == "AUTH_REQUEST") {
-      std::string user;
-      iss >> user;
-      bool success = engine.verifyUser(user);
+    Request req = Request::deserialize(request);
+    cmd = commandToString(req.cmd);
+    log_debug("Command: " + commandToString(req.cmd));
+
+    // Command Dispatch
+    switch (req.cmd) {
+    case Command::AUTH_REQUEST: {
+      if (req.args.empty())
+        break;
+      bool success = engine.verifyUser(req.args[0]);
       response = success ? "AUTH_SUCCESS" : "AUTH_FAIL";
-    } else if (cmd == "ADD_USER") {
-      std::string user;
-      iss >> user;
-      auto Result = engine.enrollUser(user);
-      if (Result.first) {
-        response = "ENROLL_SUCCESS";
-      } else {
-        response = "ENROLL_FAIL " + Result.second;
-      }
-    } else if (cmd == "TRAIN_USER") {
-      std::string user, label;
-      iss >> user >> label;
-      if (label.empty())
-        label = "default";
-      bool success = engine.trainUser(user, label, false);
+      break;
+    }
+    case Command::ADD_USER: {
+      if (req.args.empty())
+        break;
+      auto Result = engine.enrollUser(req.args[0]);
+      response =
+          Result.first ? "ENROLL_SUCCESS" : ("ENROLL_FAIL " + Result.second);
+      break;
+    }
+    case Command::TRAIN_USER: {
+      if (req.args.empty())
+        break;
+      std::string label = (req.args.size() > 1) ? req.args[1] : "default";
+      bool success = engine.trainUser(req.args[0], label, false);
       response = success ? "TRAIN_SUCCESS" : "TRAIN_FAIL";
-    } else if (cmd == "GET_VERSION") {
+      break;
+    }
+    case Command::GET_VERSION: {
 #ifdef LINUXCAMPAM_VERSION
       response = LINUXCAMPAM_VERSION;
 #else
       response = "Unknown";
 #endif
-    } else if (cmd == "TEST_AUTH") {
-      std::string user;
-      iss >> user;
-
+      break;
+    }
+    case Command::TEST_AUTH: {
+      std::string user = req.args.empty() ? "" : req.args[0];
       if (!user.empty()) {
-        // User verification test with detailed results
         Logger::log(LogLevel::INFO, "Testing Auth for user: " + user);
         AuthResult result = engine.verifyUserWithDetails(user);
-        std::string hw_status = "HW_OK"; // Auth capture confirms HW works
+        std::string hw_status = "HW_OK";
         std::string auth_status =
             result.success ? "AUTH_SUCCESS" : ("AUTH_FAIL: " + result.reason);
         response = hw_status + " | " + auth_status;
       } else {
-        // Hardware test only (no auth)
         bool hw_success = engine.testCameraAndAuth();
         response = hw_success ? "HW_OK" : "HW_FAIL";
       }
-    } else if (cmd == "SET_LABEL") {
-      std::string user, label;
-      iss >> user >> label;
-      if (user.empty() || label.empty()) {
+      break;
+    }
+    case Command::SET_LABEL: {
+      if (req.args.size() < 2) {
         response = "ERROR Missing user or label";
       } else {
-        bool success = engine.setLabel(user, label);
+        bool success = engine.setLabel(req.args[0], req.args[1]);
         response = success ? "LABEL_SET" : "LABEL_FAIL";
       }
-    } else if (cmd == "TRAIN_NEW") {
-      std::string user, label;
-      iss >> user >> label;
-      if (user.empty()) {
+      break;
+    }
+    case Command::TRAIN_NEW: {
+      if (req.args.empty()) {
         response = "ERROR Missing user";
       } else {
-        bool success = engine.trainUser(user, label, true);
+        std::string label = (req.args.size() > 1) ? req.args[1] : "default";
+        bool success = engine.trainUser(req.args[0], label, true);
         response = success ? "TRAIN_SUCCESS" : "TRAIN_FAIL";
       }
-    } else if (cmd == "LIST_EMBEDDINGS") {
-      std::string user;
-      iss >> user;
-      if (user.empty()) {
+      break;
+    }
+
+    case Command::LIST_EMBEDDINGS: {
+      if (req.args.empty()) {
         response = "ERROR Missing user";
       } else {
-        auto labels = engine.listEmbeddings(user);
+        auto labels = engine.listEmbeddings(req.args[0]);
         if (labels.empty()) {
           response = "No embeddings found";
         } else {
@@ -136,20 +143,25 @@ void handle_client(int client_fd, AuthEngine &engine) {
           }
         }
       }
-    } else if (cmd == "REMOVE_EMBEDDING") {
-      std::string user, label;
-      iss >> user >> label;
-      if (user.empty() || label.empty()) {
+      break;
+    }
+    case Command::REMOVE_EMBEDDING: {
+      if (req.args.size() < 2) {
         response = "ERROR Missing user or label";
       } else {
-        bool success = engine.removeEmbedding(user, label);
+        bool success = engine.removeEmbedding(req.args[0], req.args[1]);
         response = success ? "REMOVED" : "REMOVE_FAIL";
       }
-    } else if (cmd == "GET_CONFIG") {
+      break;
+    }
+    case Command::GET_CONFIG: {
       response = engine.getConfigString();
-    } else if (cmd == "SET_LOG_LEVEL") {
-      std::string levelStr;
-      iss >> levelStr;
+      break;
+    }
+    case Command::SET_LOG_LEVEL: {
+      if (req.args.empty())
+        break;
+      std::string levelStr = req.args[0];
       if (levelStr == "DEBUG") {
         Logger::setLevel(LogLevel::DEBUG);
         response = "LOG_LEVEL_DEBUG";
@@ -161,7 +173,9 @@ void handle_client(int client_fd, AuthEngine &engine) {
       } else {
         response = "ERROR Invalid Log Level";
       }
-    } else if (cmd == "GET_LOG_LEVEL") {
+      break;
+    }
+    case Command::GET_LOG_LEVEL: {
       auto lvl = Logger::getLevel();
       if (lvl == LogLevel::DEBUG)
         response = "DEBUG";
@@ -171,6 +185,12 @@ void handle_client(int client_fd, AuthEngine &engine) {
         response = "WARN";
       else
         response = "ERROR";
+      break;
+    }
+    default: {
+      // response already set to unknown
+      break;
+    }
     }
   } catch (const std::exception &e) {
     Logger::log(LogLevel::ERROR, "Exception handling " + cmd + ": " + e.what());

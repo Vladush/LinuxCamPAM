@@ -53,8 +53,19 @@ inline std::string getModelVersion(const fs::path &model_path) {
 
 // Check for explicit legacy behavior, otherwise skip
 
-AuthEngine::AuthEngine() {}
+// We set up a default factory here that creates real Camera objects.
+// Tests can override this later using setCameraFactory().
+AuthEngine::AuthEngine() {
+  camera_factory_ = [this](const Configuration::CameraDefinition &def) {
+    return std::make_unique<Camera>(def.path, def.type == "ir",
+                                    config.ir_emitter_path.string());
+  };
+}
 AuthEngine::~AuthEngine() {}
+
+void AuthEngine::setCameraFactory(CameraFactory factory) {
+  camera_factory_ = std::move(factory);
+}
 
 bool AuthEngine::init(const fs::path &config_path) {
   if (!config.load(config_path)) {
@@ -90,9 +101,7 @@ void AuthEngine::initializeActiveCameras() {
                      ac.config = def; // Copy config
                      log_info("Initializing Camera: " + def.id + " (" +
                               def.type + ") at " + def.path);
-                     ac.cam = std::make_unique<Camera>(
-                         def.path, def.type == "ir",
-                         config.ir_emitter_path.string());
+                     ac.cam = camera_factory_(def);
                      return ac;
                    });
   }
