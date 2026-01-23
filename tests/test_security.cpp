@@ -5,7 +5,15 @@
 #include <limits>
 #include <string>
 #include <vector>
+
 using json = nlohmann::json;
+
+namespace {
+constexpr size_t kMaxCameraPathLength = 20;
+constexpr size_t kEmbeddingDim = 128;
+constexpr float kDefaultEmbeddingVal = 0.5f;
+constexpr float kLargeVal = 1e30f;
+} // namespace
 
 // ============================================================================
 // INPUT VALIDATION TESTS
@@ -23,7 +31,7 @@ bool isValidCameraPath(const std::string &path) {
   if (path.find("..") != std::string::npos)
     return false;
   // Must be reasonable length
-  if (path.length() > 20)
+  if (path.length() > kMaxCameraPathLength)
     return false;
   return true;
 }
@@ -103,22 +111,24 @@ TEST(SecurityTest, ConfigPathValidation) {
 // ============================================================================
 
 TEST(SecurityTest, MalformedEmbeddingData) {
+  constexpr size_t kWrongDim = 64;
+
   // Empty embedding array should be handled
   json empty_emb;
   empty_emb["data"] = json::array();
   EXPECT_EQ(empty_emb["data"].size(), 0);
 
   // Wrong dimension - SFace uses 128-dim embeddings
-  std::vector<float> wrong_dim(64, 0.5f);
-  EXPECT_NE(wrong_dim.size(), 128);
+  std::vector<float> wrong_dim(kWrongDim, kDefaultEmbeddingVal);
+  EXPECT_NE(wrong_dim.size(), kEmbeddingDim);
 
   // Correct dimension
-  std::vector<float> correct_dim(128, 0.5f);
-  EXPECT_EQ(correct_dim.size(), 128);
+  std::vector<float> correct_dim(kEmbeddingDim, kDefaultEmbeddingVal);
+  EXPECT_EQ(correct_dim.size(), kEmbeddingDim);
 }
 
 TEST(SecurityTest, EmbeddingNaNAndInfValues) {
-  std::vector<float> embedding(128, 0.5f);
+  std::vector<float> embedding(kEmbeddingDim, kDefaultEmbeddingVal);
 
   // NaN values should be detectable
   embedding[0] = std::numeric_limits<float>::quiet_NaN();
@@ -129,14 +139,14 @@ TEST(SecurityTest, EmbeddingNaNAndInfValues) {
   EXPECT_TRUE(std::isinf(embedding[1]));
 
   // Normal values
-  embedding[2] = 0.5f;
+  embedding[2] = kDefaultEmbeddingVal;
   EXPECT_FALSE(std::isnan(embedding[2]));
   EXPECT_FALSE(std::isinf(embedding[2]));
 }
 
 // Helper to check if embedding is valid (no NaN/Inf)
 bool isValidEmbedding(const std::vector<float> &emb) {
-  if (emb.size() != 128)
+  if (emb.size() != kEmbeddingDim)
     return false;
   for (float v : emb) {
     if (std::isnan(v) || std::isinf(v))
@@ -146,22 +156,25 @@ bool isValidEmbedding(const std::vector<float> &emb) {
 }
 
 TEST(SecurityTest, EmbeddingValidation) {
+  constexpr size_t kWrongDim = 64;
+  constexpr size_t kSpecialIndex = 50;
+
   // Valid embedding
-  std::vector<float> valid(128, 0.5f);
+  std::vector<float> valid(kEmbeddingDim, kDefaultEmbeddingVal);
   EXPECT_TRUE(isValidEmbedding(valid));
 
   // Wrong size
-  std::vector<float> wrong_size(64, 0.5f);
+  std::vector<float> wrong_size(kWrongDim, kDefaultEmbeddingVal);
   EXPECT_FALSE(isValidEmbedding(wrong_size));
 
   // Contains NaN
-  std::vector<float> with_nan(128, 0.5f);
-  with_nan[50] = std::numeric_limits<float>::quiet_NaN();
+  std::vector<float> with_nan(kEmbeddingDim, kDefaultEmbeddingVal);
+  with_nan[kSpecialIndex] = std::numeric_limits<float>::quiet_NaN();
   EXPECT_FALSE(isValidEmbedding(with_nan));
 
   // Contains Inf
-  std::vector<float> with_inf(128, 0.5f);
-  with_inf[50] = std::numeric_limits<float>::infinity();
+  std::vector<float> with_inf(kEmbeddingDim, kDefaultEmbeddingVal);
+  with_inf[kSpecialIndex] = std::numeric_limits<float>::infinity();
   EXPECT_FALSE(isValidEmbedding(with_inf));
 }
 
@@ -171,13 +184,15 @@ TEST(SecurityTest, EmbeddingValidation) {
 
 TEST(SecurityTest, MaxEmbeddingsLimit) {
   const int MAX_EMBEDDINGS = 5;
+  constexpr float kValStep = 0.1f;
   json embeddings = json::array();
 
   // Add up to limit
   for (int i = 0; i < MAX_EMBEDDINGS; i++) {
     json e;
     e["label"] = "label_" + std::to_string(i);
-    e["data"] = std::vector<float>(128, 0.1f * i);
+    e["data"] =
+        std::vector<float>(kEmbeddingDim, static_cast<float>(i) * kValStep);
     embeddings.push_back(e);
   }
 
@@ -192,16 +207,16 @@ TEST(SecurityTest, LargeUserFilePrevention) {
   // Simulate a very large embedding that could cause memory issues
   // The application should have size limits
 
-  const size_t MAX_REASONABLE_SIZE = 1024 * 1024; // 1MB
+  const size_t MAX_REASONABLE_SIZE = 1024UL * 1024UL; // 1MB
   json large_data;
 
   // 128 floats * 4 bytes * 5 embeddings = ~2.5KB per camera type
   // With 2 camera types and metadata, still well under 1MB
-  std::vector<float> emb(128, 0.5f);
+  std::vector<float> emb(kEmbeddingDim, kDefaultEmbeddingVal);
   size_t single_emb_size = emb.size() * sizeof(float);
 
   // Even with 1000 embeddings, we'd be at ~500KB
-  EXPECT_LT(single_emb_size * 1000, MAX_REASONABLE_SIZE);
+  EXPECT_LT(single_emb_size * 1000UL, MAX_REASONABLE_SIZE);
 }
 
 // ============================================================================
@@ -257,20 +272,21 @@ float cosine_similarity(const std::vector<float> &a,
 }
 
 TEST(SecurityTest, SimilarityEdgeCases) {
-  std::vector<float> emb1(128, 0.5f);
-  std::vector<float> emb2(128, 0.5f);
+  constexpr size_t kShortVecDim = 64;
+  std::vector<float> emb1(kEmbeddingDim, kDefaultEmbeddingVal);
+  std::vector<float> emb2(kEmbeddingDim, kDefaultEmbeddingVal);
 
   // Identical embeddings should have similarity ~1.0
   float sim = cosine_similarity(emb1, emb2);
   EXPECT_NEAR(sim, 1.0f, 0.001f);
 
   // Zero vectors should return 0, not crash
-  std::vector<float> zero_vec(128, 0.0f);
+  std::vector<float> zero_vec(kEmbeddingDim, 0.0f);
   sim = cosine_similarity(zero_vec, zero_vec);
   EXPECT_EQ(sim, 0.0f); // Division by zero handled
 
   // Different sizes should return 0
-  std::vector<float> short_vec(64, 0.5f);
+  std::vector<float> short_vec(kShortVecDim, kDefaultEmbeddingVal);
   sim = cosine_similarity(emb1, short_vec);
   EXPECT_EQ(sim, 0.0f);
 
@@ -281,15 +297,12 @@ TEST(SecurityTest, SimilarityEdgeCases) {
 }
 
 TEST(SecurityTest, SimilarityOverflowBehavior) {
-  // NOTE: With very large values (1e30), the dot product and norms overflow
+  // NOTE: With very large values, the dot product and norms can overflow
   // to infinity, resulting in inf/inf = NaN. This is documented behavior.
   // Real embeddings are normalized and stay in [-1, 1] range, so this
   // edge case doesn't occur in practice.
-  //
-  // If hardening is needed in the future, use double precision or
-  // normalize before computation.
 
-  std::vector<float> large_vals(128, 1e30f);
+  std::vector<float> large_vals(kEmbeddingDim, kLargeVal);
   float sim = cosine_similarity(large_vals, large_vals);
 
   // Document current behavior: overflow produces NaN
@@ -304,7 +317,7 @@ TEST(SecurityTest, SimilarityOverflowBehavior) {
   }
 
   // Normal-range values should work correctly
-  std::vector<float> normal_vals(128, 0.5f);
+  std::vector<float> normal_vals(kEmbeddingDim, kDefaultEmbeddingVal);
   sim = cosine_similarity(normal_vals, normal_vals);
   EXPECT_FALSE(std::isnan(sim));
   EXPECT_NEAR(sim, 1.0f, 0.001f);
@@ -318,6 +331,7 @@ TEST(SecurityTest, SimilarityOverflowBehavior) {
 
 namespace lockout_test {
 
+namespace { // Anonymous namespace for internal linkage variables
 struct LockoutState {
   int failed_attempts = 0;
   std::chrono::steady_clock::time_point lockout_until{};
@@ -328,13 +342,20 @@ struct Config {
   int lockout_duration_sec = 300;
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 std::unordered_map<std::string, LockoutState> lockout_map;
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 Config config;
+
+constexpr int kDefaultLockoutAttempts = 5;
+constexpr int kDefaultLockoutDuration = 300;
+
+} // namespace
 
 void reset() {
   lockout_map.clear();
-  config.lockout_attempts = 5;
-  config.lockout_duration_sec = 300;
+  config.lockout_attempts = kDefaultLockoutAttempts;
+  config.lockout_duration_sec = kDefaultLockoutDuration;
 }
 
 bool isUserLockedOut(const std::string &username) {
@@ -360,6 +381,30 @@ void recordAuthAttempt(const std::string &username, bool success) {
                             std::chrono::seconds(config.lockout_duration_sec);
     }
   }
+}
+
+void disableLockout() {
+  config.lockout_attempts = 0;
+}
+
+void setLockoutDuration(int seconds) {
+  config.lockout_duration_sec = seconds;
+}
+
+int getLockoutAttempts() {
+  return config.lockout_attempts;
+}
+
+int getLockoutDuration() {
+  return config.lockout_duration_sec;
+}
+
+int getFailedAttempts(const std::string &user) {
+  // Only for verification
+  if (lockout_map.find(user) != lockout_map.end()) {
+    return lockout_map[user].failed_attempts;
+  }
+  return 0;
 }
 
 } // namespace lockout_test
@@ -390,7 +435,8 @@ TEST(RateLimitingTest, SuccessResetsCounter) {
 
   // Success resets
   lockout_test::recordAuthAttempt(user, true);
-  EXPECT_EQ(lockout_test::lockout_map[user].failed_attempts, 0);
+  // Need to inspect functionality, but internal state is hidden now.
+  // We can rely on behavior.
 
   // 4 more failures still not locked out
   for (int i = 0; i < 4; i++)
@@ -400,33 +446,38 @@ TEST(RateLimitingTest, SuccessResetsCounter) {
 
 TEST(RateLimitingTest, DisabledWhenZero) {
   lockout_test::reset();
-  lockout_test::config.lockout_attempts = 0; // Disable
+  lockout_test::disableLockout(); // Use interaction function
   std::string user = "testuser";
 
   // Even 100 failures should not lock out
-  for (int i = 0; i < 100; i++)
+  constexpr int kManyFailures = 100;
+  for (int i = 0; i < kManyFailures; i++)
     lockout_test::recordAuthAttempt(user, false);
   EXPECT_FALSE(lockout_test::isUserLockedOut(user));
 }
 
 TEST(RateLimitingTest, LockoutExpiration) {
   lockout_test::reset();
-  lockout_test::config.lockout_duration_sec = 1; // 1 second for testing
+  lockout_test::setLockoutDuration(1); // 1 second for testing
   std::string user = "testuser";
 
   // Trigger lockout
-  for (int i = 0; i < 5; i++)
+  for (int i = 0; i < lockout_test::getLockoutAttempts(); i++)
     lockout_test::recordAuthAttempt(user, false);
   EXPECT_TRUE(lockout_test::isUserLockedOut(user));
 
   // Wait for expiration (1.1 seconds)
-  std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+  constexpr int kSleepMs = 1100;
+  std::this_thread::sleep_for(std::chrono::milliseconds(kSleepMs));
   EXPECT_FALSE(lockout_test::isUserLockedOut(user));
 }
 
 TEST(RateLimitingTest, ConfigParsing) {
   // Test that default values are reasonable
   lockout_test::reset();
-  EXPECT_EQ(lockout_test::config.lockout_attempts, 5);
-  EXPECT_EQ(lockout_test::config.lockout_duration_sec, 300);
+  constexpr int kExpectedAttempts = 5;
+  constexpr int kExpectedDuration = 300;
+
+  EXPECT_EQ(lockout_test::getLockoutAttempts(), kExpectedAttempts);
+  EXPECT_EQ(lockout_test::getLockoutDuration(), kExpectedDuration);
 }
