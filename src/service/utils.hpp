@@ -46,7 +46,13 @@ struct FileDescriptor {
 // Abstract interface for camera device interaction
 class ICameraBackend {
 public:
+  ICameraBackend() = default;
   virtual ~ICameraBackend() = default;
+
+  ICameraBackend(const ICameraBackend &) = delete;
+  ICameraBackend &operator=(const ICameraBackend &) = delete;
+  ICameraBackend(ICameraBackend &&) = delete;
+  ICameraBackend &operator=(ICameraBackend &&) = delete;
 
   // Returns a list of paths to potential camera devices (e.g., /dev/video0)
   [[nodiscard]] virtual std::vector<std::string> getDevicePaths() const = 0;
