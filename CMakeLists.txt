@@ -91,8 +91,14 @@ include(FetchContent)
 FetchContent_Declare(
   googletest
   URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
-  DOWNLOAD_EXTRACT_TIMESTAMP true
 )
+
+# Fix for CMP0135 warning in CMake 3.24+
+if(POLICY CMP0135)
+  cmake_policy(SET CMP0135 NEW)
+  # CMake 3.24+ requires explicit timestamp handling for consistency
+  set(FETCHCONTENT_UPDATES_DISCONNECTED_GOOGLETEST ON)
+endif()
 # Prevent overriding the parent project's compiler/linker settings
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 # Disable installation of GoogleTest to prevent conflicts with system packages
