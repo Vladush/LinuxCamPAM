@@ -95,6 +95,9 @@ FetchContent_Declare(
 )
 # Prevent overriding the parent project's compiler/linker settings
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+# Disable installation of GoogleTest to prevent conflicts with system packages
+set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+set(INSTALL_GMOCK OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(googletest)
 

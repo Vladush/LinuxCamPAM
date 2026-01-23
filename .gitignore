@@ -62,3 +62,6 @@ models/
 # Python
 __pycache__/
 *.pyc
+
+# Logs
+*.log

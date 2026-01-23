@@ -29,7 +29,9 @@ WORKDIR /app
 COPY . /app
 
 # Download models
-RUN ./scripts/download_models.sh
+RUN ./scripts/download_models.sh && \
+    mkdir -p /etc/linuxcampam/models && \
+    cp models/*.onnx /etc/linuxcampam/models/
 
 # Explicit Regression Testing
 ENV TEST_IN_DOCKER=1
@@ -37,7 +39,7 @@ ENV TEST_IN_DOCKER=1
 RUN mkdir build_testing && cd build_testing && \
     cmake .. && \
     make -j$(nproc) linuxcampam_tests && \
-    ./linuxcampam_tests && \
+    ctest --output-on-failure && \
     cd .. && rm -rf build_testing
 
 # Ensure Clean Build

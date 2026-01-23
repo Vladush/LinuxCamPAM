@@ -45,7 +45,7 @@ public:
                 << "\n"
                 << "[Security]\n"
                 << "lockout_attempts=3\n"
-                << "lockout_duration_sec=1\n";
+                << "lockout_duration_sec=10\n";
     config_file.close();
 
     auth_engine = std::make_unique<AuthEngine>();
