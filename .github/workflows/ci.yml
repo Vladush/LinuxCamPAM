@@ -64,6 +64,11 @@ jobs:
       - name: Download models
         run: ./scripts/download_models.sh
 
+      - name: Install models to system
+        run: |
+          sudo mkdir -p /etc/linuxcampam/models
+          sudo cp models/*.onnx /etc/linuxcampam/models/
+
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
@@ -98,6 +103,14 @@ jobs:
             build-essential cmake clang libopencv-dev libpam0g-dev \
             libjsoncpp-dev nlohmann-json3-dev v4l-utils
 
+      - name: Download models
+        run: ./scripts/download_models.sh
+
+      - name: Install models to system
+        run: |
+          sudo mkdir -p /etc/linuxcampam/models
+          sudo cp models/*.onnx /etc/linuxcampam/models/
+
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
 
@@ -123,6 +136,11 @@ jobs:
 
       - name: Download models
         run: ./scripts/download_models.sh
+
+      - name: Install models to system
+        run: |
+          sudo mkdir -p /etc/linuxcampam/models
+          sudo cp models/*.onnx /etc/linuxcampam/models/
 
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release

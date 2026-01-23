@@ -21,6 +21,12 @@ TEST(ModelVersionTest, StandardSFaceModel) {
             "sface_2021dec");
 }
 
+TEST(ModelVersionTest, StandardYuNetModel) {
+  EXPECT_EQ(getModelVersion(
+                "/etc/linuxcampam/models/face_detection_yunet_2023mar.onnx"),
+            "face_detection_yunet_2023mar");
+}
+
 TEST(ModelVersionTest, FutureModelVersion) {
   EXPECT_EQ(getModelVersion("/path/to/face_recognition_sface_2024.onnx"),
             "sface_2024");

@@ -80,7 +80,7 @@ bool AuthEngine::init(const fs::path &config_path) {
   // Note: If user supplies full path in config in future, handle that.
   // For now assuming models_dir + filename.
   detection_model_path =
-      config.models_dir / "face_detection_yunet_2022mar.onnx";
+      config.models_dir / "face_detection_yunet_2023mar.onnx";
   recognition_model_path =
       config.models_dir / "face_recognition_sface_2021dec.onnx";
 
