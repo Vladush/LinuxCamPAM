@@ -52,30 +52,27 @@ target_include_directories(pam_linuxcampam PRIVATE include ${PAM_INCLUDE_DIR})
 target_link_libraries(pam_linuxcampam PRIVATE ${PAM_LIBRARY})
 set_target_properties(pam_linuxcampam PROPERTIES PREFIX "") # pam_ modules often don't want strict lib prefix, though standard is usually ok. PAM expects filename to match config.
 
-# Auth Service
-add_executable(linuxcampamd
-    src/service/main.cpp
+# Service Core Library (Shared between Service and Tests)
+add_library(service_core STATIC
     src/service/auth_engine.cpp
-    src/service/auth_engine.hpp
     src/service/camera.cpp
-    src/service/camera.hpp
     src/service/config.cpp
-    src/service/config.hpp
     src/service/utils.cpp
 )
-target_include_directories(linuxcampamd PRIVATE include ${OpenCV_INCLUDE_DIRS})
-target_link_libraries(linuxcampamd PRIVATE 
+target_include_directories(service_core PUBLIC include ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(service_core PUBLIC 
     ${OpenCV_LIBS} 
     Threads::Threads
     stdc++fs
 )
 
 if(nlohmann_json_FOUND)
-    target_link_libraries(linuxcampamd PRIVATE nlohmann_json::nlohmann_json)
+    target_link_libraries(service_core PUBLIC nlohmann_json::nlohmann_json)
 endif()
-# Always include local include dir for vendored headers
-target_include_directories(linuxcampamd PRIVATE include)
 
+# Auth Service
+add_executable(linuxcampamd src/service/main.cpp)
+target_link_libraries(linuxcampamd PRIVATE service_core)
 
 # CLI Tool
 add_executable(linuxcampam src/cli/main.cpp)
@@ -99,23 +96,15 @@ if(GTest_FOUND)
         tests/test_security.cpp
         tests/test_stability.cpp
         tests/test_camera_detection.cpp
-        src/service/auth_engine.cpp
-        src/service/camera.cpp
-        src/service/config.cpp
-        src/service/utils.cpp
+        tests/test_config_detection.cpp
     )
-    # We need to compile auth_engine.cpp without main(), which is fine since main is in main.cpp.
-    # However, auth_engine might have dependencies.
-    target_include_directories(linuxcampam_tests PRIVATE include)
+    
+    # We link against the service_core library to test internal logic without 
+    # duplicating compilation units or pulling in the main service entry point.
     target_link_libraries(linuxcampam_tests PRIVATE 
         GTest::GTest GTest::Main 
-        ${OpenCV_LIBS} 
-        Threads::Threads
-        stdc++fs
+        service_core
     )
-    if(nlohmann_json_FOUND)
-        target_link_libraries(linuxcampam_tests PRIVATE nlohmann_json::nlohmann_json)
-    endif()
     
     add_test(NAME UnitTests COMMAND linuxcampam_tests)
 endif()

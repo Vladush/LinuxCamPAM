@@ -14,16 +14,12 @@
 
 namespace {
 
-// Helper to parse INI file
+// Helper to parse INI stream
 std::unordered_map<std::string, std::string>
-parse_ini_file(const fs::path &path) {
+parse_ini_stream(std::istream &input) {
   std::unordered_map<std::string, std::string> result;
-  std::ifstream file(path);
-  if (!file.is_open())
-    return result;
-
   std::string line, current_section;
-  while (std::getline(file, line)) {
+  while (std::getline(input, line)) {
     // Trim
     line.erase(0, line.find_first_not_of(" \t"));
     if (line.empty() || line[0] == ';')
@@ -78,13 +74,28 @@ inline bool parse_float(const std::string &str, float &out) {
 
 } // namespace
 
-bool Configuration::load(const fs::path &config_path) {
-  parse_ini_into_self(config_path);
+bool Configuration::load(const fs::path &config_path,
+                         const linuxcampam::ICameraBackend *backend) {
+  std::ifstream file(config_path);
+  if (!file.is_open()) {
+    // It's valid to load nothing/defaults if file missing?
+    // Existing code just returned empty map.
+    // We'll proceed with empty stream or just call parse with empty.
+    std::stringstream ss;
+    return load(ss, backend);
+  }
+  return load(file, backend);
+}
+
+bool Configuration::load(std::istream &input,
+                         const linuxcampam::ICameraBackend *backend) {
+  parse_ini_into_self(input, backend);
   return true;
 }
 
-void Configuration::parse_ini_into_self(const fs::path &path) {
-  auto ini = parse_ini_file(path);
+void Configuration::parse_ini_into_self(
+    std::istream &input, const linuxcampam::ICameraBackend *backend) {
+  auto ini = parse_ini_stream(input);
   auto get = [&](const std::string &key, const std::string &def = "") {
     return ini.count(key) ? ini.at(key) : def;
   };
@@ -177,7 +188,13 @@ void Configuration::parse_ini_into_self(const fs::path &path) {
       }
     } else {
       // Full auto detect
-      auto detected = linuxcampam::enumerateCameras();
+      std::vector<std::pair<std::string, std::string>> detected;
+      if (backend) {
+        detected = linuxcampam::enumerateCameras(*backend);
+      } else {
+        detected = linuxcampam::enumerateCameras();
+      }
+
       if (!detected.empty()) {
         std::string ir_p, rgb_p;
         for (auto &[device_path, type] : detected) {
