@@ -25,6 +25,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 # --- Dependencies ---
+set(OpenCV_DIR "${CMAKE_SOURCE_DIR}/opencv_static/lib/cmake/opencv4")
 find_package(OpenCV REQUIRED COMPONENTS core videoio imgproc dnn objdetect photo)
 find_package(Threads REQUIRED)
 
@@ -182,8 +183,9 @@ set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Vladimir Orlinski")
 
 set(CPACK_GENERATOR "DEB")
 # Runtime dependencies (not -dev packages) for Ubuntu 24.04
-# OpenCV 4.6 runtime libs, PAM, and utilities
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libopencv-core406t64, libopencv-imgproc406t64, libopencv-objdetect406t64, libopencv-dnn406t64, libopencv-videoio406t64, libopencv-photo406t64, libpam0g, libpam-runtime, v4l-utils, systemd")
+# Runtime dependencies (not -dev packages) for Ubuntu 24.04
+# OpenCV is statically linked, so we don't need libopencv-* packages
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libpam0g, libpam-runtime, v4l-utils, systemd, libgfortran5, libatlas3-base")
 
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_SOURCE_DIR}/debian/postinst")
 

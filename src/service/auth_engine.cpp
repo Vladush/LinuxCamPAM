@@ -81,7 +81,7 @@ bool AuthEngine::init(const fs::path &config_path) {
 
   // Default model paths (System Install)
   const std::string DEFAULT_DETECTOR_PATH =
-      "/usr/share/linuxcampam/models/face_detection_yunet_2022mar.onnx";
+      "/usr/share/linuxcampam/models/face_detection_yunet_2023mar.onnx";
   const std::string DEFAULT_RECOGNIZER_PATH =
       "/usr/share/linuxcampam/models/face_recognition_sface_2021dec.onnx";
 
@@ -122,12 +122,14 @@ bool AuthEngine::loadModels() {
 
   for (const auto &prov : config.provider_priority) {
     if (prov == "CUDA") {
+      /*
       if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
         backend_id = cv::dnn::DNN_BACKEND_CUDA;
         target_id = cv::dnn::DNN_TARGET_CUDA;
         log_info("Selecting CUDA Backend.");
         break;
       }
+      */
     } else if (prov == "OpenVINO") {
       backend_id = cv::dnn::DNN_BACKEND_INFERENCE_ENGINE;
       target_id = cv::dnn::DNN_TARGET_CPU;
