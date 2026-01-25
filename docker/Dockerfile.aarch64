@@ -33,8 +33,8 @@ RUN rm -rf build && mkdir build
 
 # Download models
 RUN ./scripts/download_models.sh && \
-    mkdir -p /etc/linuxcampam/models && \
-    cp models/*.onnx /etc/linuxcampam/models/
+    mkdir -p /usr/share/linuxcampam/models && \
+    cp models/*.onnx /usr/share/linuxcampam/models/
 
 # Explicit Regression Testing
 ENV TEST_IN_DOCKER=1
