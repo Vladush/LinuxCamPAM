@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -86,5 +87,8 @@ enumerateCameras(const ICameraBackend &backend);
 [[nodiscard]] std::string classifyCameraType(const std::string &device_path);
 [[nodiscard]] std::vector<std::pair<std::string, std::string>>
 enumerateCameras();
+
+// Security Utils
+[[nodiscard]] bool isValidUsername(std::string_view username);
 
 } // namespace linuxcampam
