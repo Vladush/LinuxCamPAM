@@ -16,8 +16,10 @@ Since open-sourcing, I've put effort into making it hardware-agnostic and well-d
 
 - **Any Webcam Works**: Standard USB or integrated cameras (720p+ recommended). No special hardware required.
 - **Enhanced IR Support**: Detects IR cameras and controls emitters for better low-light and anti-spoofing.
-- **Hardware Acceleration**: OpenCL (AMD via Rusticl, Intel, NVIDIA) with optional CUDA backend.
-  - **Smart GPU Detection**: Auto-detects AMD GPUs and uses Rusticl. Non-AMD systems use native drivers; falls back to CPU if needed.
+- **Hardware Acceleration**:
+  - **Strategy**: We prioritize **OpenCL** as the universal accelerator. It enables GPU acceleration on Intel (iGPU), NVIDIA (proprietary driver), AMD (ROCm/Rusticl), and ARM (Mali/Adreno) with a single lightweight package.
+  - **Native Backends**: Native CUDA and OpenVINO are not enabled in the default static build to maintain a small package size (~15MB vs ~300MB+). OpenCL provides near-native performance for this use case without the bloat.
+  - **Smart GPU Detection**: Auto-detects available acceleration; falls back to optimized CPU instructions (AVX/SSE) if no GPU is available.
 - **Smart Camera Support**:
   - **Dual-Camera Security**: Uses IR for liveness/security and RGB for validation.
   - **Auto-Configuration**: Detects your hardware (IR vs RGB) and selects the best policy.
@@ -25,6 +27,19 @@ Since open-sourcing, I've put effort into making it hardware-agnostic and well-d
 - **Multi-Embedding Support**: Store multiple face embeddings per user for different lighting (`linuxcampam list`, `train --new`).
 - **PAM Integration**: Standard PAM module for Debian/Ubuntu.
 - **Security First**: [Threat Model & Security Assessment](docs/SECURITY_ASSESSMENT.md) included.
+
+## System Requirements
+
+| Component | Minimum Requirement | Recommended |
+| :--- | :--- | :--- |
+| **OS** | Linux (Kernel 5.15+) | Linux (Kernel 6.1+) |
+| **Distribution** | Ubuntu 18.04 LTS (GLIBC 2.27+) [1] | Ubuntu 24.04 LTS / Debian 12 |
+| **CPU** | x86_64, x86, aarch64, riscv64 | x86_64 (AVX2), aarch64 (NEON), riscv64 (Vector) |
+| **RAM** | 256MB free | 512MB free |
+| **Camera** | V4L2-compatible (360p) | IR + RGB (720p) |
+| **Access** | Root/Sudo privileges | Root/Sudo privileges |
+
+> [1] **Ubuntu 18.04 Note**: The default `cmake` is 3.10. You must upgrade to **CMake 3.14+** (e.g., `pip install cmake`) to build this project. OpenCV 4.12 itself builds fine.
 
 ## Installation
 
@@ -199,6 +214,23 @@ This project was inspired by and utilizes tools from the open source community:
 
 - **[linux-enable-ir-emitter](https://github.com/EmixamPP/linux-enable-ir-emitter)**: By [EmixamPP](https://github.com/EmixamPP). Essential for enabling IR emitters on many Linux laptops.
 - **[Howdy](https://github.com/boltgolt/howdy)**: The pioneer of Windows Hello-style authentication on Linux, serving as inspiration for the user experience.
+
+### Citations
+
+If you use the YuNet model included in this project for research, please cite the following paper:
+
+```bibtex
+@article{wu2023yunet,
+  title={Yunet: A tiny millisecond-level face detector},
+  author={Wu, Wei and Peng, Hanyang and Yu, Shiqi},
+  journal={Machine Intelligence Research},
+  volume={20},
+  number={5},
+  pages={656--665},
+  year={2023},
+  publisher={Springer}
+}
+```
 
 ## Roadmap
 

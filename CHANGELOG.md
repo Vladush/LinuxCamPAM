@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Faster First Login**: AI models are now pre-loaded when the service starts, rather than waiting for the first user to walk by.
 - **Hardened Validation**: Switched input validation from regex to a strict character-allowlist loop. This isn't visible to users, but it removes a potential ReDoS attack vector and makes path traversal protection bulletproof.
 
+## [0.9.7] - 2026-01-25
+
+### Improved in 0.9.7
+
+- **Upgraded AI Model**: Switched to `YuNet 2023mar` for better face detection accuracy, especially with smaller faces and difficult angles.
+- **Dynamic Resolution**: Removed fixed resizing (320x320) for face detection. The engine now uses the camera's native resolution, which significantly improves detection performance on IR cameras with non-square aspect ratios.
+- **Static Linking**: Upgraded to **OpenCV 4.12.0** (statically linked), removing runtime dependencies and potential conflicts.
+- **Hardware Strategy**: Prioritized **OpenCL 1.2+** as the universal accelerator (AMD/Intel/NVIDIA) to keep the package lightweight (~15MB). Native CUDA/OpenVINO backends are disabled to avoid massive binary bloat (~200MB+), with OpenCL providing near-native performance.
+
 ## [0.9.6] - 2026-01-07
 
 ### Added in 0.9.6
