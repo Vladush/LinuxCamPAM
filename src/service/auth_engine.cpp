@@ -1,12 +1,10 @@
 
 #include "auth_engine.hpp"
-
 #include "camera.hpp"
 #include "config.hpp"
 #include "constants.hpp"
 #include "json.hpp"
 #include "logger.hpp"
-
 #include <algorithm>
 #include <cmath>
 #include <fcntl.h>
@@ -17,7 +15,6 @@
 #include <linux/videodev2.h>
 #include <opencv2/core/ocl.hpp>
 #include <sstream>
-#include <string_view>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <thread>
@@ -236,29 +233,6 @@ void AuthEngine::fallbackToCPU() {
   }
 }
 
-bool AuthEngine::isValidUsername(std::string_view username) {
-  if (username.empty() || username.length() > linuxcampam::MAX_USERNAME_LENGTH)
-    return false;
-
-  // Hidden files
-  if (username.front() == '.')
-    return false;
-
-  // Detect Path Traversal ("..")
-  if (std::adjacent_find(username.begin(), username.end(), [](char a, char b) {
-        return a == '.' && b == '.';
-      }) != username.end()) {
-    return false;
-  }
-
-  // Strict allowlist (a-z, A-Z, 0-9, _, ., -, $)
-  return std::all_of(username.begin(), username.end(), [](char c) {
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-           (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-' ||
-           c == '$';
-  });
-}
-
 cv::Mat AuthEngine::captureFrame(ICamera *cam) {
   if (!cam)
     return cv::Mat();
@@ -282,7 +256,7 @@ AuthResult AuthEngine::verifyUserCore(const std::string &username,
     result.reason = "Failed to load models";
     return result;
   }
-  if (!isValidUsername(username)) {
+  if (!linuxcampam::isValidUsername(username)) {
     result.reason = "Invalid username";
     if (callback)
       callback("security", cv::Mat(), false, 0, result.reason);
@@ -529,7 +503,7 @@ std::pair<bool, std::string>
 AuthEngine::enrollUser(const std::string &username) {
   if (!ensureModelsLoaded())
     return {false, "Failed to load AI models."};
-  if (!isValidUsername(username)) {
+  if (!linuxcampam::isValidUsername(username)) {
     std::cerr << "[AuthEngine] Security Warn: Invalid username string: "
               << username << std::endl;
     return {false, "Invalid username (security restriction)."};
@@ -632,7 +606,7 @@ AuthEngine::enrollUser(const std::string &username) {
 
 bool AuthEngine::setLabel(const std::string &username,
                           const std::string &label) {
-  if (!isValidUsername(username))
+  if (!linuxcampam::isValidUsername(username))
     return false;
 
   std::string user_file =
@@ -732,7 +706,7 @@ bool AuthEngine::trainUser(const std::string &username,
                            const std::string &label, bool create_new) {
   if (!ensureModelsLoaded())
     return false;
-  if (!isValidUsername(username)) {
+  if (!linuxcampam::isValidUsername(username)) {
     log_warn("Security Warn: Invalid username string: " + username);
     return false;
   }
@@ -859,7 +833,7 @@ bool AuthEngine::trainUser(const std::string &username,
 std::vector<std::string>
 AuthEngine::listEmbeddings(const std::string &username) {
   std::vector<std::string> labels;
-  if (!isValidUsername(username))
+  if (!linuxcampam::isValidUsername(username))
     return labels;
 
   std::string user_file =
@@ -896,7 +870,7 @@ AuthEngine::listEmbeddings(const std::string &username) {
 
 bool AuthEngine::removeEmbedding(const std::string &username,
                                  const std::string &label) {
-  if (!isValidUsername(username))
+  if (!linuxcampam::isValidUsername(username))
     return false;
 
   std::string user_file =

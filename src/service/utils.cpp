@@ -1,9 +1,11 @@
 #include "utils.hpp"
 
+#include "constants.hpp" // For MAX_USERNAME_LENGTH
 #include <algorithm>
 #include <fcntl.h>
 #include <filesystem>
 #include <linux/videodev2.h>
+#include <string_view>
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <vector>
@@ -110,6 +112,29 @@ std::string classifyCameraType(const std::string &device_path) {
 std::vector<std::pair<std::string, std::string>> enumerateCameras() {
   RealCameraBackend backend;
   return enumerateCameras(backend);
+}
+
+bool isValidUsername(std::string_view username) {
+  if (username.empty() || username.length() > linuxcampam::MAX_USERNAME_LENGTH)
+    return false;
+
+  // Hidden files
+  if (username.front() == '.')
+    return false;
+
+  // Detect Path Traversal ("..")
+  // Using explicit loop or adjacent_find
+  for (size_t i = 1; i < username.length(); ++i) {
+    if (username[i] == '.' && username[i - 1] == '.')
+      return false;
+  }
+
+  // Strict allowlist (a-z, A-Z, 0-9, _, ., -, $)
+  return std::all_of(username.begin(), username.end(), [](char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+           (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-' ||
+           c == '$';
+  });
 }
 
 } // namespace linuxcampam

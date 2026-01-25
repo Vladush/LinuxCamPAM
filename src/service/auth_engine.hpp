@@ -2,7 +2,6 @@
 
 #include "config.hpp"
 #include "icamera.hpp"
-
 #include <chrono>
 #include <filesystem>
 #include <functional>
@@ -10,7 +9,6 @@
 #include <opencv2/dnn.hpp>
 #include <opencv2/opencv.hpp>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -117,9 +115,6 @@ private:
   // Helper to calculate brightness
   [[nodiscard]] double calculateBrightness(const cv::Mat &frame);
   void fallbackToCPU();
-
-  // Security
-  [[nodiscard]] bool isValidUsername(std::string_view username);
 
   // Dynamic Loading
   [[nodiscard]] bool ensureModelsLoaded();
