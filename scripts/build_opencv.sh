@@ -1,16 +1,25 @@
 #!/bin/bash
 set -e
 
-OPENCV_VER="4.10.0"
-INSTALL_DIR="/usr/local"
+OPENCV_VER="4.12.0"
+# Install to a local directory for static linking
+# This ensures we don't pollute /usr/local and makes packaging predictable
+INSTALL_DIR="$(pwd)/opencv_static"
 CORES=$(nproc)
 
-echo "=== Building OpenCV $OPENCV_VER form Source ==="
+echo "=== Building OpenCV $OPENCV_VER (Static) from Source ==="
 echo "Target: $INSTALL_DIR"
 
-# Install Deps
+# Install Deps (Minimal for Headless Service)
+echo "Installing Dependencies..."
 sudo apt-get update
-sudo apt-get install -y build-essential cmake git pkg-config libjpeg-dev libpng-dev libtiff-dev libavcodec-dev libavformat-dev libswscale-dev libv4l-dev libxvidcore-dev libx264-dev libgtk-3-dev libatlas-base-dev gfortran
+# Note: libgtk-3-dev removed as we are building headless
+# libatlas-base-dev for linear algebra optimizations
+sudo apt-get install -y build-essential cmake git pkg-config \
+    libjpeg-dev libpng-dev libtiff-dev \
+    libavcodec-dev libavformat-dev libswscale-dev libv4l-dev \
+    libxvidcore-dev libx264-dev \
+    libatlas-base-dev gfortran python3-dev unzip wget
 
 # Workspace
 mkdir -p opencv_build
@@ -20,13 +29,7 @@ cd opencv_build
 if [ ! -d "opencv-$OPENCV_VER" ]; then
     echo "Downloading OpenCV..."
     wget -O opencv.zip https://github.com/opencv/opencv/archive/$OPENCV_VER.zip
-    unzip opencv.zip
-fi
-
-if [ ! -d "opencv_contrib-$OPENCV_VER" ]; then
-    echo "Downloading OpenCV Contrib..."
-    wget -O opencv_contrib.zip https://github.com/opencv/opencv_contrib/archive/$OPENCV_VER.zip
-    unzip opencv_contrib.zip
+    unzip -q opencv.zip
 fi
 
 # Build
@@ -34,28 +37,44 @@ mkdir -p build
 cd build
 
 echo "Configuring CMake..."
-cmake -D CMAKE_BUILD_TYPE=RELEASE \
-    -D CMAKE_INSTALL_PREFIX=$INSTALL_DIR \
-    -D OPENCV_EXTRA_MODULES_PATH=../../opencv_contrib-$OPENCV_VER/modules \
-    -D WITH_GTK=ON \
+# Key flags for Static Headless Build:
+# - BUILD_SHARED_LIBS=OFF: Static libraries (.a)
+# - BUILD_opencv_highgui=OFF: No GUI window support needed
+# - WITH_GTK=OFF: No GTK dependency
+# - WITH_V4L=ON: Camera support is essential
+# - WITH_FFMPEG=ON: Video processing support
+cmake -D CMAKE_BUILD_TYPE=Release \
+    -D CMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
+    -D BUILD_SHARED_LIBS=OFF \
+    -D OPENCV_GENERATE_PKGCONFIG=ON \
+    -D WITH_GTK=OFF \
+    -D WITH_QT=OFF \
     -D WITH_V4L=ON \
     -D WITH_FFMPEG=ON \
-    -D WITH_OPENGL=ON \
+    -D WITH_GSTREAMER=OFF \
+    -D WITH_ADE=OFF \
+    -D WITH_EIGEN=OFF \
+    -D WITH_OPENEXR=OFF \
     -D BUILD_EXAMPLES=OFF \
     -D BUILD_TESTS=OFF \
     -D BUILD_PERF_TESTS=OFF \
     -D BUILD_JAVA=OFF \
     -D BUILD_PYTHON3=OFF \
-    -D BUILD_PYTHON_BINDINGS_GENERATOR=OFF \
-    -D DO_INSTALL_EXAMPLES=OFF \
-    -D DO_INSTALL_TESTS=OFF \
-    ../../opencv-$OPENCV_VER
+    -D BUILD_opencv_python3=OFF \
+    -D BUILD_opencv_apps=OFF \
+    -D BUILD_opencv_gapi=OFF \
+    -D BUILD_opencv_highgui=OFF \
+    -D BUILD_opencv_stitching=OFF \
+    -D BUILD_opencv_ts=OFF \
+    -D BUILD_opencv_python_bindings_generator=OFF \
+    -D OPENCV_DNN_OPENCL=ON \
+    ../opencv-$OPENCV_VER
 
 echo "Compiling with $CORES cores..."
 make -j$CORES
 
-echo "Installing..."
-sudo make install
-sudo ldconfig
+echo "Installing to $INSTALL_DIR..."
+make install
 
-echo "OpenCV $OPENCV_VER Installed successfully."
+echo "OpenCV $OPENCV_VER Static Build Complete."
+echo "Artifacts are in: $INSTALL_DIR"

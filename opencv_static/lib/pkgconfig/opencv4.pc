@@ -1,0 +1,13 @@
+# Package Information for pkg-config
+
+prefix=/home/vlad/Projects/LinuxCamPAM/opencv_static
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include/opencv4
+
+Name: OpenCV
+Description: Open Source Computer Vision Library
+Version: 4.12.0
+Libs: -L${exec_prefix}/lib -lopencv_ml -lopencv_objdetect -lopencv_photo -lopencv_video -lopencv_calib3d -lopencv_features2d -lopencv_dnn -lopencv_flann -lopencv_videoio -lopencv_imgcodecs -lopencv_imgproc -lopencv_core
+Libs.private: -L${exec_prefix}/lib/opencv4/3rdparty -littnotify -llibprotobuf -llibopenjp2 -lipphal -lippiw -lippicv -L/usr/lib/x86_64-linux-gnu -ljpeg -lwebp -lwebpmux -lwebpdemux -lpng -ltiff -lz -ldl -lm -lpthread -lrt
+Cflags: -I${includedir}

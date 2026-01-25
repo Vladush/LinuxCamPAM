@@ -67,11 +67,11 @@ sudo ../scripts/setup_config.sh
 # Download Models (from Hugging Face)
 MODEL_DIR="/usr/share/linuxcampam/models"
 sudo mkdir -p "$MODEL_DIR"
-YUNET_URL="https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2022mar.onnx"
+YUNET_URL="https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
 SFACE_URL="https://huggingface.co/opencv/face_recognition_sface/resolve/main/face_recognition_sface_2021dec.onnx"
 
-if [ ! -f "$MODEL_DIR/face_detection_yunet_2022mar.onnx" ]; then
-    sudo wget -O "$MODEL_DIR/face_detection_yunet_2022mar.onnx" "$YUNET_URL"
+if [ ! -f "$MODEL_DIR/face_detection_yunet_2023mar.onnx" ]; then
+    sudo wget -O "$MODEL_DIR/face_detection_yunet_2023mar.onnx" "$YUNET_URL"
 fi
 
 if [ ! -f "$MODEL_DIR/face_recognition_sface_2021dec.onnx" ]; then
