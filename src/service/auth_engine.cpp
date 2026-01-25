@@ -78,11 +78,15 @@ bool AuthEngine::init(const fs::path &config_path) {
 
   // Initialize model paths dynamic vars
   // Note: If user supplies full path in config in future, handle that.
-  // For now assuming models_dir + filename.
-  detection_model_path =
-      config.models_dir / "face_detection_yunet_2023mar.onnx";
-  recognition_model_path =
-      config.models_dir / "face_recognition_sface_2021dec.onnx";
+
+  // Default model paths (System Install)
+  const std::string DEFAULT_DETECTOR_PATH =
+      "/usr/share/linuxcampam/models/face_detection_yunet_2022mar.onnx";
+  const std::string DEFAULT_RECOGNIZER_PATH =
+      "/usr/share/linuxcampam/models/face_recognition_sface_2021dec.onnx";
+
+  detection_model_path = DEFAULT_DETECTOR_PATH;
+  recognition_model_path = DEFAULT_RECOGNIZER_PATH;
 
   // Initialize Cameras if any
   // Note: config.load() already populated config.camera_defs via auto-detection
@@ -149,6 +153,7 @@ bool AuthEngine::loadModels() {
   }
 
   try {
+
     log_info("Loading Detector: " + detection_model_path.string());
     log_info("Loading Recognizer: " + recognition_model_path.string());
 
@@ -374,8 +379,16 @@ AuthResult AuthEngine::verifyUserCore(const std::string &username,
 
     // Detect faces
     cv::Mat faces;
-    detector->setInputSize(frame.size());
-    detector->detect(frame, faces);
+    // Align input size to 32 for YuNet stability
+    // Resizing to fixed MIRROR_SIZE avoids OpenCL layer cache issues in
+    // OpenCV 4.6.0
+    Logger::log(LogLevel::INFO, "Profiling: About to resize and detect");
+    cv::Mat processed;
+    cv::resize(frame, processed,
+               cv::Size(linuxcampam::MIRROR_SIZE, linuxcampam::MIRROR_SIZE));
+    detector->detect(processed, faces);
+    Logger::log(LogLevel::INFO, "Profiling: Detection complete. Faces: " +
+                                    std::to_string(faces.rows));
     gpuSync(config.gpu_flush, config.gpu_throttle_ms);
 
     if (faces.rows >= 1) {
@@ -386,8 +399,10 @@ AuthResult AuthEngine::verifyUserCore(const std::string &username,
 
       cv::Mat aligned_face, curr_emb;
       // Use largest face (row 0)
+      Logger::log(LogLevel::INFO, "Profiling: About to align and recognize");
       recognizer->alignCrop(frame, faces.row(0), aligned_face);
       recognizer->feature(aligned_face, curr_emb);
+      Logger::log(LogLevel::INFO, "Profiling: Recognition complete");
       gpuSync(config.gpu_flush, config.gpu_throttle_ms);
 
       float best_camera_score = 0.0f;
@@ -443,13 +458,16 @@ AuthResult AuthEngine::verifyUserCore(const std::string &username,
   if (auth_ok) {
     result.success = true;
   } else {
-    if (any_no_face) {
-      result.reason = "No face detected";
-    } else if (overall_best_score > 0) {
+    if (overall_best_score > 0) {
       std::ostringstream oss;
       oss << std::fixed << std::setprecision(2);
       oss << "Face mismatch (score: " << overall_best_score << ")";
       result.reason = oss.str();
+      if (any_no_face) {
+        result.reason += " (some cameras failed detection)";
+      }
+    } else if (any_no_face) {
+      result.reason = "No face detected";
     } else {
       result.reason = "Authentication failed";
     }
@@ -562,9 +580,14 @@ AuthEngine::enrollUser(const std::string &username) {
       return {false, "Camera " + id + " failed (empty frame)."};
     }
 
-    detector->setInputSize(frame.size());
+    // Align input size to 32 for YuNet stability
+    // Resizing to fixed MIRROR_SIZE avoids OpenCL layer cache issues in
+    // OpenCV 4.6.0
+    cv::Mat processed;
+    cv::resize(frame, processed,
+               cv::Size(linuxcampam::MIRROR_SIZE, linuxcampam::MIRROR_SIZE));
     cv::Mat faces;
-    detector->detect(frame, faces);
+    detector->detect(processed, faces);
     gpuSync(config.gpu_flush, config.gpu_throttle_ms);
 
     if (faces.rows != 1) {
@@ -738,8 +761,13 @@ bool AuthEngine::trainUser(const std::string &username,
     }
 
     cv::Mat faces;
-    detector->setInputSize(frame.size());
-    detector->detect(frame, faces);
+    // Align input size to 32 for YuNet stability
+    // Resizing to fixed MIRROR_SIZE avoids OpenCL layer cache issues in
+    // OpenCV 4.6.0
+    cv::Mat processed;
+    cv::resize(frame, processed,
+               cv::Size(linuxcampam::MIRROR_SIZE, linuxcampam::MIRROR_SIZE));
+    detector->detect(processed, faces);
     gpuSync(config.gpu_flush, config.gpu_throttle_ms);
     if (faces.rows != 1) {
       log_warn("Train: Expected 1 face, found " + std::to_string(faces.rows));
@@ -924,12 +952,49 @@ bool AuthEngine::testCameraAndAuth() {
     Logger::log(LogLevel::INFO, "Testing Camera " + id + "...");
     cv::Mat frame = captureFrame(ac.cam.get());
     if (!frame.empty()) {
-      detector->setInputSize(frame.size());
-      cv::Mat faces;
-      detector->detect(frame, faces);
-      Logger::log(LogLevel::INFO, "  -> Capture OK. Faces detected: " +
-                                      std::to_string(faces.rows));
-      any_ok = true;
+      // Align input size to 32 for YuNet stability
+      // Resizing to fixed MIRROR_SIZE avoids OpenCL layer cache issues in
+      // OpenCV 4.6.0
+      cv::Mat processed;
+      cv::resize(frame, processed,
+                 cv::Size(linuxcampam::MIRROR_SIZE, linuxcampam::MIRROR_SIZE));
+
+      Logger::log(LogLevel::INFO,
+                  "Frame Props: " + std::to_string(processed.cols) + "x" +
+                      std::to_string(processed.rows) +
+                      " Type=" + std::to_string(processed.type()) +
+                      " Channels=" + std::to_string(processed.channels()));
+
+      if (processed.channels() == 1) {
+        Logger::log(LogLevel::INFO, "Converting GRAY to BGR for detection");
+        cv::cvtColor(processed, processed, cv::COLOR_GRAY2BGR);
+      } else if (processed.channels() == 4) {
+        Logger::log(LogLevel::INFO, "Converting BGRA to BGR for detection");
+        cv::cvtColor(processed, processed, cv::COLOR_BGRA2BGR);
+      }
+
+      try {
+        Logger::log(LogLevel::INFO, "Running detector on frame...");
+        cv::Mat faces;
+        detector->detect(processed, faces);
+        any_ok = true;
+
+        // Visualize result
+        if (faces.rows > 0) {
+          Logger::log(LogLevel::INFO, "Detected " + std::to_string(faces.rows) +
+                                          " faces on Camera " + id);
+        } else {
+          Logger::log(LogLevel::INFO, "No faces detected on Camera " + id);
+        }
+      } catch (const cv::Exception &e) {
+        Logger::log(LogLevel::ERROR, "OpenCV Exception handling TEST_AUTH: " +
+                                         std::string(e.what()));
+      } catch (const std::exception &e) {
+        Logger::log(LogLevel::ERROR,
+                    "Exception handling TEST_AUTH: " + std::string(e.what()));
+      } catch (...) {
+        Logger::log(LogLevel::ERROR, "Unknown Exception handling TEST_AUTH");
+      }
     } else {
       Logger::log(LogLevel::ERROR, "  -> Capture Failed.");
     }

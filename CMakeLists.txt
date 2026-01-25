@@ -147,14 +147,17 @@ install(FILES ${CMAKE_SOURCE_DIR}/config/config.ini
     DESTINATION /etc/linuxcampam
 )
 
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/models/
+    DESTINATION /usr/share/linuxcampam/models
+    FILES_MATCHING PATTERN "*.onnx"
+)
+
 install(FILES ${CMAKE_SOURCE_DIR}/config/linuxcampam_pam_profile
     DESTINATION /usr/share/pam-configs
     RENAME linuxcampam
 )
 
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/models
-    DESTINATION /etc/linuxcampam
-)
+
 
 install(FILES ${CMAKE_SOURCE_DIR}/scripts/linuxcampam.service
     DESTINATION /lib/systemd/system

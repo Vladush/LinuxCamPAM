@@ -222,7 +222,10 @@ void Configuration::parse_ini_into_self(
   }
 
   // Hardware/Provider
+  provider_priority.clear();
   std::string priority_str = get("Hardware.provider_priority", "");
+  Logger::log(LogLevel::DEBUG, "Raw provider_priority: '" + priority_str + "'");
+
   if (!priority_str.empty()) {
     std::stringstream ss(priority_str);
     std::string segment;
@@ -232,8 +235,14 @@ void Configuration::parse_ini_into_self(
         provider_priority.push_back(segment);
     }
   }
-  if (provider_priority.empty())
+  if (provider_priority.empty()) {
+    Logger::log(LogLevel::DEBUG, "Using defaults for provider_priority");
     provider_priority = {"OpenCL", "OpenVINO", "CUDA", "CPU"};
+  }
+
+  for (const auto &p : provider_priority) {
+    Logger::log(LogLevel::DEBUG, "Provider: " + p);
+  }
 
   // Other settings
   save_success = (get("Storage.save_success_images") == "true");
