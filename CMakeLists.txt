@@ -1,7 +1,25 @@
 cmake_minimum_required(VERSION 3.14)
 project(LinuxCamPAM VERSION 0.9.6 LANGUAGES C CXX)
 
-add_compile_definitions(LINUXCAMPAM_VERSION="${PROJECT_VERSION}")
+# --- Versioning with Git Hash ---
+find_package(Git)
+if(GIT_FOUND)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        OUTPUT_VARIABLE GIT_HASH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+endif()
+
+if(GIT_HASH)
+    set(FULL_VERSION "${PROJECT_VERSION}+g${GIT_HASH}")
+else()
+    string(TIMESTAMP BUILD_DATE "%Y%m%d")
+    set(FULL_VERSION "${PROJECT_VERSION}+dev${BUILD_DATE}")
+endif()
+
+add_compile_definitions(LINUXCAMPAM_VERSION="${FULL_VERSION}")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

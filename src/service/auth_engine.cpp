@@ -382,13 +382,12 @@ AuthResult AuthEngine::verifyUserCore(const std::string &username,
     // Detect faces
     cv::Mat faces;
     // Align input size to 32 for YuNet stability
-    // Resizing to fixed MIRROR_SIZE avoids OpenCL layer cache issues in
-    // OpenCV 4.6.0
+
     Logger::log(LogLevel::INFO, "Profiling: About to resize and detect");
-    cv::Mat processed;
-    cv::resize(frame, processed,
-               cv::Size(linuxcampam::MIRROR_SIZE, linuxcampam::MIRROR_SIZE));
-    detector->detect(processed, faces);
+    // Use dynamic input size to avoid distortion and coordinate mismatch
+    Logger::log(LogLevel::INFO, "Profiling: About to detect (dynamic size)");
+    detector->setInputSize(frame.size());
+    detector->detect(frame, faces);
     Logger::log(LogLevel::INFO, "Profiling: Detection complete. Faces: " +
                                     std::to_string(faces.rows));
     gpuSync(config.gpu_flush, config.gpu_throttle_ms);
@@ -583,13 +582,11 @@ AuthEngine::enrollUser(const std::string &username) {
     }
 
     // Align input size to 32 for YuNet stability
-    // Resizing to fixed MIRROR_SIZE avoids OpenCL layer cache issues in
-    // OpenCV 4.6.0
-    cv::Mat processed;
-    cv::resize(frame, processed,
-               cv::Size(linuxcampam::MIRROR_SIZE, linuxcampam::MIRROR_SIZE));
+
+    // Use dynamic input size for enrollment
     cv::Mat faces;
-    detector->detect(processed, faces);
+    detector->setInputSize(frame.size());
+    detector->detect(frame, faces);
     gpuSync(config.gpu_flush, config.gpu_throttle_ms);
 
     if (faces.rows != 1) {
@@ -764,12 +761,10 @@ bool AuthEngine::trainUser(const std::string &username,
 
     cv::Mat faces;
     // Align input size to 32 for YuNet stability
-    // Resizing to fixed MIRROR_SIZE avoids OpenCL layer cache issues in
-    // OpenCV 4.6.0
-    cv::Mat processed;
-    cv::resize(frame, processed,
-               cv::Size(linuxcampam::MIRROR_SIZE, linuxcampam::MIRROR_SIZE));
-    detector->detect(processed, faces);
+
+    // Use dynamic input size for training
+    detector->setInputSize(frame.size());
+    detector->detect(frame, faces);
     gpuSync(config.gpu_flush, config.gpu_throttle_ms);
     if (faces.rows != 1) {
       log_warn("Train: Expected 1 face, found " + std::to_string(faces.rows));
@@ -954,12 +949,7 @@ bool AuthEngine::testCameraAndAuth() {
     Logger::log(LogLevel::INFO, "Testing Camera " + id + "...");
     cv::Mat frame = captureFrame(ac.cam.get());
     if (!frame.empty()) {
-      // Align input size to 32 for YuNet stability
-      // Resizing to fixed MIRROR_SIZE avoids OpenCL layer cache issues in
-      // OpenCV 4.6.0
-      cv::Mat processed;
-      cv::resize(frame, processed,
-                 cv::Size(linuxcampam::MIRROR_SIZE, linuxcampam::MIRROR_SIZE));
+      cv::Mat processed = frame;
 
       Logger::log(LogLevel::INFO,
                   "Frame Props: " + std::to_string(processed.cols) + "x" +
