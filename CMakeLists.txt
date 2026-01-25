@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(LinuxCamPAM VERSION 0.9.6 LANGUAGES C CXX)
+project(LinuxCamPAM VERSION 0.9.7 LANGUAGES C CXX)
 
 # --- Versioning with Git Hash ---
 find_package(Git)
