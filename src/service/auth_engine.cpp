@@ -495,8 +495,44 @@ bool AuthEngine::verifyUser(const std::string &username) {
 }
 
 AuthResult AuthEngine::verifyUserWithDetails(const std::string &username) {
-  // Used by CLI test command - skips image logging
-  return verifyUserCore(username, nullptr);
+  // Used by CLI test command - now with logging enabled for debugging
+  return verifyUserCore(username, [&](const std::string &id,
+                                      const cv::Mat &frame, bool success,
+                                      float score, const std::string &msg) {
+    // Logging & Saving Logic (Shared with verifyUser)
+    if (msg == "Capture failed") {
+      return;
+    }
+
+    std::string full_msg = " [CLI] Camera " + id + " " + msg;
+    if (score > 0)
+      full_msg += " (Score: " + std::to_string(score) + ")";
+
+    if (success) {
+      Logger::log(LogLevel::INFO, full_msg);
+      if (config.save_success) {
+        std::string fn =
+            config.log_dir + "success_test_" + id + "_" + username + ".jpg";
+        if (!frame.empty())
+          cv::imwrite(fn, frame);
+      }
+    } else {
+      Logger::log(LogLevel::WARN, full_msg);
+      // Always save fail images in CLI test execution for better debugging
+      if (config.save_fail || true) {
+        std::string prefix = (msg == "NO_FACE_DETECTED") ? "fail_"
+                             : (msg == "No embeddings found")
+                                 ? "fail_missing_"
+                                 : "fail_mismatched_";
+        std::string fn =
+            config.log_dir + prefix + "test_" + id + "_" + username + ".jpg";
+        if (!frame.empty()) {
+          cv::imwrite(fn, frame);
+          Logger::log(LogLevel::DEBUG, "Saved test fail image to: " + fn);
+        }
+      }
+    }
+  });
 }
 
 std::pair<bool, std::string>
