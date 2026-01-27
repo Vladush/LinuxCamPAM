@@ -123,6 +123,21 @@ The service implements strict validation on all inputs (specifically usernames) 
 
 ---
 
+### 5.1 In-Memory Lockout Mechanism
+
+**Design:** The lockout state (failed attempts counter and lockout timer) is stored in volatile memory.
+
+**Reset:** Restarting the `linuxcampamd` service (`systemctl restart`) or rebooting the machine clears the lockout logic.
+
+**Security Assessment:**
+
+* **Requirement:** Restarting the service requires `root` privileges (`sudo`).
+* **Threat Analysis:** If an attacker has sufficient privileges to restart the service, they have root access. At that point, they do not need to bypass face authentication to compromise the system (e.g., they can just `su` to the target user).
+* **Reboot:** A reboot also clears the lockout but imposes a significant time penalty (typically >30s), effectively acting as a rate-limiter itself.
+* **DoS Vector:** An attacker could intentionally lockout a valid user. The valid user can resolve this by restarting the service (if they have sudo access/password) or by waiting for the timer.
+
+---
+
 ## 6. SELinux / MAC Context
 
 If this service is running on a SELinux-enforced system (e.g., Fedora, RHEL, CentOS), the security posture improves significantly against **Tampering** risks.

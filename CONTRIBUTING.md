@@ -30,6 +30,10 @@ See the [README.md](README.md) for full installation instructions.
 ### Quick Build for Devs
 
 ```bash
+# 1. Build Static Dependencies (Required once)
+./scripts/build_opencv.sh
+
+# 2. Build Project
 mkdir build && cd build
 cmake .. -DENABLE_TESTING=ON
 make
