@@ -107,10 +107,16 @@ target_link_libraries(check_opencl PRIVATE ${OpenCV_LIBS})
 enable_testing()
 
 include(FetchContent)
+# Handle DOWNLOAD_EXTRACT_TIMESTAMP for CMake 3.24+
+set(GTEST_DOWNLOAD_ARGS "")
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
+  set(GTEST_DOWNLOAD_ARGS DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+endif()
+
 FetchContent_Declare(
   googletest
   URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
-  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  ${GTEST_DOWNLOAD_ARGS}
 )
 
 # Fix for CMP0135 warning in CMake 3.24+
