@@ -58,7 +58,7 @@ These are required to **compile** the project from source (Options A & B).
 | `ninja-build` *(optional)* | Faster builds (recommended) |
 
 > **Runtime Dependencies**: If you are installing a pre-built `.deb` package, the package manager (`apt`/`dpkg`) will automatically install the necessary runtime libraries (e.g., `libpam0g`, `libatlas3-base`). You do **not** need the `-dev` development headers for running the software.
-
+>
 > **Build System Note:** The install scripts use `make` by default. If you have `ninja-build` installed, you can use Ninja for faster incremental builds:
 >
 > ```bash
