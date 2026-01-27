@@ -256,7 +256,56 @@ void Configuration::parse_ini_into_self(
 
 std::string Configuration::toString() const {
   std::stringstream ss;
-  ss << "Config[Thres=" << threshold << ", Pol=" << (int)policy
-     << ", Cams=" << camera_defs.size() << "]";
+  ss << "=== Active Configuration ===\n\n";
+
+  ss << "[General]\n";
+  ss << "  Threshold: " << threshold << "\n";
+  ss << "  Detection Threshold: " << detection_threshold << "\n";
+  ss << "  Timeout: " << timeout_ms << " ms\n";
+  ss << "  Auth Policy: ";
+  switch (policy) {
+  case AuthPolicy::ADAPTIVE:
+    ss << "Adaptive (IR Strict, RGB Conditional)\n";
+    break;
+  case AuthPolicy::STRICT_ALL:
+    ss << "Strict (All Cameras Must Match)\n";
+    break;
+  case AuthPolicy::LENIENT_ANY:
+    ss << "Lenient (Any Camera Match)\n";
+    break;
+  default:
+    ss << "Unknown (" << (int)policy << ")\n";
+    break;
+  }
+  ss << "  Max Embeddings: " << max_embeddings << "\n\n";
+
+  ss << "[Security]\n";
+  ss << "  Lockout Attempts: " << lockout_attempts << "\n";
+  ss << "  Lockout Duration: " << lockout_duration_sec << " s\n\n";
+
+  ss << "[Cameras] (" << camera_defs.size() << " active)\n";
+  for (const auto &cam : camera_defs) {
+    ss << "  - ID: " << cam.id << "\n";
+    ss << "    Path: " << cam.path << "\n";
+    ss << "    Type: " << cam.type << "\n";
+    ss << "    Mandatory: " << (cam.mandatory ? "Yes" : "No") << "\n";
+    ss << "    Min Brightness: " << cam.min_brightness << "\n";
+    if (!cam.enroll_hdr.empty()) {
+      ss << "    Enroll HDR: " << cam.enroll_hdr << "\n";
+    }
+    ss << "\n";
+  }
+
+  ss << "[Performance]\n";
+  ss << "  GPU Flush: " << (gpu_flush ? "On" : "Off") << "\n";
+  ss << "  GPU Throttle: " << gpu_throttle_ms << " ms\n";
+  ss << "  Provider Priority: ";
+  for (size_t i = 0; i < provider_priority.size(); ++i) {
+    ss << provider_priority[i];
+    if (i < provider_priority.size() - 1)
+      ss << " > ";
+  }
+  ss << "\n";
+
   return ss.str();
 }
