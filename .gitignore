@@ -65,3 +65,8 @@ __pycache__/
 
 # Logs
 *.log
+
+# OpenCV (Local build artifacts)
+opencv_static/
+opencv-*/
+downloads/

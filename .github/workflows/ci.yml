@@ -61,6 +61,19 @@ jobs:
             libjsoncpp-dev nlohmann-json3-dev v4l-utils \
             libgtest-dev devscripts debhelper dh-cmake
 
+      - name: Cache OpenCV Static
+        id: cache-opencv
+        uses: actions/cache@v4
+        with:
+          path: opencv_static
+          key: ${{ runner.os }}-opencv-4.12.0-static-rev1
+
+      - name: Build OpenCV Static
+        if: steps.cache-opencv.outputs.cache-hit != 'true'
+        run: |
+          chmod +x scripts/build_opencv.sh
+          ./scripts/build_opencv.sh
+
       - name: Download models
         run: ./scripts/download_models.sh
 
@@ -100,8 +113,20 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential cmake clang libopencv-dev libpam0g-dev \
             libjsoncpp-dev nlohmann-json3-dev v4l-utils
+
+      - name: Cache OpenCV Static
+        id: cache-opencv
+        uses: actions/cache@v4
+        with:
+          path: opencv_static
+          key: ${{ runner.os }}-opencv-4.12.0-static-rev1
+
+      - name: Build OpenCV Static
+        if: steps.cache-opencv.outputs.cache-hit != 'true'
+        run: |
+          chmod +x scripts/build_opencv.sh
+          ./scripts/build_opencv.sh
 
       - name: Download models
         run: ./scripts/download_models.sh
@@ -133,6 +158,19 @@ jobs:
             build-essential cmake libopencv-dev libpam0g-dev \
             libjsoncpp-dev nlohmann-json3-dev v4l-utils \
             libgtest-dev devscripts debhelper dh-cmake
+
+      - name: Cache OpenCV Static
+        id: cache-opencv
+        uses: actions/cache@v4
+        with:
+          path: opencv_static
+          key: ${{ runner.os }}-opencv-4.12.0-static-rev1
+
+      - name: Build OpenCV Static
+        if: steps.cache-opencv.outputs.cache-hit != 'true'
+        run: |
+          chmod +x scripts/build_opencv.sh
+          ./scripts/build_opencv.sh
 
       - name: Download models
         run: ./scripts/download_models.sh

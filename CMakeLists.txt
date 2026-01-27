@@ -43,7 +43,9 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 # --- Dependencies ---
-set(OpenCV_DIR "${CMAKE_SOURCE_DIR}/opencv_static/lib/cmake/opencv4")
+if(EXISTS "${CMAKE_SOURCE_DIR}/opencv_static/lib/cmake/opencv4")
+    set(OpenCV_DIR "${CMAKE_SOURCE_DIR}/opencv_static/lib/cmake/opencv4")
+endif()
 find_package(OpenCV REQUIRED COMPONENTS core videoio imgproc dnn objdetect photo)
 find_package(Threads REQUIRED)
 
