@@ -68,5 +68,6 @@ __pycache__/
 
 # OpenCV (Local build artifacts)
 opencv_static/
+opencv_build/
 opencv-*/
 downloads/
