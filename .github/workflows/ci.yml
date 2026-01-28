@@ -66,7 +66,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: opencv_static
-          key: ${{ runner.os }}-opencv-4.12.0-static-rev1
+          key: ${{ runner.os }}-${{ runner.arch }}-opencv-4.12.0-static-rev1
 
       - name: Build OpenCV Static
         if: steps.cache-opencv.outputs.cache-hit != 'true'
@@ -122,7 +122,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: opencv_static
-          key: ${{ runner.os }}-opencv-4.12.0-static-clang-rev1
+          key: ${{ runner.os }}-${{ runner.arch }}-opencv-4.12.0-static-clang-rev1
 
       - name: Build OpenCV Static
         if: steps.cache-opencv.outputs.cache-hit != 'true'
@@ -175,7 +175,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: opencv_static
-          key: ${{ runner.os }}-opencv-4.12.0-static-rev1
+          key: ${{ runner.os }}-${{ runner.arch }}-opencv-4.12.0-static-rev1
 
       - name: Build OpenCV Static
         if: steps.cache-opencv.outputs.cache-hit != 'true'
