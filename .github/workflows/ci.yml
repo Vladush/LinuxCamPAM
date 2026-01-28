@@ -79,8 +79,8 @@ jobs:
 
       - name: Install models to system
         run: |
-          sudo mkdir -p /etc/linuxcampam/models
-          sudo cp models/*.onnx /etc/linuxcampam/models/
+          sudo mkdir -p /usr/share/linuxcampam/models
+          sudo cp models/*.onnx /usr/share/linuxcampam/models/
 
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -113,17 +113,22 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libjsoncpp-dev nlohmann-json3-dev v4l-utils
+            build-essential cmake libopencv-dev libpam0g-dev \
+            libjsoncpp-dev nlohmann-json3-dev v4l-utils \
+            libgtest-dev devscripts debhelper dh-cmake
 
       - name: Cache OpenCV Static
         id: cache-opencv
         uses: actions/cache@v4
         with:
           path: opencv_static
-          key: ${{ runner.os }}-opencv-4.12.0-static-rev1
+          key: ${{ runner.os }}-opencv-4.12.0-static-clang-rev1
 
       - name: Build OpenCV Static
         if: steps.cache-opencv.outputs.cache-hit != 'true'
+        env:
+          CC: clang
+          CXX: clang++
         run: |
           chmod +x scripts/build_opencv.sh
           ./scripts/build_opencv.sh
@@ -133,13 +138,19 @@ jobs:
 
       - name: Install models to system
         run: |
-          sudo mkdir -p /etc/linuxcampam/models
-          sudo cp models/*.onnx /etc/linuxcampam/models/
+          sudo mkdir -p /usr/share/linuxcampam/models
+          sudo cp models/*.onnx /usr/share/linuxcampam/models/
 
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+        env:
+          CC: clang
+          CXX: clang++
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
+        env:
+          CC: clang
+          CXX: clang++
         run: cmake --build build -j$(nproc)
 
       - name: Test
@@ -177,8 +188,8 @@ jobs:
 
       - name: Install models to system
         run: |
-          sudo mkdir -p /etc/linuxcampam/models
-          sudo cp models/*.onnx /etc/linuxcampam/models/
+          sudo mkdir -p /usr/share/linuxcampam/models
+          sudo cp models/*.onnx /usr/share/linuxcampam/models/
 
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
