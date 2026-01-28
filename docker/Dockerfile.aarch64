@@ -1,26 +1,42 @@
-FROM ubuntu:22.04
+# ==========================================
+# Stage 1: Builder
+# ==========================================
+FROM ubuntu:22.04 AS builder
 
 # Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install Dependencies
+# Install Dependencies (plus build tools for OpenCV)
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
-    libopencv-dev \
     libpam0g-dev \
-    libjsoncpp-dev \
     libjsoncpp-dev \
     nlohmann-json3-dev \
     libgtest-dev \
     v4l-utils \
     git \
     wget \
+    unzip \
+    pkg-config \
+    python3-dev \
+    gfortran \
+    libjpeg-dev libpng-dev libtiff-dev \
+    libavcodec-dev libavformat-dev libswscale-dev libv4l-dev \
+    libxvidcore-dev libx264-dev \
+    libatlas-base-dev \
     ca-certificates \
     devscripts \
     debhelper \
     dh-cmake \
     && rm -rf /var/lib/apt/lists/*
+
+# Build OpenCV 4.12.0 Static from Source
+COPY scripts/build_opencv.sh /tmp/build_opencv.sh
+RUN chmod +x /tmp/build_opencv.sh && \
+    mkdir -p /opencv_build && cd /opencv_build && \
+    SKIP_DEPS=1 INSTALL_DIR="/app/opencv_static" /tmp/build_opencv.sh && \
+    cd / && rm -rf /opencv_build /tmp/build_opencv.sh
 
 # Set Working Directory
 WORKDIR /app
@@ -28,13 +44,8 @@ WORKDIR /app
 # Copy Source Code
 COPY . /app
 
-# Ensure Clean Build
-RUN rm -rf build && mkdir build
-
 # Download models
-RUN ./scripts/download_models.sh && \
-    mkdir -p /usr/share/linuxcampam/models && \
-    cp models/*.onnx /usr/share/linuxcampam/models/
+RUN ./scripts/download_models.sh
 
 # Explicit Regression Testing
 ENV TEST_IN_DOCKER=1
@@ -46,10 +57,40 @@ RUN mkdir build_testing && cd build_testing && \
     cd .. && rm -rf build_testing
 
 # Build and Package
-# dpkg-buildpackage with cmake buildsystem will handle the build process
-# We skip signing (-uc -us)
-RUN dpkg-buildpackage -b -uc -us && \
-    dpkg -i ../*.deb || apt-get install -f -y
+RUN rm -rf build && mkdir build && \
+    dpkg-buildpackage -b -uc -us && \
+    mkdir -p /artifacts && \
+    cp ../*.deb /artifacts/
 
-# Verification Command (to run manually)
+# ==========================================
+# Stage 2: Runtime
+# ==========================================
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Runtime Dependencies
+RUN apt-get update && apt-get install -y \
+    libpam0g \
+    libpam-runtime \
+    v4l-utils \
+    systemd \
+    libgfortran5 \
+    libatlas3-base \
+    libgomp1 \
+    libatomic1 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy the .deb package from the builder stage
+COPY --from=builder /artifacts/*.deb /tmp/linuxcampam.deb
+
+# Install the package
+RUN dpkg -i /tmp/linuxcampam.deb || apt-get install -f -y && \
+    rm /tmp/linuxcampam.deb
+
+# Verification
 CMD ["/usr/bin/linuxcampam", "help"]
+

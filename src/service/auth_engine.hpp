@@ -2,6 +2,7 @@
 
 #include "config.hpp"
 #include "icamera.hpp"
+
 #include <chrono>
 #include <filesystem>
 #include <functional>
@@ -94,6 +95,12 @@ private:
 
   // Internal helper to capture from a specific camera instance
   cv::Mat captureFrame(ICamera *cam);
+
+  // Helper to generate embedding from a frame.
+  // Returns number of faces found. Populates out_embedding and out_aligned_face
+  // using the largest face.
+  int generateEmbedding(const cv::Mat &frame, std::vector<float> &out_embedding,
+                        cv::Mat &out_aligned_face);
 
   // Helper to initialize active cameras from config
   void initializeActiveCameras();

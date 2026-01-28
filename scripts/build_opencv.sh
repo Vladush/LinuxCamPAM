@@ -1,25 +1,32 @@
 #!/bin/bash
 set -e
 
-OPENCV_VER="4.12.0"
+OPENCV_VER="${OPENCV_VER:-4.12.0}"
 # Install to a local directory for static linking
 # This ensures we don't pollute /usr/local and makes packaging predictable
-INSTALL_DIR="$(pwd)/opencv_static"
+INSTALL_DIR="${INSTALL_DIR:-$(pwd)/opencv_static}"
 CORES=$(nproc)
 
 echo "=== Building OpenCV $OPENCV_VER (Static) from Source ==="
 echo "Target: $INSTALL_DIR"
 
 # Install Deps (Minimal for Headless Service)
-echo "Installing Dependencies..."
-sudo apt-get update
-# Note: libgtk-3-dev removed as we are building headless
-# libatlas-base-dev for linear algebra optimizations
-sudo apt-get install -y build-essential cmake git pkg-config \
-    libjpeg-dev libpng-dev libtiff-dev \
-    libavcodec-dev libavformat-dev libswscale-dev libv4l-dev \
-    libxvidcore-dev libx264-dev \
-    libatlas-base-dev gfortran python3-dev unzip wget
+if [[ -z "$SKIP_DEPS" ]]; then
+    echo "Installing Dependencies..."
+    SUDO=""
+    if [ "$EUID" -ne 0 ] && command -v sudo >/dev/null; then
+        SUDO="sudo"
+    fi
+
+    $SUDO apt-get update
+    # Note: libgtk-3-dev removed as we are building headless
+    # libatlas-base-dev for linear algebra optimizations
+    $SUDO apt-get install -y build-essential cmake git pkg-config \
+        libjpeg-dev libpng-dev libtiff-dev \
+        libavcodec-dev libavformat-dev libswscale-dev libv4l-dev \
+        libxvidcore-dev libx264-dev \
+        libatlas-base-dev gfortran python3-dev unzip wget
+fi
 
 # Workspace
 mkdir -p opencv_build

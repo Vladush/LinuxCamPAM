@@ -1,10 +1,12 @@
 
 #include "auth_engine.hpp"
+
 #include "camera.hpp"
 #include "config.hpp"
 #include "constants.hpp"
 #include "json.hpp"
 #include "logger.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <fcntl.h>
@@ -19,7 +21,6 @@
 #include <sys/stat.h>
 #include <thread>
 #include <unistd.h>
-#include <unordered_map>
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
@@ -233,6 +234,44 @@ void AuthEngine::fallbackToCPU() {
   }
 }
 
+// Helper to generate embedding from a frame
+int AuthEngine::generateEmbedding(const cv::Mat &frame,
+                                  std::vector<float> &out_embedding,
+                                  cv::Mat &out_aligned_face) {
+  if (frame.empty())
+    return 0;
+
+  cv::Mat faces;
+  Logger::log(LogLevel::INFO, "Profiling: About to detect (dynamic size)");
+
+  detector->setInputSize(frame.size());
+  detector->detect(frame, faces);
+
+  Logger::log(LogLevel::INFO, "Profiling: Detection complete. Faces: " +
+                                  std::to_string(faces.rows));
+  gpuSync(config.gpu_flush, config.gpu_throttle_ms);
+
+  int num_faces = faces.rows;
+  if (num_faces < 1)
+    return 0;
+
+  Logger::log(LogLevel::INFO, "Profiling: About to align and recognize");
+
+  cv::Mat emb_mat;
+  // Use largest face (row 0)
+  recognizer->alignCrop(frame, faces.row(0), out_aligned_face);
+  recognizer->feature(out_aligned_face, emb_mat);
+
+  Logger::log(LogLevel::INFO, "Profiling: Recognition complete");
+  gpuSync(config.gpu_flush, config.gpu_throttle_ms);
+
+  if (!emb_mat.empty()) {
+    emb_mat.reshape(1, 1).copyTo(out_embedding);
+  }
+
+  return num_faces;
+}
+
 cv::Mat AuthEngine::captureFrame(ICamera *cam) {
   if (!cam)
     return cv::Mat();
@@ -353,32 +392,20 @@ AuthResult AuthEngine::verifyUserCore(const std::string &username,
       continue;
     }
 
-    // Detect faces
-    cv::Mat faces;
-    // Align input size to 32 for YuNet stability
+    // Detect faces and generate embedding
+    std::vector<float> curr_emb_vec;
+    cv::Mat aligned_face;
+    int num_faces = generateEmbedding(frame, curr_emb_vec, aligned_face);
 
-    Logger::log(LogLevel::INFO, "Profiling: About to resize and detect");
-    // Use dynamic input size to avoid distortion and coordinate mismatch
-    Logger::log(LogLevel::INFO, "Profiling: About to detect (dynamic size)");
-    detector->setInputSize(frame.size());
-    detector->detect(frame, faces);
-    Logger::log(LogLevel::INFO, "Profiling: Detection complete. Faces: " +
-                                    std::to_string(faces.rows));
-    gpuSync(config.gpu_flush, config.gpu_throttle_ms);
-
-    if (faces.rows >= 1) {
-      if (faces.rows > 1) {
-        log_warn("Multiple faces detected (" + std::to_string(faces.rows) +
+    if (num_faces >= 1) {
+      if (num_faces > 1) {
+        log_warn("Multiple faces detected (" + std::to_string(num_faces) +
                  "), using largest.");
       }
 
-      cv::Mat aligned_face, curr_emb;
-      // Use largest face (row 0)
-      Logger::log(LogLevel::INFO, "Profiling: About to align and recognize");
-      recognizer->alignCrop(frame, faces.row(0), aligned_face);
-      recognizer->feature(aligned_face, curr_emb);
-      Logger::log(LogLevel::INFO, "Profiling: Recognition complete");
-      gpuSync(config.gpu_flush, config.gpu_throttle_ms);
+      cv::Mat curr_emb(1, static_cast<int>(curr_emb_vec.size()), CV_32F);
+      std::copy(curr_emb_vec.begin(), curr_emb_vec.end(),
+                curr_emb.ptr<float>());
 
       float best_camera_score = 0.0f;
 
@@ -386,8 +413,7 @@ AuthResult AuthEngine::verifyUserCore(const std::string &username,
       // Using direct match logic for efficiency
       for (const auto &emb_vec : all_embeddings) {
         cv::Mat emb_ref(1, static_cast<int>(emb_vec.size()), CV_32F);
-        std::memcpy(emb_ref.data, emb_vec.data(),
-                    emb_vec.size() * sizeof(float));
+        std::copy(emb_vec.begin(), emb_vec.end(), emb_ref.ptr<float>());
         float score = static_cast<float>(recognizer->match(
             curr_emb, emb_ref, cv::FaceRecognizerSF::FR_COSINE));
         if (score > best_camera_score)
@@ -594,14 +620,14 @@ AuthEngine::enrollUser(const std::string &username) {
     // Align input size to 32 for YuNet stability
 
     // Use dynamic input size for enrollment
-    cv::Mat faces;
-    detector->setInputSize(frame.size());
-    detector->detect(frame, faces);
-    gpuSync(config.gpu_flush, config.gpu_throttle_ms);
+    // Detect and generate embedding
+    std::vector<float> vec;
+    cv::Mat aligned;
+    int num_faces = generateEmbedding(frame, vec, aligned);
 
-    if (faces.rows != 1) {
+    if (num_faces != 1) {
       std::string err = "Found ";
-      err += std::to_string(faces.rows);
+      err += std::to_string(num_faces);
       err += " faces in ";
       err += id;
       err += ". Expecting exactly 1.";
@@ -616,14 +642,6 @@ AuthEngine::enrollUser(const std::string &username) {
       }
       return {false, err};
     }
-
-    cv::Mat aligned, emb;
-    recognizer->alignCrop(frame, faces.row(0), aligned);
-    recognizer->feature(aligned, emb);
-    gpuSync(config.gpu_flush, config.gpu_throttle_ms);
-
-    std::vector<float> vec;
-    emb.reshape(1, 1).copyTo(vec);
 
     // Store as pending embedding (will be finalized by setLabel)
     std::string pending_key = "_pending_" + ac.config.type;
@@ -769,25 +787,14 @@ bool AuthEngine::trainUser(const std::string &username,
       continue;
     }
 
-    cv::Mat faces;
-    // Align input size to 32 for YuNet stability
+    std::vector<float> new_vec;
+    cv::Mat aligned;
+    int num_faces = generateEmbedding(frame, new_vec, aligned);
 
-    // Use dynamic input size for training
-    detector->setInputSize(frame.size());
-    detector->detect(frame, faces);
-    gpuSync(config.gpu_flush, config.gpu_throttle_ms);
-    if (faces.rows != 1) {
-      log_warn("Train: Expected 1 face, found " + std::to_string(faces.rows));
+    if (num_faces != 1) {
+      log_warn("Train: Expected 1 face, found " + std::to_string(num_faces));
       continue;
     }
-
-    cv::Mat aligned, new_emb;
-    recognizer->alignCrop(frame, faces.row(0), aligned);
-    recognizer->feature(aligned, new_emb);
-    gpuSync(config.gpu_flush, config.gpu_throttle_ms);
-
-    std::vector<float> new_vec;
-    new_emb.reshape(1, 1).copyTo(new_vec);
 
     // Initialize array if needed
     if (!j.contains(emb_array_key)) {
@@ -829,6 +836,10 @@ bool AuthEngine::trainUser(const std::string &username,
           std::vector<float> old_vec = entry["data"].get<std::vector<float>>();
           cv::Mat old_emb(1, static_cast<int>(old_vec.size()), CV_32F,
                           old_vec.data());
+          // Reconstruct new_emb from vector
+          cv::Mat new_emb(1, static_cast<int>(new_vec.size()), CV_32F,
+                          new_vec.data());
+
           cv::Mat avg = old_emb + new_emb;
           cv::normalize(avg, avg);
           std::vector<float> avg_vec;
@@ -868,14 +879,14 @@ bool AuthEngine::trainUser(const std::string &username,
 
 std::vector<std::string>
 AuthEngine::listEmbeddings(const std::string &username) {
-  std::vector<std::string> labels;
+  std::set<std::string> unique_labels;
   if (!linuxcampam::isValidUsername(username))
-    return labels;
+    return {};
 
   std::string user_file =
       std::string(config.users_dir) + "/" + username + ".json";
   if (!fs::exists(user_file))
-    return labels;
+    return {};
 
   std::ifstream f(user_file);
   json j;
@@ -886,22 +897,17 @@ AuthEngine::listEmbeddings(const std::string &username) {
     if (j.contains(emb_array_key) && j[emb_array_key].is_array()) {
       for (const auto &entry : j[emb_array_key]) {
         if (entry.contains("label")) {
-          std::string lbl = entry["label"].get<std::string>();
-          if (std::find(labels.begin(), labels.end(), lbl) == labels.end()) {
-            labels.push_back(lbl);
-          }
+          unique_labels.insert(entry["label"].get<std::string>());
         }
       }
     }
     // Check legacy format
     std::string emb_key = "embedding_" + ac.config.type;
     if (j.contains(emb_key)) {
-      if (std::find(labels.begin(), labels.end(), "default") == labels.end()) {
-        labels.push_back("default (legacy)");
-      }
+      unique_labels.insert("default (legacy)");
     }
   }
-  return labels;
+  return {unique_labels.begin(), unique_labels.end()};
 }
 
 bool AuthEngine::removeEmbedding(const std::string &username,

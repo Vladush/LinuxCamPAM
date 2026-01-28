@@ -1,9 +1,12 @@
-FROM i386/debian:bookworm
+# ==========================================
+# Stage 1: Builder
+# ==========================================
+FROM i386/debian:bookworm AS builder
 
 # Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install Dependencies (plus build tools for OpenCV)
+# Install Build Dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
@@ -29,39 +32,11 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Build OpenCV 4.12.0 Static from Source
-WORKDIR /opencv_build
-RUN wget -O opencv.zip https://github.com/opencv/opencv/archive/4.12.0.zip && \
-    unzip -q opencv.zip && \
-    mkdir build && cd build && \
-    cmake -D CMAKE_BUILD_TYPE=Release \
-    -D CMAKE_INSTALL_PREFIX="/app/opencv_static" \
-    -D BUILD_SHARED_LIBS=OFF \
-    -D OPENCV_GENERATE_PKGCONFIG=ON \
-    -D WITH_GTK=OFF \
-    -D WITH_QT=OFF \
-    -D WITH_V4L=ON \
-    -D WITH_FFMPEG=ON \
-    -D WITH_GSTREAMER=OFF \
-    -D WITH_ADE=OFF \
-    -D WITH_EIGEN=OFF \
-    -D WITH_OPENEXR=OFF \
-    -D BUILD_EXAMPLES=OFF \
-    -D BUILD_TESTS=OFF \
-    -D BUILD_PERF_TESTS=OFF \
-    -D BUILD_JAVA=OFF \
-    -D BUILD_PYTHON3=OFF \
-    -D BUILD_opencv_python3=OFF \
-    -D BUILD_opencv_apps=OFF \
-    -D BUILD_opencv_gapi=OFF \
-    -D BUILD_opencv_highgui=OFF \
-    -D BUILD_opencv_stitching=OFF \
-    -D BUILD_opencv_ts=OFF \
-    -D BUILD_opencv_python_bindings_generator=OFF \
-    -D OPENCV_DNN_OPENCL=ON \
-    ../opencv-4.12.0 && \
-    make -j$(nproc) && \
-    make install && \
-    cd / && rm -rf /opencv_build
+COPY scripts/build_opencv.sh /tmp/build_opencv.sh
+RUN chmod +x /tmp/build_opencv.sh && \
+    mkdir -p /opencv_build && cd /opencv_build && \
+    SKIP_DEPS=1 INSTALL_DIR="/app/opencv_static" /tmp/build_opencv.sh && \
+    cd / && rm -rf /opencv_build /tmp/build_opencv.sh
 
 # Set Working Directory
 WORKDIR /app
@@ -69,28 +44,54 @@ WORKDIR /app
 # Copy Source Code
 COPY . /app
 
-# Download models (ensures they're included even if buildx context differs)
-RUN ./scripts/download_models.sh && \
-    mkdir -p /usr/share/linuxcampam/models && \
-    cp models/*.onnx /usr/share/linuxcampam/models/
+# Download models to include in the package
+RUN ./scripts/download_models.sh
 
 # Explicit Regression Testing
 ENV TEST_IN_DOCKER=1
-# Build and run tests before packaging to ensure quality
+# Build and run tests before packaging
 RUN mkdir build_testing && cd build_testing && \
     cmake .. && \
     make -j$(nproc) linuxcampam_tests && \
     ctest --output-on-failure && \
     cd .. && rm -rf build_testing
 
-# Ensure Clean Build
-RUN rm -rf build && mkdir build
-
 # Build and Package
-RUN dpkg-buildpackage -b -uc -us && \
+RUN rm -rf build && mkdir build && \
+    dpkg-buildpackage -b -uc -us && \
     mkdir -p /artifacts && \
-    cp ../*.deb /artifacts/ && \
-    dpkg -i ../*.deb || apt-get install -f -y
+    cp ../*.deb /artifacts/
+
+# ==========================================
+# Stage 2: Runtime
+# ==========================================
+FROM i386/debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Runtime Dependencies ONLY
+# Note: OpenCV is static, but we need PAM, V4L, and common libs
+RUN apt-get update && apt-get install -y \
+    libpam0g \
+    libpam-runtime \
+    v4l-utils \
+    systemd \
+    libgfortran5 \
+    libatlas3-base \
+    libgomp1 \
+    libatomic1 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy the .deb package from the builder stage
+COPY --from=builder /artifacts/*.deb /tmp/linuxcampam.deb
+
+# Install the package
+RUN dpkg -i /tmp/linuxcampam.deb || apt-get install -f -y && \
+    rm /tmp/linuxcampam.deb
 
 # Verification
 CMD ["/usr/bin/linuxcampam", "help"]
+
