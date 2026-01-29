@@ -49,11 +49,15 @@ min_brightness = 40 ; Only participate if scene brightness > 40
 
 #### 3. Authentication Policy
 
-Control how multiple cameras determine the final result in the `[Auth]` section.
+Control how cameras behave and set recognition thresholds in the `[Auth]` section.
 
 ```ini
 [Auth]
 policy = adaptive
+threshold = 0.363           ; Similarity threshold (lower = stricter). Default ~0.36-0.4.
+detection_threshold = 0.9   ; Face detection confidence (0.0-1.0).
+timeout_ms = 3000           ; Auth timeout in milliseconds.
+max_embeddings = 5          ; Max face profiles per user (0 = unlimited).
 ```
 
 **Available Policies:**
@@ -62,13 +66,29 @@ policy = adaptive
   - Designed for IR+RGB setups.
   - "IR" cameras (type=`ir`) are **Critical**: Failure to capture or match will fail authentication.
   - "RGB" or other cameras are **Conditional**: They must match *only if* they are participating (capture succeeded and brightness > min_brightness).
-  - Matches the legacy behavior of LinuxCamPAM.
 - **strict**:
   - **All** cameras defined in `[Cameras]` must successfully capture, pass brightness check, AND match the user.
   - If any camera fails (even if dark), authentication fails.
 - **lenient**:
   - **At least one** camera must successfully capture, pass brightness check, and match the user.
   - Typically used for "Either Camera A OR Camera B" scenarios.
+
+#### 4. Capture Settings (Advanced)
+
+Control image quality logic to improve enrollment and verification success rates in the `[Capture]` section. These can also be overridden per-camera.
+
+```ini
+[Capture]
+enroll_hdr = auto             ; auto | on | off. Uses multi-exposure if supported.
+enroll_averaging = on         ; true | false. Reduce noise by averaging frames.
+enroll_average_frames = 5     ; Number of frames to average.
+
+verify_averaging = false      ; Averaging during auth (slower, but more reliable).
+verify_average_frames = 3
+```
+
+- **enroll_hdr**: Improves profiles in difficult lighting (backlit scenes).
+- **enroll_averaging**: recommended for IR cameras to reduce sensor noise.
 
 ### Smart Defaults & Backward Compatibility
 
