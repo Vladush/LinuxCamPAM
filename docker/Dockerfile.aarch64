@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y \
     libavcodec-dev libavformat-dev libswscale-dev libv4l-dev \
     libxvidcore-dev libx264-dev \
     libatlas-base-dev \
+    libatomic1 \
     ca-certificates \
     devscripts \
     debhelper \
