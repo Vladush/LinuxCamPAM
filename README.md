@@ -30,14 +30,14 @@ Since open-sourcing, I've put effort into making it hardware-agnostic and well-d
 
 ## System Requirements
 
-| Component | Minimum Requirement | Recommended |
-| :--- | :--- | :--- |
-| **OS** | Linux (Kernel 5.15+) | Linux (Kernel 6.1+) |
-| **Distribution** | Ubuntu 18.04 LTS (GLIBC 2.27+) [1] | Ubuntu 24.04 LTS / Debian 12 |
-| **CPU** | x86_64, x86, aarch64, riscv64 | x86_64 (AVX2), aarch64 (NEON), riscv64 (Vector) |
-| **RAM** | 256MB free | 512MB free |
-| **Camera** | V4L2-compatible (360p) | IR + RGB (720p) |
-| **Access** | Root/Sudo privileges | Root/Sudo privileges |
+| Component        | Minimum Requirement                | Recommended                                     |
+| :--------------- | :--------------------------------- | :---------------------------------------------- |
+| **OS**           | Linux (Kernel 5.15+)               | Linux (Kernel 6.1+)                             |
+| **Distribution** | Ubuntu 18.04 LTS (GLIBC 2.27+) [1] | Ubuntu 24.04 LTS / Debian 12                    |
+| **CPU**          | x86_64, x86, aarch64, riscv64      | x86_64 (AVX2), aarch64 (NEON), riscv64 (Vector) |
+| **RAM**          | 256MB free                         | 512MB free                                      |
+| **Camera**       | V4L2-compatible (360p)             | IR + RGB (720p)                                 |
+| **Access**       | Root (Daemon) / User (CLI)         | Root (Daemon) / User (CLI)                      |
 
 > [1] **Legacy Distros (Ubuntu 18.04 / Debian 10)**: The default `cmake` is too old (< 3.14). You must upgrade to **CMake 3.14+** (e.g., via `pip install cmake`) to build this project. OpenCV 4.12 itself builds fine.
 
@@ -49,13 +49,13 @@ Since open-sourcing, I've put effort into making it hardware-agnostic and well-d
 
 These are required to **compile** the project from source (Options A & B).
 
-| Package | Purpose |
-| --------- | ------- |
-| `cmake`, `build-essential` | Build system |
-| `libpam0g-dev` | PAM module development headers |
-| `v4l-utils` | Camera detection tools (also a runtime dep) |
-| `curl` / `wget` | Downloading models and dependencies |
-| `ninja-build` *(optional)* | Faster builds (recommended) |
+| Package                      | Purpose                                     |
+| :--------------------------- | :------------------------------------------ |
+| `cmake`, `build-essential`   | Build system                                |
+| `libpam0g-dev`               | PAM module development headers              |
+| `v4l-utils`                  | Camera detection tools (also a runtime dep) |
+| `curl` / `wget`              | Downloading models and dependencies         |
+| `ninja-build` *(optional)*   | Faster builds (recommended)                 |
 
 > **Runtime Dependencies**: If you are installing a pre-built `.deb` package, the package manager (`apt`/`dpkg`) will automatically install the necessary runtime libraries (e.g., `libpam0g`, `libatlas3-base`). You do **not** need the `-dev` development headers for running the software.
 >
@@ -68,13 +68,13 @@ These are required to **compile** the project from source (Options A & B).
 
 **Compiler Compatibility:** The project is C++17 compliant. While we strictly verify on **Ubuntu 24.04**, the codebase includes polyfills (e.g., `<charconv>` fallbacks) to support older compilers found in **Ubuntu 20.04 LTS (GCC 9)** and Debian 11.
 
-| Architecture | Compiler | Status | Notes |
-| :--- | :--- | :--- | :--- |
-| **x86_64** | GCC 9+ | ✅ Compatible | Ubuntu 20.04+ / Debian 11+ |
-| **x86_64** | GCC 11+ | ✅ Verified | Ubuntu 22.04+ / Debian 12+ |
-| **x86_64** | Clang 10+ | ✅ Compatible | Ubuntu 20.04+ |
-| **AARCH64** | GCC (Cross) | ✅ Verified | via Docker/QEMU |
-| **RISC-V** | GCC (Cross) | ✅ Verified | via Docker/QEMU |
+| Architecture | Compiler    | Status        | Notes                        |
+| :----------- | :---------- | :------------ | :--------------------------- |
+| **x86_64**   | GCC 9+      | ✅ Compatible | Ubuntu 20.04+ / Debian 11+   |
+| **x86_64**   | GCC 11+     | ✅ Verified   | Ubuntu 22.04+ / Debian 12+   |
+| **x86_64**   | Clang 10+   | ✅ Compatible | Ubuntu 20.04+                |
+| **AARCH64**  | GCC (Cross) | ✅ Verified   | via Docker/QEMU              |
+| **RISC-V**   | GCC (Cross) | ✅ Verified   | via Docker/QEMU              |
 
 > **Note**: We now compile a **static version of OpenCV 4.12.0** automatically. You do **not** need to install `libopencv-dev` or generic system libraries anymore. This ensures the authentication service runs reliably regardless of your OS version.
 
@@ -137,7 +137,7 @@ cpack -G DEB
 Then install the generated package:
 
 ```bash
-sudo dpkg -i linuxcampam_*.deb
+sudo apt install ./linuxcampam_*.deb
 ```
 
 The package installation will automatically backup your PAM config, configure the cameras, and enable the module.
@@ -161,7 +161,7 @@ For advanced policies (e.g., Mandatory IR + Optional RGB), see [docs/CONFIGURATI
 **Enroll a User:**
 
 ```bash
-sudo linuxcampam add <username>
+linuxcampam add <username>
 ```
 
 **Train (Update) User Model:**
@@ -169,7 +169,7 @@ sudo linuxcampam add <username>
 Updates the existing user model with new face data to improve recognition accuracy.
 
 ```bash
-sudo linuxcampam train <username>
+linuxcampam train <username>
 ```
 
 **Test Authentication (Diagnostics):**
@@ -207,19 +207,19 @@ If you encounter issues, you can enable verbose debug logging dynamically withou
 **Enable Debug Logging:**
 
 ```bash
-sudo linuxcampam debug on
+linuxcampam debug on
 ```
 
 **Disable Debug Logging:**
 
 ```bash
-sudo linuxcampam debug off
+linuxcampam debug off
 ```
 
 **Check Status:**
 
 ```bash
-sudo linuxcampam debug
+linuxcampam debug
 ```
 
 Logs are typically written to systemd journal. You can view them with:
@@ -290,15 +290,13 @@ I am excited to see this project grow beyond the hardware I currently possess! *
 ## Security & Permissions
 
 > [!IMPORTANT]
-> **Why is `sudo` required for CLI commands?**
+> **Permissions & Sudo Usage**
 >
-> All CLI commands (`add`, `train`, `test`) require `sudo`. This is a deliberate security feature.
+> The `linuxcampamd` service runs as `root` to securely manage face data in `/etc/linuxcampam/users`. The CLI tool communicates with this service via a socket.
 >
-> - **Protected Data**: Face embeddings are stored in `/etc/linuxcampam/users`, which is writable only by root.
-> - **Socket Access**: The socket `/run/linuxcampam/socket` is world-accessible (`0666`) so PAM modules can connect during login.
->
-> **Does this affect normal users?**
-> **No.** Standard users can log in using face unlock because login managers (`gdm`, `login`, `sudo`) invoke PAM which connects to the service. Only *management* tasks require root.
+> - **Standard Users**: Can enroll, train, and test their *own* face data **without `sudo`**.
+> - **Administration**: Functional tests of *other* users (e.g., `linuxcampam test otheruser`) will enforce `sudo` usage for security.
+> - **Service Management**: Commands that restart the service or edit config files manually (like `linuxcampam-setup-config`) still require `sudo`.
 
 ## License
 

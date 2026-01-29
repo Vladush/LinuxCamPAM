@@ -71,7 +71,7 @@ The security of this system heavily depends on the camera hardware used.
 | **No Data Exposure** | Socket only returns `AUTH_SUCCESS` or `AUTH_FAIL` - no face data leaks |
 | **Camera is Gatekeeper** | You can't authenticate without being physically in front of the camera |
 | **Protected User Data** | Face embeddings in `/etc/linuxcampam/users/` are root-only (`0700` directory, `0600` files) |
-| **Root-Only Management** | Only `sudo linuxcampam add/train` can modify user data |
+| **Service-Managed Data** | All file writes are handled by the root daemon; users cannot directly modify files in `/etc/`. |
 
 #### Residual Risk
 
