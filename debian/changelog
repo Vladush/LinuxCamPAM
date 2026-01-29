@@ -1,3 +1,11 @@
+linuxcampam (0.9.7.1-1) unstable; urgency=medium
+
+* Fix: Correctly parse [Auth] and [Capture] configuration sections
+* Fix: Ensure documentation consistency regarding permissions and configuration
+* Hotfix release for v0.9.7 issues
+
+ -- Vladimir Orlinski <contact.github.submerge594@slmails.com>  Fri, 30 Jan 2026 00:20:00 +0100
+
 linuxcampam (0.9.7-1) unstable; urgency=medium
 
 * Bump version to 0.9.7 to match project version
