@@ -101,25 +101,36 @@ void Configuration::parse_ini_into_self(
   };
 
   // Logic ported from AuthEngine::init
-  // General
-  parse_float(get("General.threshold", std::to_string(DEFAULT_THRESHOLD)),
-              threshold);
-  parse_float(get("General.detection_threshold",
-                  std::to_string(DEFAULT_DETECTION_THRESHOLD)),
-              detection_threshold);
-  parse_int(get("General.timeout_ms", std::to_string(DEFAULT_TIMEOUT_MS)),
-            timeout_ms);
+  // General & Auth (Support both for backward compatibility, prefer [Auth])
+  // General.threshold (Legacy) vs Auth.threshold
+  std::string th_str = get("Auth.threshold");
+  if (th_str.empty())
+    th_str = get("General.threshold", std::to_string(DEFAULT_THRESHOLD));
+  parse_float(th_str, threshold);
+
+  std::string dt_str = get("Auth.detection_threshold");
+  if (dt_str.empty())
+    dt_str = get("General.detection_threshold",
+                 std::to_string(DEFAULT_DETECTION_THRESHOLD));
+  parse_float(dt_str, detection_threshold);
+
+  std::string to_str = get("Auth.timeout_ms");
+  if (to_str.empty())
+    to_str = get("General.timeout_ms", std::to_string(DEFAULT_TIMEOUT_MS));
+  parse_int(to_str, timeout_ms);
 
   // Auth Policy
-  std::string method =
-      get("General.auth_method", "adaptive"); // Default fallback
-  // Check for explicit policy override
-  if (ini.count("General.policy"))
-    method = get("General.policy");
+  std::string method = get("Auth.policy");
+  if (method.empty()) {
+    // Fallback to General
+    method = get("General.auth_method", "adaptive");
+    if (ini.count("General.policy"))
+      method = get("General.policy");
+  }
 
-  if (method == "strict_all" || method == "2fa")
+  if (method == "strict_all" || method == "2fa" || method == "strict")
     policy = AuthPolicy::STRICT_ALL;
-  else if (method == "lenient_any" || method == "1fa")
+  else if (method == "lenient_any" || method == "1fa" || method == "lenient")
     policy = AuthPolicy::LENIENT_ANY;
   else
     policy = AuthPolicy::ADAPTIVE;
@@ -133,9 +144,29 @@ void Configuration::parse_ini_into_self(
     ir_emitter_path = get("Paths.ir_emitter_path");
 
   // Limits
-  parse_int(
-      get("General.max_embeddings", std::to_string(DEFAULT_MAX_EMBEDDINGS)),
-      max_embeddings);
+  // Can be in Auth or General
+  std::string me_str = get("Auth.max_embeddings");
+  if (me_str.empty())
+    me_str =
+        get("General.max_embeddings", std::to_string(DEFAULT_MAX_EMBEDDINGS));
+  parse_int(me_str, max_embeddings);
+
+  // Capture Settings (Global)
+  if (ini.count("Capture.enroll_hdr"))
+    enroll_hdr = get("Capture.enroll_hdr");
+  if (ini.count("Capture.enroll_averaging"))
+    enroll_averaging = (get("Capture.enroll_averaging") == "on" ||
+                        get("Capture.enroll_averaging") == "true");
+  parse_int(get("Capture.enroll_average_frames",
+                std::to_string(DEFAULT_ENROLL_AVG_FRAMES)),
+            enroll_average_frames);
+
+  if (ini.count("Capture.verify_averaging"))
+    verify_averaging = (get("Capture.verify_averaging") == "on" ||
+                        get("Capture.verify_averaging") == "true");
+  parse_int(get("Capture.verify_average_frames",
+                std::to_string(DEFAULT_VERIFY_AVG_FRAMES)),
+            verify_average_frames);
 
   // Cameras
   std::string cam_names = get("Cameras.names", "");
