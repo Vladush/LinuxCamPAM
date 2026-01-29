@@ -5,7 +5,7 @@ OPENCV_VER="${OPENCV_VER:-4.12.0}"
 # Install to a local directory for static linking
 # This ensures we don't pollute /usr/local and makes packaging predictable
 INSTALL_DIR="${INSTALL_DIR:-$(pwd)/opencv_static}"
-CORES=$(nproc)
+CORES="${MAKE_JOBS:-$(nproc)}"
 
 echo "=== Building OpenCV $OPENCV_VER (Static) from Source ==="
 echo "Target: $INSTALL_DIR"
@@ -54,10 +54,10 @@ cmake -D CMAKE_BUILD_TYPE=Release \
     -D CMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
     -D BUILD_SHARED_LIBS=OFF \
     -D OPENCV_GENERATE_PKGCONFIG=ON \
+    -D WITH_FFMPEG=OFF \
+    -D WITH_V4L=ON \
     -D WITH_GTK=OFF \
     -D WITH_QT=OFF \
-    -D WITH_V4L=ON \
-    -D WITH_FFMPEG=ON \
     -D WITH_GSTREAMER=OFF \
     -D WITH_ADE=OFF \
     -D WITH_EIGEN=OFF \
@@ -74,12 +74,6 @@ cmake -D CMAKE_BUILD_TYPE=Release \
     -D BUILD_opencv_stitching=OFF \
     -D BUILD_opencv_ts=OFF \
     -D BUILD_opencv_python_bindings_generator=OFF \
-    -D BUILD_opencv_calib3d=OFF \
-    -D BUILD_opencv_features2d=OFF \
-    -D BUILD_opencv_flann=OFF \
-    -D BUILD_opencv_ml=OFF \
-    -D BUILD_opencv_photo=OFF \
-    -D BUILD_opencv_video=OFF \
     -D OPENCV_DNN_OPENCL=ON \
     ../opencv-$OPENCV_VER
 
