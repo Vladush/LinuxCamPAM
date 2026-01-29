@@ -6,3 +6,7 @@ build_*
 .cache
 compile_commands.json
 .clang-format
+opencv_static
+cmake-build-*
+.idea
+.vscode

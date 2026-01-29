@@ -16,8 +16,10 @@ Since open-sourcing, I've put effort into making it hardware-agnostic and well-d
 
 - **Any Webcam Works**: Standard USB or integrated cameras (720p+ recommended). No special hardware required.
 - **Enhanced IR Support**: Detects IR cameras and controls emitters for better low-light and anti-spoofing.
-- **Hardware Acceleration**: OpenCL (AMD via Rusticl, Intel, NVIDIA) with optional CUDA backend.
-  - **Smart GPU Detection**: Auto-detects AMD GPUs and uses Rusticl. Non-AMD systems use native drivers; falls back to CPU if needed.
+- **Hardware Acceleration**:
+  - **Strategy**: We prioritize **OpenCL** as the universal accelerator. It enables GPU acceleration on Intel (iGPU), NVIDIA (proprietary driver), AMD (ROCm/Rusticl), and ARM (Mali/Adreno) with a single lightweight package.
+  - **Native Backends**: Native CUDA and OpenVINO are not enabled in the default static build to maintain a small package size (~15MB vs ~300MB+). OpenCL provides near-native performance for this use case without the bloat.
+  - **Smart GPU Detection**: Auto-detects available acceleration; falls back to optimized CPU instructions (AVX/SSE) if no GPU is available.
 - **Smart Camera Support**:
   - **Dual-Camera Security**: Uses IR for liveness/security and RGB for validation.
   - **Auto-Configuration**: Detects your hardware (IR vs RGB) and selects the best policy.
@@ -26,19 +28,37 @@ Since open-sourcing, I've put effort into making it hardware-agnostic and well-d
 - **PAM Integration**: Standard PAM module for Debian/Ubuntu.
 - **Security First**: [Threat Model & Security Assessment](docs/SECURITY_ASSESSMENT.md) included.
 
+## System Requirements
+
+| Component | Minimum Requirement | Recommended |
+| :--- | :--- | :--- |
+| **OS** | Linux (Kernel 5.15+) | Linux (Kernel 6.1+) |
+| **Distribution** | Ubuntu 18.04 LTS (GLIBC 2.27+) [1] | Ubuntu 24.04 LTS / Debian 12 |
+| **CPU** | x86_64, x86, aarch64, riscv64 | x86_64 (AVX2), aarch64 (NEON), riscv64 (Vector) |
+| **RAM** | 256MB free | 512MB free |
+| **Camera** | V4L2-compatible (360p) | IR + RGB (720p) |
+| **Access** | Root/Sudo privileges | Root/Sudo privileges |
+
+> [1] **Legacy Distros (Ubuntu 18.04 / Debian 10)**: The default `cmake` is too old (< 3.14). You must upgrade to **CMake 3.14+** (e.g., via `pip install cmake`) to build this project. OpenCV 4.12 itself builds fine.
+
 ## Installation
 
-### Dependencies
+### Build Dependencies
+
+> **Don't panic!** You don't need to manually install these. The provided script `scripts/install_deps.sh` will automatically install everything you need. This list is just for reference or for those building manually.
+
+These are required to **compile** the project from source (Options A & B).
 
 | Package | Purpose |
 | --------- | ------- |
-| `libopencv-dev` | Face detection (YuNet), recognition (SFace), camera capture, OpenCL acceleration |
-| `libpam0g-dev` | PAM module development |
-| `nlohmann-json3-dev` | JSON serialization (user embeddings, config) - vendored fallback included |
-| `v4l-utils` | Camera detection and diagnostics |
 | `cmake`, `build-essential` | Build system |
+| `libpam0g-dev` | PAM module development headers |
+| `v4l-utils` | Camera detection tools (also a runtime dep) |
+| `curl` / `wget` | Downloading models and dependencies |
 | `ninja-build` *(optional)* | Faster builds (recommended) |
 
+> **Runtime Dependencies**: If you are installing a pre-built `.deb` package, the package manager (`apt`/`dpkg`) will automatically install the necessary runtime libraries (e.g., `libpam0g`, `libatlas3-base`). You do **not** need the `-dev` development headers for running the software.
+>
 > **Build System Note:** The install scripts use `make` by default. If you have `ninja-build` installed, you can use Ninja for faster incremental builds:
 >
 > ```bash
@@ -46,44 +66,71 @@ Since open-sourcing, I've put effort into making it hardware-agnostic and well-d
 > ninja
 > ```
 
-**Compiler Compatibility:** The project is C++17 compliant and has been rigorously verified on **Ubuntu 24.04** using the following compilers, ensuring compatibility with older distributions (LTS):
+**Compiler Compatibility:** The project is C++17 compliant. While we strictly verify on **Ubuntu 24.04**, the codebase includes polyfills (e.g., `<charconv>` fallbacks) to support older compilers found in **Ubuntu 20.04 LTS (GCC 9)** and Debian 11.
 
 | Architecture | Compiler | Status | Notes |
 | :--- | :--- | :--- | :--- |
-| **x86_64** | GCC 11/12/13 | ✅ Verified | Target: Ubuntu 22.04+ / Debian 12+ |
-| **x86_64** | Clang 16/17/18 | ✅ Verified | Target: Ubuntu 22.04+ / Debian 12+ |
+| **x86_64** | GCC 9+ | ✅ Compatible | Ubuntu 20.04+ / Debian 11+ |
+| **x86_64** | GCC 11+ | ✅ Verified | Ubuntu 22.04+ / Debian 12+ |
+| **x86_64** | Clang 10+ | ✅ Compatible | Ubuntu 20.04+ |
 | **AARCH64** | GCC (Cross) | ✅ Verified | via Docker/QEMU |
 | **RISC-V** | GCC (Cross) | ✅ Verified | via Docker/QEMU |
 
-### Option A: Direct System Install (Quickest)
+> **Note**: We now compile a **static version of OpenCV 4.12.0** automatically. You do **not** need to install `libopencv-dev` or generic system libraries anymore. This ensures the authentication service runs reliably regardless of your OS version.
+
+### Option A: Install from Package (Recommended)
+
+If you have downloaded a release file (`.deb`), installation is extremely simple:
 
 ```bash
-# 1. Install Dependencies
-./scripts/install_deps.sh
-
-# 2. Build & Install
-./scripts/install.sh
+sudo apt install ./linuxcampam_*.deb
 ```
 
-This compiles the code and installs binaries directly to `/usr/local/bin`. It also:
+That's it! `apt` handles all dependencies for you.
+
+### Option B: Build from Source (Quickest System Build)
+
+1. **Install Build Tools**:
+
+   ```bash
+   ./scripts/install_deps.sh
+   ```
+
+2. **Compile Dependencies (Static OpenCV)**:
+   This takes ~15-20 minutes but ensures a stable, portable build.
+
+   ```bash
+   ./scripts/build_opencv.sh
+   ```
+
+3. **Build & Install Project**:
+
+   ```bash
+   ./scripts/install.sh
+   ```
+
+This compiles the code and installs binaries to `/usr/local/bin`. It also:
 
 - **Backs up** your existing PAM configuration.
 - **Auto-configures** your cameras.
 - **Enables** the module automatically.
 
 > [!NOTE]
-> **Silent Installation:** This script is designed to be fully automated and **non-interactive**. It will not ask for confirmation before backing up files or enabling the module. This is by design to support automated deployment (Ansible, Docker, etc.).
+> **Silent Installation:** This script is designed to be fully automated and **non-interactive**. It will not ask for confirmation before backing up files or enabling the module.
 
-### Option B: Build Debian Package (.deb)
+### Option C: Build Debian Package (.deb)
 
 To build a clean `.deb` package using CPack:
 
 ```bash
-# 1. Prepare Build
+# 1. Build Static Dependencies
+./scripts/build_opencv.sh
+
+# 2. Prepare Build
 mkdir -p build && cd build
 cmake ..
 
-# 2. Generate Package
+# 3. Generate Package
 cpack -G DEB
 ```
 
@@ -97,17 +144,17 @@ The package installation will automatically backup your PAM config, configure th
 
 ## Configuration
 
-The configuration file is located at `/etc/linuxcampam/config.ini`.
+The configuration file is at `/etc/linuxcampam/config.ini`.
 
-The installer runs a smart detection script (`linuxcampam-setup-config`) which attempts to auto-configure your cameras. You can re-run this at any time:
+The installer runs a smart detection script (`linuxcampam-setup-config`) to auto-configure your cameras. You can re-run this at any time:
 
 ```bash
 sudo linuxcampam-setup-config
 ```
 
-> **Note regarding IR Cameras:** If your IR camera does not light up, you likely need to configure the emitter. This project relies on the excellent **[linux-enable-ir-emitter](https://github.com/EmixamPP/linux-enable-ir-emitter)** tool for this. A helper script is included at `scripts/install_ir_emitter.sh` to install it for you.
+> **IR Camera Note:** If your IR camera implies it's working but doesn't light up, you likely need to configure the emitter. We rely on the excellent **[linux-enable-ir-emitter](https://github.com/EmixamPP/linux-enable-ir-emitter)** tool for this. Run `scripts/install_ir_emitter.sh` to install it.
 
-For advanced multi-camera policies (e.g., Mandatory IR + Optional RGB), see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+For advanced policies (e.g., Mandatory IR + Optional RGB), see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ## Usage
 
@@ -127,7 +174,7 @@ sudo linuxcampam train <username>
 
 **Test Authentication (Diagnostics):**
 
-Performs a hardware check (verifies camera capture) AND attempts to authenticate the current user. Shows detailed errors for debugging.
+Performs a hardware check and attempts to authenticate the current user. Shows detailed errors for debugging.
 
 ```bash
 linuxcampam test
@@ -135,10 +182,9 @@ linuxcampam test
 # Or:     HW_OK | AUTH_FAIL: No face detected
 ```
 
-To test a specific user (requires `sudo` for security - prevents user enumeration):
+To test a specific user (requires `sudo` for security):
 
 ```bash
-sudo linuxcampam test <username>
 sudo linuxcampam test <username>
 # Output: HW_OK | AUTH_FAIL: User not enrolled
 ```
@@ -150,8 +196,8 @@ Shows the version of both the CLI client and the running daemon service.
 ```bash
 linuxcampam version
 # Output:
-# Client Version: 0.9.6
-# Daemon Version: 0.9.6
+# Client Version: 0.9.7+g9bd12a2
+# Daemon Version: 0.9.7+g9bd12a2
 ```
 
 ## Debugging
@@ -199,6 +245,23 @@ This project was inspired by and utilizes tools from the open source community:
 
 - **[linux-enable-ir-emitter](https://github.com/EmixamPP/linux-enable-ir-emitter)**: By [EmixamPP](https://github.com/EmixamPP). Essential for enabling IR emitters on many Linux laptops.
 - **[Howdy](https://github.com/boltgolt/howdy)**: The pioneer of Windows Hello-style authentication on Linux, serving as inspiration for the user experience.
+
+### Citations
+
+If you use the YuNet model included in this project for research, please cite the following paper:
+
+```bibtex
+@article{wu2023yunet,
+  title={Yunet: A tiny millisecond-level face detector},
+  author={Wu, Wei and Peng, Hanyang and Yu, Shiqi},
+  journal={Machine Intelligence Research},
+  volume={20},
+  number={5},
+  pages={656--665},
+  year={2023},
+  publisher={Springer}
+}
+```
 
 ## Roadmap
 

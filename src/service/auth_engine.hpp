@@ -10,7 +10,6 @@
 #include <opencv2/dnn.hpp>
 #include <opencv2/opencv.hpp>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -70,8 +69,15 @@ public:
   // Config visibility
   [[nodiscard]] std::string getConfigString() const;
 
+  // Allows to swap out the camera implementation (e.g., using a mock for
+  // testing).
+  using CameraFactory = std::function<std::unique_ptr<ICamera>(
+      const Configuration::CameraDefinition &)>;
+  void setCameraFactory(CameraFactory factory);
+
 private:
   Configuration config;
+  CameraFactory camera_factory_;
 
   cv::Ptr<cv::FaceDetectorYN> detector;
   cv::Ptr<cv::FaceRecognizerSF> recognizer;
@@ -89,6 +95,12 @@ private:
 
   // Internal helper to capture from a specific camera instance
   cv::Mat captureFrame(ICamera *cam);
+
+  // Helper to generate embedding from a frame.
+  // Returns number of faces found. Populates out_embedding and out_aligned_face
+  // using the largest face.
+  int generateEmbedding(const cv::Mat &frame, std::vector<float> &out_embedding,
+                        cv::Mat &out_aligned_face);
 
   // Helper to initialize active cameras from config
   void initializeActiveCameras();
@@ -110,9 +122,6 @@ private:
   // Helper to calculate brightness
   [[nodiscard]] double calculateBrightness(const cv::Mat &frame);
   void fallbackToCPU();
-
-  // Security
-  [[nodiscard]] bool isValidUsername(std::string_view username);
 
   // Dynamic Loading
   [[nodiscard]] bool ensureModelsLoaded();

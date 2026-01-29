@@ -89,6 +89,19 @@ If the `[Cameras]` section is missing, the system attempts to auto-detect your c
      - Configures it as **Mandatory**.
    - **Fallback**: Defaults to `/dev/video0` as generic mandatory if specific paths aren't found.
 
+### Security Settings
+
+Protect against brute-force attacks by limiting the number of consecutive failures.
+
+```ini
+[Security]
+lockout_attempts = 5
+lockout_duration_sec = 300
+```
+
+- **lockout_attempts**: Number of failed attempts before temporary lockout.
+- **lockout_duration_sec**: Duration of lockout in seconds (default 300s = 5 minutes).
+
 ### GPU Stability
 
 If you experience system freezes with OpenCL (common with Mesa Rusticl on AMD), enable explicit synchronization:

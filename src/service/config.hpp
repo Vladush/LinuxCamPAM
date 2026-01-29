@@ -1,6 +1,7 @@
 #pragma once
 
 #include "constants.hpp"
+#include "utils.hpp"
 
 #include <filesystem>
 #include <string>
@@ -68,9 +69,14 @@ public:
   int gpu_throttle_ms = DEFAULT_GPU_THROTTLE_MS;
 
   // Methods
-  [[nodiscard]] bool load(const fs::path &config_path);
+  [[nodiscard]] bool load(const fs::path &config_path,
+                          const linuxcampam::ICameraBackend *backend = nullptr);
+  [[nodiscard]] bool load(std::istream &input,
+                          const linuxcampam::ICameraBackend *backend = nullptr);
   [[nodiscard]] std::string toString() const;
 
 private:
-  void parse_ini_into_self(const fs::path &path);
+  void
+  parse_ini_into_self(std::istream &input,
+                      const linuxcampam::ICameraBackend *backend = nullptr);
 };

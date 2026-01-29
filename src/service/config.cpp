@@ -14,16 +14,12 @@
 
 namespace {
 
-// Helper to parse INI file
+// Helper to parse INI stream
 std::unordered_map<std::string, std::string>
-parse_ini_file(const fs::path &path) {
+parse_ini_stream(std::istream &input) {
   std::unordered_map<std::string, std::string> result;
-  std::ifstream file(path);
-  if (!file.is_open())
-    return result;
-
   std::string line, current_section;
-  while (std::getline(file, line)) {
+  while (std::getline(input, line)) {
     // Trim
     line.erase(0, line.find_first_not_of(" \t"));
     if (line.empty() || line[0] == ';')
@@ -78,13 +74,28 @@ inline bool parse_float(const std::string &str, float &out) {
 
 } // namespace
 
-bool Configuration::load(const fs::path &config_path) {
-  parse_ini_into_self(config_path);
+bool Configuration::load(const fs::path &config_path,
+                         const linuxcampam::ICameraBackend *backend) {
+  std::ifstream file(config_path);
+  if (!file.is_open()) {
+    // It's valid to load nothing/defaults if file missing?
+    // Existing code just returned empty map.
+    // We'll proceed with empty stream or just call parse with empty.
+    std::stringstream ss;
+    return load(ss, backend);
+  }
+  return load(file, backend);
+}
+
+bool Configuration::load(std::istream &input,
+                         const linuxcampam::ICameraBackend *backend) {
+  parse_ini_into_self(input, backend);
   return true;
 }
 
-void Configuration::parse_ini_into_self(const fs::path &path) {
-  auto ini = parse_ini_file(path);
+void Configuration::parse_ini_into_self(
+    std::istream &input, const linuxcampam::ICameraBackend *backend) {
+  auto ini = parse_ini_stream(input);
   auto get = [&](const std::string &key, const std::string &def = "") {
     return ini.count(key) ? ini.at(key) : def;
   };
@@ -177,7 +188,13 @@ void Configuration::parse_ini_into_self(const fs::path &path) {
       }
     } else {
       // Full auto detect
-      auto detected = linuxcampam::enumerateCameras();
+      std::vector<std::pair<std::string, std::string>> detected;
+      if (backend) {
+        detected = linuxcampam::enumerateCameras(*backend);
+      } else {
+        detected = linuxcampam::enumerateCameras();
+      }
+
       if (!detected.empty()) {
         std::string ir_p, rgb_p;
         for (auto &[device_path, type] : detected) {
@@ -205,7 +222,10 @@ void Configuration::parse_ini_into_self(const fs::path &path) {
   }
 
   // Hardware/Provider
+  provider_priority.clear();
   std::string priority_str = get("Hardware.provider_priority", "");
+  Logger::log(LogLevel::DEBUG, "Raw provider_priority: '" + priority_str + "'");
+
   if (!priority_str.empty()) {
     std::stringstream ss(priority_str);
     std::string segment;
@@ -215,8 +235,14 @@ void Configuration::parse_ini_into_self(const fs::path &path) {
         provider_priority.push_back(segment);
     }
   }
-  if (provider_priority.empty())
+  if (provider_priority.empty()) {
+    Logger::log(LogLevel::DEBUG, "Using defaults for provider_priority");
     provider_priority = {"OpenCL", "OpenVINO", "CUDA", "CPU"};
+  }
+
+  for (const auto &p : provider_priority) {
+    Logger::log(LogLevel::DEBUG, "Provider: " + p);
+  }
 
   // Other settings
   save_success = (get("Storage.save_success_images") == "true");
@@ -230,7 +256,56 @@ void Configuration::parse_ini_into_self(const fs::path &path) {
 
 std::string Configuration::toString() const {
   std::stringstream ss;
-  ss << "Config[Thres=" << threshold << ", Pol=" << (int)policy
-     << ", Cams=" << camera_defs.size() << "]";
+  ss << "=== Active Configuration ===\n\n";
+
+  ss << "[General]\n";
+  ss << "  Threshold: " << threshold << "\n";
+  ss << "  Detection Threshold: " << detection_threshold << "\n";
+  ss << "  Timeout: " << timeout_ms << " ms\n";
+  ss << "  Auth Policy: ";
+  switch (policy) {
+  case AuthPolicy::ADAPTIVE:
+    ss << "Adaptive (IR Strict, RGB Conditional)\n";
+    break;
+  case AuthPolicy::STRICT_ALL:
+    ss << "Strict (All Cameras Must Match)\n";
+    break;
+  case AuthPolicy::LENIENT_ANY:
+    ss << "Lenient (Any Camera Match)\n";
+    break;
+  default:
+    ss << "Unknown (" << (int)policy << ")\n";
+    break;
+  }
+  ss << "  Max Embeddings: " << max_embeddings << "\n\n";
+
+  ss << "[Security]\n";
+  ss << "  Lockout Attempts: " << lockout_attempts << "\n";
+  ss << "  Lockout Duration: " << lockout_duration_sec << " s\n\n";
+
+  ss << "[Cameras] (" << camera_defs.size() << " active)\n";
+  for (const auto &cam : camera_defs) {
+    ss << "  - ID: " << cam.id << "\n";
+    ss << "    Path: " << cam.path << "\n";
+    ss << "    Type: " << cam.type << "\n";
+    ss << "    Mandatory: " << (cam.mandatory ? "Yes" : "No") << "\n";
+    ss << "    Min Brightness: " << cam.min_brightness << "\n";
+    if (!cam.enroll_hdr.empty()) {
+      ss << "    Enroll HDR: " << cam.enroll_hdr << "\n";
+    }
+    ss << "\n";
+  }
+
+  ss << "[Performance]\n";
+  ss << "  GPU Flush: " << (gpu_flush ? "On" : "Off") << "\n";
+  ss << "  GPU Throttle: " << gpu_throttle_ms << " ms\n";
+  ss << "  Provider Priority: ";
+  for (size_t i = 0; i < provider_priority.size(); ++i) {
+    ss << provider_priority[i];
+    if (i < provider_priority.size() - 1)
+      ss << " > ";
+  }
+  ss << "\n";
+
   return ss.str();
 }

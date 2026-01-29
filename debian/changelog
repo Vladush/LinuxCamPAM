@@ -1,10 +1,19 @@
+linuxcampam (0.9.7-1) unstable; urgency=medium
+
+* Bump version to 0.9.7 to match project version
+* Refined build process and docker optimization
+* Upgrade OpenCV to 4.12.0 (statically linked)
+* Update Face Detection models (YuNet 2023mar)
+
+ -- Vladimir Orlinski <contact.github.submerge594@slmails.com>  Thu, 29 Jan 2026 13:50:00 +0100
+
 linuxcampam (0.9.6-1) unstable; urgency=medium
 
-  * Dynamic debug logging via CLI (`linuxcampam debug on/off`)
-  * Version command for CLI and daemon
-  * Fix missing systemd service file in debian package
-  * Fix missing PAM config file in debian package
-  * Remove bloated -dev dependencies from runtime
+* Dynamic debug logging via CLI (`linuxcampam debug on/off`)
+* Version command for CLI and daemon
+* Fix missing systemd service file in debian package
+* Fix missing PAM config file in debian package
+* Remove bloated -dev dependencies from runtime
 
  -- Vladimir Orlinski <contact.github.submerge594@slmails.com>  Tue, 07 Jan 2026 13:30:00 +0100
 

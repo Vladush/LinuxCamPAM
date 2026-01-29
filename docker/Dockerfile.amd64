@@ -1,12 +1,12 @@
 # ==========================================
 # Stage 1: Builder
 # ==========================================
-FROM ubuntu:22.04 AS builder
+FROM debian:bookworm AS builder
 
 # Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install Dependencies (plus build tools for OpenCV)
+# Install Build Dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
@@ -45,16 +45,16 @@ WORKDIR /app
 # Copy Source Code
 COPY . /app
 
-# Download models
-RUN ./scripts/download_models.sh
+# Download models to include in the package
+RUN ./scripts/download_models.sh \
+    # Install models for testing
+    && mkdir -p /usr/share/linuxcampam/models \
+    && cp /app/models/*.onnx /usr/share/linuxcampam/models/
 
 # Explicit Regression Testing
 ENV TEST_IN_DOCKER=1
-# Install models for testing
-RUN mkdir -p /usr/share/linuxcampam/models && \
-    cp /app/models/*.onnx /usr/share/linuxcampam/models/ && \
-    # Build and run tests before packaging to ensure quality
-    mkdir build_testing && cd build_testing && \
+# Build and run tests before packaging
+RUN mkdir build_testing && cd build_testing && \
     cmake .. && \
     make -j$(nproc) linuxcampam_tests && \
     ctest --output-on-failure && \
@@ -69,11 +69,12 @@ RUN rm -rf build && mkdir build && \
 # ==========================================
 # Stage 2: Runtime
 # ==========================================
-FROM ubuntu:22.04
+FROM debian:bookworm-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install Runtime Dependencies
+# Install Runtime Dependencies ONLY
+# Note: OpenCV is static, but we need PAM, V4L, and common libs
 RUN apt-get update && apt-get install -y \
     libpam0g \
     libpam-runtime \
@@ -88,13 +89,16 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy the .deb package from the builder stage
+# Copy the .deb package and artifacts directory from the builder stage
+COPY --from=builder /artifacts /artifacts
 COPY --from=builder /artifacts/*.deb /tmp/linuxcampam.deb
 
 # Install the package
-RUN dpkg -i /tmp/linuxcampam.deb || apt-get install -f -y && \
+# Install the package (re-updating apt because lists were cleared)
+RUN apt-get update && \
+    apt-get install -y /tmp/linuxcampam.deb && \
+    rm -rf /var/lib/apt/lists/* && \
     rm /tmp/linuxcampam.deb
 
 # Verification
 CMD ["/usr/bin/linuxcampam", "help"]
-

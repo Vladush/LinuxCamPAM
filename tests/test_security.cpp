@@ -1,11 +1,10 @@
 #include "json.hpp"
-
 #include <cmath>
 #include <gtest/gtest.h>
 #include <limits>
 #include <string>
 #include <vector>
-
+#include "../src/service/utils.hpp"
 using json = nlohmann::json;
 
 namespace {
@@ -18,9 +17,6 @@ constexpr float kLargeVal = 1e30f;
 // ============================================================================
 // INPUT VALIDATION TESTS
 // ============================================================================
-
-// isValidUsername is defined in test_config.cpp
-extern bool isValidUsername(std::string_view username);
 
 // Camera path validation
 bool isValidCameraPath(const std::string &path) {
@@ -52,21 +48,21 @@ bool isValidConfigPath(const std::string &path) {
 
 TEST(SecurityTest, CommandInjectionViaUsername) {
   // Shell metacharacters
-  EXPECT_FALSE(isValidUsername("user; rm -rf /"));
-  EXPECT_FALSE(isValidUsername("user$(whoami)"));
-  EXPECT_FALSE(isValidUsername("user`id`"));
-  EXPECT_FALSE(isValidUsername("user|cat /etc/passwd"));
-  EXPECT_FALSE(isValidUsername("user&& malicious"));
-  EXPECT_FALSE(isValidUsername("user\necho pwned"));
-  EXPECT_FALSE(isValidUsername("user\recho pwned"));
-  EXPECT_FALSE(isValidUsername("$(cat /etc/shadow)"));
-  EXPECT_FALSE(isValidUsername("${PATH}"));
+  EXPECT_FALSE(linuxcampam::isValidUsername("user; rm -rf /"));
+  EXPECT_FALSE(linuxcampam::isValidUsername("user$(whoami)"));
+  EXPECT_FALSE(linuxcampam::isValidUsername("user`id`"));
+  EXPECT_FALSE(linuxcampam::isValidUsername("user|cat /etc/passwd"));
+  EXPECT_FALSE(linuxcampam::isValidUsername("user&& malicious"));
+  EXPECT_FALSE(linuxcampam::isValidUsername("user\necho pwned"));
+  EXPECT_FALSE(linuxcampam::isValidUsername("user\recho pwned"));
+  EXPECT_FALSE(linuxcampam::isValidUsername("$(cat /etc/shadow)"));
+  EXPECT_FALSE(linuxcampam::isValidUsername("${PATH}"));
 
   // Null byte injection
   std::string null_injection = "user";
   null_injection += '\0';
   null_injection += "admin";
-  EXPECT_FALSE(isValidUsername(null_injection));
+  EXPECT_FALSE(linuxcampam::isValidUsername(null_injection));
 }
 
 TEST(SecurityTest, CameraPathValidation) {

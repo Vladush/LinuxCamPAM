@@ -1,26 +1,41 @@
-FROM debian:sid
+# ==========================================
+# Stage 1: Builder
+# ==========================================
+FROM debian:sid AS builder
 
 # Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install Dependencies
+# Install Dependencies (plus build tools for OpenCV)
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
-    libopencv-dev \
     libpam0g-dev \
-    libjsoncpp-dev \
     libjsoncpp-dev \
     nlohmann-json3-dev \
     libgtest-dev \
     v4l-utils \
     git \
     wget \
+    unzip \
+    pkg-config \
+    python3-dev \
+    gfortran \
+    libjpeg-dev libpng-dev libtiff-dev \
+    libxvidcore-dev libx264-dev \
+    libatomic1 \
     ca-certificates \
     devscripts \
     debhelper \
     dh-cmake \
     && rm -rf /var/lib/apt/lists/*
+
+# Build OpenCV 4.12.0 Static from Source
+COPY scripts/build_opencv.sh /tmp/build_opencv.sh
+RUN chmod +x /tmp/build_opencv.sh && \
+    mkdir -p /opencv_build && cd /opencv_build && \
+    SKIP_DEPS=1 MAKE_JOBS=2 INSTALL_DIR="/app/opencv_static" /tmp/build_opencv.sh && \
+    cd / && rm -rf /opencv_build /tmp/build_opencv.sh
 
 # Set Working Directory
 WORKDIR /app
@@ -34,20 +49,53 @@ RUN ./scripts/download_models.sh
 # Explicit Regression Testing
 ENV TEST_IN_DOCKER=1
 # Build and run tests before packaging to ensure quality
-RUN mkdir build_testing && cd build_testing && \
+# Install models for testing and run tests
+RUN mkdir -p /usr/share/linuxcampam/models && \
+    cp /app/models/*.onnx /usr/share/linuxcampam/models/ && \
+    mkdir build_testing && cd build_testing && \
     cmake .. && \
     make -j$(nproc) linuxcampam_tests && \
-    ./linuxcampam_tests && \
+    ctest --output-on-failure && \
     cd .. && rm -rf build_testing
 
-# Ensure Clean Build
-RUN rm -rf build && mkdir build
-
 # Build and Package
-RUN dpkg-buildpackage -b -uc -us && \
+RUN rm -rf build && mkdir build && \
+    dpkg-buildpackage -b -uc -us -d && \
     mkdir -p /artifacts && \
-    cp ../*.deb /artifacts/ && \
-    dpkg -i ../*.deb || apt-get install -f -y
+    cp ../*.deb /artifacts/
 
-# Verification Command
+# ==========================================
+# Stage 2: Runtime
+# ==========================================
+FROM debian:sid-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Runtime Dependencies
+RUN apt-get update && apt-get install -y \
+    libpam0g \
+    libpam-runtime \
+    v4l-utils \
+    systemd \
+    libgfortran5 \
+    libgomp1 \
+    libatomic1 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy the .deb package and artifacts directory from the builder stage
+COPY --from=builder /artifacts /artifacts
+COPY --from=builder /artifacts/*.deb /tmp/linuxcampam.deb
+
+# Install the package
+# Install the package (re-updating apt because lists were cleared)
+RUN apt-get update && \
+    apt-get install -y /tmp/linuxcampam.deb && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm /tmp/linuxcampam.deb
+
+# Verification
 CMD ["/usr/bin/linuxcampam", "help"]
+
