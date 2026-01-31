@@ -2,6 +2,7 @@ linuxcampam (0.9.7.1-1) unstable; urgency=medium
 
 * Fix: Correctly parse [Auth] and [Capture] configuration sections
 * Fix: Ensure documentation consistency regarding permissions and configuration
+* Fix: Add preinst script to archive conflicting manual installations to improve update stability
 * Hotfix release for v0.9.7 issues
 
  -- Vladimir Orlinski <contact.github.submerge594@slmails.com>  Fri, 30 Jan 2026 00:20:00 +0100

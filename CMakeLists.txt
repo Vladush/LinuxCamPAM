@@ -43,8 +43,14 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 # --- Dependencies ---
-if(EXISTS "${CMAKE_SOURCE_DIR}/opencv_static/lib/cmake/opencv4")
-    set(OpenCV_DIR "${CMAKE_SOURCE_DIR}/opencv_static/lib/cmake/opencv4")
+# Prioritize local static build of OpenCV 4.12+
+set(LOCAL_OPENCV "${CMAKE_SOURCE_DIR}/opencv_static")
+if(EXISTS "${LOCAL_OPENCV}/lib/cmake/opencv4/OpenCVConfig.cmake")
+    message(STATUS "Using Local Static OpenCV from: ${LOCAL_OPENCV}")
+    set(OpenCV_DIR "${LOCAL_OPENCV}/lib/cmake/opencv4")
+    set(OpenCV_STATIC ON)
+else()
+    message(WARNING "Local OpenCV not found at ${LOCAL_OPENCV}. Falling back to system OpenCV (might cause incompatibility).")
 endif()
 find_package(OpenCV REQUIRED COMPONENTS core videoio imgproc dnn objdetect photo)
 find_package(Threads REQUIRED)

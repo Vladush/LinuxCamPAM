@@ -1,0 +1,47 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    install|upgrade)
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        
+        archive_conflict() {
+            FILE="$1"
+            if [ -f "$FILE" ]; then
+                echo "Warning: Found conflicting manual installation: $FILE"
+                echo "Archiving to $FILE.bak_$TIMESTAMP to ensure package version takes precedence."
+                mv "$FILE" "$FILE.bak_$TIMESTAMP"
+            fi
+        }
+
+        # Check for manual binaries that take precedence in PATH
+        archive_conflict "/usr/local/bin/linuxcampam"
+        archive_conflict "/usr/local/bin/linuxcampamd"
+        archive_conflict "/usr/local/bin/check_opencl"
+        archive_conflict "/usr/local/bin/linuxcampam-setup-config"
+        
+        # Check for check_opencl.sh if it was installed there manually
+        archive_conflict "/usr/local/bin/detect_opencl.sh"
+        
+        # Check for manual service overrides
+        # /etc/systemd/system takes precedence over /lib/systemd/system (where package installs)
+        archive_conflict "/etc/systemd/system/linuxcampam.service"
+        
+        # Check for manually installed PAM module
+        archive_conflict "/usr/local/lib/security/pam_linuxcampam.so"
+        
+        # Manually placed config in /usr/local/etc? (Less critical, but let's stick to binaries/service for now)
+    ;;
+
+    abort-upgrade)
+    ;;
+
+    *)
+        echo "preinst called with unknown argument \`$1'" >&2
+        exit 1
+    ;;
+esac
+
+#DEBHELPER#
+
+exit 0
