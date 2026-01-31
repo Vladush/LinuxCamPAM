@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# Protected branch name
+PROTECTED_BRANCH="master"
+
+# Read stdin to determine what is being pushed
+while read local_ref local_sha remote_ref remote_sha
+do
+    # Check if we are pushing to the protected branch
+    if [[ "$remote_ref" == "refs/heads/$PROTECTED_BRANCH" ]]; then
+        echo "--------------------------------------------------"
+        echo "Build Safety: BLOCKED"
+        echo "--------------------------------------------------"
+        echo "You are trying to push directly to '$PROTECTED_BRANCH'."
+        echo "Direct pushes to this branch are prohibited to ensure code stability."
+        echo ""
+        echo "Please create a new branch and open a Pull Request:"
+        echo "  git checkout -b feature/your-feature-name"
+        echo "  git push -u origin feature/your-feature-name"
+        echo ""
+        echo "If you absolutely must push (Emergency), use: git push --no-verify"
+        echo "--------------------------------------------------"
+        exit 1
+    fi
+done
+
+exit 0
