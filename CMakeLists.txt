@@ -1,6 +1,21 @@
 cmake_minimum_required(VERSION 3.14)
 project(LinuxCamPAM VERSION 0.9.7.1 LANGUAGES C CXX)
 
+# --- Automatic Git Hook Installation ---
+# Installs/Updates the pre-push hook to prevent accidental pushes to master
+if(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND EXISTS "${CMAKE_SOURCE_DIR}/scripts/hooks/pre-push")
+    message(STATUS "Installing git pre-push hook...")
+    execute_process(
+        COMMAND ${CMAKE_COMMAND} -E copy
+        "${CMAKE_SOURCE_DIR}/scripts/hooks/pre-push"
+        "${CMAKE_SOURCE_DIR}/.git/hooks/pre-push"
+    )
+    # Ensure it's executable
+    execute_process(
+        COMMAND chmod +x "${CMAKE_SOURCE_DIR}/.git/hooks/pre-push"
+    )
+endif()
+
 # --- Versioning with Git Hash ---
 find_package(Git)
 if(GIT_FOUND)
