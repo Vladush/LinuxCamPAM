@@ -41,6 +41,10 @@ make
 ./linuxcampam_tests
 ```
 
+### System Architecture
+
+Before diving into the code, we recommend reading **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**. It contains diagrams showing how the PAM module, Daemon, and AI Engine interact, along with a "Source Code Map" to help you navigate the files.
+
 ## Security
 
 If you discover a potential security, privacy, or data handling issue, please refer to our [Security Policy](SECURITY.md).
