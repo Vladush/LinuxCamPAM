@@ -297,6 +297,7 @@ I am excited to see this project grow beyond the hardware I currently possess! *
 > - **Standard Users**: Can enroll, train, and test their *own* face data **without `sudo`**.
 > - **Administration**: Functional tests of *other* users (e.g., `linuxcampam test otheruser`) will enforce `sudo` usage for security.
 > - **Service Management**: Commands that restart the service or edit config files manually (like `linuxcampam-setup-config`) still require `sudo`.
+> - **System Users**: By default, users with UID < 1000 (like `sddm`, `gdm`) are ignored to prevent boot conflicts. This is configurable in `config.ini`.
 
 ## License
 
