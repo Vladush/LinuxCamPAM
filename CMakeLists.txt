@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(LinuxCamPAM VERSION 0.9.7.1 LANGUAGES C CXX)
+project(LinuxCamPAM VERSION 0.9.7.2 LANGUAGES C CXX)
 
 # --- Automatic Git Hook Installation ---
 # Installs/Updates the pre-push hook to prevent accidental pushes to master
@@ -168,6 +168,7 @@ if(TARGET gtest)
         tests/test_config_detection.cpp
         tests/test_auth_logic.cpp
         tests/test_protocol.cpp
+        tests/test_pam_logic.cpp
     )
     
     # We link against the service_core library to test internal logic without 
@@ -224,13 +225,17 @@ install(PROGRAMS ${CMAKE_SOURCE_DIR}/scripts/detect_opencl.sh
 # --- CPack Packaging ---
 set(CPACK_PACKAGE_NAME "linuxcampam")
 set(CPACK_PACKAGE_VENDOR "Vladimir Orlinski")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Linux PAM Face Authentication Module")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Linux PAM Face Authentication Module using OpenCV DNN")
+set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_SOURCE_DIR}/README.md")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_CONTACT "contact.github.submerge594@slmails.com")
-set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Vladimir Orlinski")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Vladimir Orlinski <contact.github.submerge594@slmails.com>")
+set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/Vladush/LinuxCamPAM")
+set(CPACK_DEBIAN_PACKAGE_SECTION "admin")
+set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 
 set(CPACK_GENERATOR "DEB")
-# Runtime dependencies (not -dev packages) for Ubuntu 24.04
 # Runtime dependencies (not -dev packages) for Ubuntu 24.04
 # OpenCV is statically linked, so we don't need libopencv-* packages
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "libpam0g, libpam-runtime, v4l-utils, systemd, libgfortran5, libatlas3-base")

@@ -64,6 +64,7 @@ public:
 
   int lockout_attempts = DEFAULT_LOCKOUT_ATTEMPTS;
   int lockout_duration_sec = DEFAULT_LOCKOUT_DURATION_SEC;
+  uid_t min_uid = linuxcampam::DEFAULT_MIN_UID;
 
   bool gpu_flush = false;
   int gpu_throttle_ms = DEFAULT_GPU_THROTTLE_MS;

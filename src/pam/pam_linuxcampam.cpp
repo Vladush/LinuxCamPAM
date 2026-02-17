@@ -1,9 +1,11 @@
 #include "constants.hpp"
 #include "ipc_protocol.hpp"
+#include "pam_config.hpp"
 
 #include <array>
 #include <cstring>
 #include <memory>
+#include <pwd.h>
 #include <security/pam_ext.h>
 #include <security/pam_modules.h>
 #include <string>
@@ -92,6 +94,32 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
       return retval;
     }
 
+    struct passwd *pwd = getpwnam(user);
+    if (pwd) {
+      PamConfig config = load_pam_config(linuxcampam::CONFIG_PATH);
+
+      // If min_uid is 0, the check is disabled.
+      // Otherwise, skip authentication for any user with UID < min_uid.
+      if (config.min_uid > 0 && pwd->pw_uid < config.min_uid) {
+        syslog(LOG_INFO, "Skipping auth for system user: %s (UID %d < %d)",
+               user, pwd->pw_uid, config.min_uid);
+        return PAM_IGNORE;
+      }
+    } else {
+      // User doesn't exist locally (or NSS failed).
+      // Since we can't verify the UID, we have to assume they aren't allowed.
+      syslog(LOG_WARNING, "User not found in system database: %s", user);
+      return PAM_USER_UNKNOWN;
+    }
+    // Create a socket to the authentication service
+    if (flags & PAM_SILENT) {
+      // If Silent, just debug log the version.
+      syslog(LOG_DEBUG, "pam_linuxcampam version %s", LINUXCAMPAM_VERSION);
+    } else {
+      // Otherwise, log the version.
+      syslog(LOG_INFO, "pam_linuxcampam version %s", LINUXCAMPAM_VERSION);
+    }
+
     SocketDescriptor sock(socket(AF_UNIX, SOCK_STREAM, 0));
     if (!sock.isValid()) {
       syslog(LOG_ERR, "Failed to create socket: %m");
@@ -148,9 +176,9 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
 
         std::string welcome_msg =
             "LinuxCamPAM: Welcome, " + std::string(user) + "!";
-        // PAM requires non-const char* but doesn't modify it in most
-        // implementations However, standard says char*. We use const_cast as
-        // we own the string. Create mutable buffer for PAM
+
+        // PAM standard requires a mutable char* for messages.
+        // We create a writable copy here to ensure strict API compliance.
         std::vector<char> msg_buf(welcome_msg.begin(), welcome_msg.end());
         msg_buf.push_back('\0');
         char *msg_cstr = msg_buf.data();
