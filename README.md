@@ -107,6 +107,9 @@ sudo apt install ./linuxcampam_*.deb
 
 The package installation will automatically backup your PAM config, configure the cameras, and enable the module.
 
+> [!TIP]
+> **Visual Guide**: detailed flowcharts for installation and enrollment are available in [docs/USER_FLOWS.md](docs/USER_FLOWS.md).
+
 ### Build Dependencies & Compatibility
 
 #### Build Dependencies
@@ -149,6 +152,8 @@ The project is C++17 compliant. While we strictly verify on **Ubuntu 24.04**, th
 ## Configuration
 
 The configuration file is at `/etc/linuxcampam/config.ini`.
+
+> **Need help choosing a config?** Check the [Configuration Decision Tree](docs/USER_FLOWS.md#2-configuration-helper-which-setup-is-right-for-me).
 
 The installer runs a smart detection script (`linuxcampam-setup-config`) to auto-configure your cameras. You can re-run this at any time:
 
@@ -206,7 +211,9 @@ linuxcampam version
 
 ## Debugging
 
-If you encounter issues, you can enable verbose debug logging dynamically without restarting the service.
+If you encounter issues, start with the **[Troubleshooting Wizard](docs/USER_FLOWS.md#1-troubleshooting-wizard-why-is-it-failing)**.
+
+If you need deeper logs, you can enable verbose debug logging dynamically without restarting the service.
 
 **Enable Debug Logging:**
 
@@ -285,6 +292,8 @@ If you use the YuNet model included in this project for research, please cite th
 ## Contributing & Support
 
 I am excited to see this project grow beyond the hardware I currently possess! **I am actively accepting Pull Requests, Feature Requests, and Bug Reports.**
+
+New contributors should read **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for a technical overview of the system.
 
 - **Porting:** If you are on a Linux distribution such as [Gentoo](https://www.gentoo.org/), [Calculate](https://www.calculate-linux.org/), [Arch](https://archlinux.org/), [Fedora](https://fedoraproject.org/), or another, and want help adapting the packaging, open an issue! I am happy to help guide the process as my time permits.
 - **Hardware Support:** I am open to supporting different camera configurations and hardware quirks. If you have unique hardware, feel free to report issues or suggest improvements.
