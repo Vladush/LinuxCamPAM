@@ -77,10 +77,8 @@ inline void process_pam_config_line(std::string_view line,
         } else if (!state.has_first_uid && !state.has_security_uid) {
           // Capture the first valid setting we find, unless we already have
           // one. We'll prioritize [Security] later if it exists.
-          if (!state.has_first_uid) {
-            state.found_first_uid = parsed_uid;
-            state.has_first_uid = true;
-          }
+          state.found_first_uid = parsed_uid;
+          state.has_first_uid = true;
         }
       }
     }
