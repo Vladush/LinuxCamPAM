@@ -124,6 +124,20 @@ lockout_duration_sec = 300
 - **lockout_attempts**: Number of failed attempts before temporary lockout.
 - **lockout_duration_sec**: Duration of lockout in seconds (default 300s = 5 minutes).
 
+### System Integration (UID Filtering)
+
+By default, the module ignores system users (like `sddm` or `gdm`) to prevent the camera from turning on during the login screen initialization. This prevents conflicts where the greeter grabs the camera before you can.
+
+You can configure this behavior in the `[Security]` section:
+
+```ini
+[Security]
+min_uid = 1000
+```
+
+- **Standard Method (Recommended)**: Leave `min_uid` at `1000`. This effectively tells the module: "If the user has a UID less than 1000, don't even try to authenticate them." This is the safest and easiest way to avoid boot-up loops.
+- **Manual PAM Method (Advanced)**: Set `min_uid = 0` to disable this check. Do this only if you want to control everything yourself using PAM configuration files (e.g., adding `pam_succeed_if.so uid >= 1000` manually in `/etc/pam.d/common-auth`). If you disable this setting and don't add your own safeguards, your login screen might hang while it waits for a face that isn't there.
+
 ### GPU Stability
 
 If you experience system freezes with OpenCL (common with Mesa Rusticl on AMD), enable explicit synchronization:

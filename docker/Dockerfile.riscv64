@@ -54,7 +54,7 @@ RUN mkdir -p /usr/share/linuxcampam/models && \
     cp /app/models/*.onnx /usr/share/linuxcampam/models/ && \
     mkdir build_testing && cd build_testing && \
     cmake .. && \
-    make -j$(nproc) linuxcampam_tests && \
+    make -j2 linuxcampam_tests && \
     ctest --output-on-failure && \
     cd .. && rm -rf build_testing
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <sys/types.h>
 
 // Shared constants for LinuxCamPAM
 namespace linuxcampam {
@@ -14,6 +15,7 @@ inline constexpr const char *IR_EMITTER_PATH =
 inline constexpr size_t MAX_USERNAME_LENGTH = 32;
 inline constexpr int SECURE_FILE_MODE = 0600;
 inline constexpr double RGB_CHANNELS = 3.0;
+inline constexpr uid_t DEFAULT_MIN_UID = 1000;
 
 // Camera & Auth constants
 inline constexpr int CAMERA_WARMUP_FRAMES = 10;

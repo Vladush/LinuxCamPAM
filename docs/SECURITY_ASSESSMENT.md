@@ -107,6 +107,14 @@ The service implements strict validation on all inputs (specifically usernames) 
 * **Rate Limiting:** Configurable lockout after N failed auth attempts (default: 5 failures → 5 minute lockout). See `[Security]` in config.ini.
 * **Socket:** The service handles requests sequentially to prevent resource exhaustion.
 
+### 4.3 User Filtering (UID Threshold)
+
+* **Mechanism:** The PAM module checks the user's UID against the `min_uid` setting (default: 1000) *before* it tries to connect to the authentication service.
+* **Purpose:**
+  * **Stability:** Display Managers (like `sddm` for KDE or `gdm` for GNOME) run as system users. If they trigger face authentication at boot, they can hog the camera or cause the auth service to hang. This check prevents that.
+  * **Security:** It reduces the attack surface by ensuring the module is completely inactive for system accounts.
+* **Configuration:** You can change this in `config.ini`. If you set it to `0`, the internal check is disabled. In that case, we strongly rely on the system administrator to configure `pam_succeed_if.so` correctly in the PAM stack to filter out system users.
+
 ---
 
 ## 5. Residual Risks (What remains?)

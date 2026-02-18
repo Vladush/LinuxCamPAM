@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(LinuxCamPAM VERSION 0.9.7.1 LANGUAGES C CXX)
+project(LinuxCamPAM VERSION 0.9.7.2 LANGUAGES C CXX)
 
 # --- Automatic Git Hook Installation ---
 # Installs/Updates the pre-push hook to prevent accidental pushes to master
@@ -136,25 +136,37 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
   set(GTEST_DOWNLOAD_ARGS DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 endif()
 
-FetchContent_Declare(
-  googletest
-  URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
-  ${GTEST_DOWNLOAD_ARGS}
-)
+# Try to find system-installed GTest and GMock first
+find_package(GTest QUIET)
 
-# Fix for CMP0135 warning in CMake 3.24+
-if(POLICY CMP0135)
-  cmake_policy(SET CMP0135 NEW)
-  # CMake 3.24+ requires explicit timestamp handling for consistency
-  set(FETCHCONTENT_UPDATES_DISCONNECTED_GOOGLETEST ON)
+# We require both GTest and GMock targets to use the system version
+if(TARGET GTest::gtest AND TARGET GTest::gmock)
+    message(STATUS "Found system GTest and GMock: ${GTest_VERSION}")
+    
+    if(NOT TARGET gtest)
+        add_library(gtest ALIAS GTest::gtest)
+    endif()
+    if(NOT TARGET gtest_main)
+        add_library(gtest_main ALIAS GTest::gtest_main)
+    endif()
+    if(NOT TARGET gmock)
+        add_library(gmock ALIAS GTest::gmock)
+    endif()
+    if(NOT TARGET gmock_main AND TARGET GTest::gmock_main)
+        add_library(gmock_main ALIAS GTest::gmock_main)
+    endif()
+else()
+    message(STATUS "System GTest/GMock incomplete or missing, fetching from GitHub (archive)...")
+    
+    # Use archive URL instead of git clone for better robustness against network/proxy issues
+    FetchContent_Declare(
+      googletest
+      URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+      URL_HASH SHA256=1f357c27ca988c3f7c6b4bf68a9395005ac6761f034046e9dde0896e3aba00e4
+      ${GTEST_DOWNLOAD_ARGS}
+    )
+    FetchContent_MakeAvailable(googletest)
 endif()
-# Prevent overriding the parent project's compiler/linker settings
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-# Disable installation of GoogleTest to prevent conflicts with system packages
-set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-set(INSTALL_GMOCK OFF CACHE BOOL "" FORCE)
-
-FetchContent_MakeAvailable(googletest)
 
 if(TARGET gtest)
     add_executable(linuxcampam_tests
@@ -168,6 +180,7 @@ if(TARGET gtest)
         tests/test_config_detection.cpp
         tests/test_auth_logic.cpp
         tests/test_protocol.cpp
+        tests/test_pam_logic.cpp
     )
     
     # We link against the service_core library to test internal logic without 
@@ -224,13 +237,17 @@ install(PROGRAMS ${CMAKE_SOURCE_DIR}/scripts/detect_opencl.sh
 # --- CPack Packaging ---
 set(CPACK_PACKAGE_NAME "linuxcampam")
 set(CPACK_PACKAGE_VENDOR "Vladimir Orlinski")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Linux PAM Face Authentication Module")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Linux PAM Face Authentication Module using OpenCV DNN")
+set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_SOURCE_DIR}/README.md")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_CONTACT "contact.github.submerge594@slmails.com")
-set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Vladimir Orlinski")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Vladimir Orlinski <contact.github.submerge594@slmails.com>")
+set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/Vladush/LinuxCamPAM")
+set(CPACK_DEBIAN_PACKAGE_SECTION "admin")
+set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 
 set(CPACK_GENERATOR "DEB")
-# Runtime dependencies (not -dev packages) for Ubuntu 24.04
 # Runtime dependencies (not -dev packages) for Ubuntu 24.04
 # OpenCV is statically linked, so we don't need libopencv-* packages
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "libpam0g, libpam-runtime, v4l-utils, systemd, libgfortran5, libatlas3-base")

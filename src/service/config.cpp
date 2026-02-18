@@ -281,6 +281,32 @@ void Configuration::parse_ini_into_self(
   parse_int(get("Performance.model_keep_alive_sec", "0"), model_keep_alive_sec);
   parse_int(get("Security.lockout_attempts", "5"), lockout_attempts);
   parse_int(get("Security.lockout_duration_sec", "300"), lockout_duration_sec);
+
+  // Minimal UID (shared with PAM module)
+  // We use int for parsing, then cast to uid_t
+  int min_uid_int = linuxcampam::DEFAULT_MIN_UID;
+  // Parse from [Security] section mostly
+  // Note: PAM module has specific fallback logic to [General], we should map
+  // similarly if needed or just trust [Security] as primary. Given PAM logic:
+  // [Security] > First Found > Default. Here we explicitly look for
+  // Security.min_uid first.
+  std::string uid_str = get("Security.min_uid");
+  if (uid_str.empty()) {
+    uid_str = get("General.min_uid"); // Fallback check
+  }
+
+  // default string if both empty
+  if (uid_str.empty()) {
+    min_uid_int = linuxcampam::DEFAULT_MIN_UID;
+  } else {
+    parse_int(uid_str, min_uid_int);
+  }
+
+  // Safety check (similar to PAM module negative check, though parse_int
+  // handles some)
+  if (min_uid_int < 0)
+    min_uid_int = linuxcampam::DEFAULT_MIN_UID;
+  min_uid = static_cast<uid_t>(min_uid_int);
   gpu_flush = (get("Performance.gpu_flush", "on") == "on");
   parse_int(get("Performance.gpu_throttle_ms", "20"), gpu_throttle_ms);
 }
