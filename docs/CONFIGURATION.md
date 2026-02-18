@@ -60,6 +60,8 @@ timeout_ms = 3000           ; Auth timeout in milliseconds.
 max_embeddings = 5          ; Max face profiles per user (0 = unlimited).
 ```
 
+> **Tip:** Not sure which policy to use? See the [Configuration Decision Tree](USER_FLOWS.md#2-configuration-helper-which-setup-is-right-for-me).
+
 **Available Policies:**
 
 - **adaptive** (Default):

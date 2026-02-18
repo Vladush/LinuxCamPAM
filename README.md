@@ -43,41 +43,6 @@ Since open-sourcing, I've put effort into making it hardware-agnostic and well-d
 
 ## Installation
 
-### Build Dependencies
-
-> **Don't panic!** You don't need to manually install these. The provided script `scripts/install_deps.sh` will automatically install everything you need. This list is just for reference or for those building manually.
-
-These are required to **compile** the project from source (Options A & B).
-
-| Package                      | Purpose                                     |
-| :--------------------------- | :------------------------------------------ |
-| `cmake`, `build-essential`   | Build system                                |
-| `libpam0g-dev`               | PAM module development headers              |
-| `v4l-utils`                  | Camera detection tools (also a runtime dep) |
-| `curl` / `wget`              | Downloading models and dependencies         |
-| `ninja-build` *(optional)*   | Faster builds (recommended)                 |
-
-> **Runtime Dependencies**: If you are installing a pre-built `.deb` package, the package manager (`apt`/`dpkg`) will automatically install the necessary runtime libraries (e.g., `libpam0g`, `libatlas3-base`). You do **not** need the `-dev` development headers for running the software.
->
-> **Build System Note:** The install scripts use `make` by default. If you have `ninja-build` installed, you can use Ninja for faster incremental builds:
->
-> ```bash
-> cmake -G Ninja ..
-> ninja
-> ```
-
-**Compiler Compatibility:** The project is C++17 compliant. While we strictly verify on **Ubuntu 24.04**, the codebase includes polyfills (e.g., `<charconv>` fallbacks) to support older compilers found in **Ubuntu 20.04 LTS (GCC 9)** and Debian 11.
-
-| Architecture | Compiler    | Status        | Notes                        |
-| :----------- | :---------- | :------------ | :--------------------------- |
-| **x86_64**   | GCC 9+      | ✅ Compatible | Ubuntu 20.04+ / Debian 11+   |
-| **x86_64**   | GCC 11+     | ✅ Verified   | Ubuntu 22.04+ / Debian 12+   |
-| **x86_64**   | Clang 10+   | ✅ Compatible | Ubuntu 20.04+                |
-| **AARCH64**  | GCC (Cross) | ✅ Verified   | via Docker/QEMU              |
-| **RISC-V**   | GCC (Cross) | ✅ Verified   | via Docker/QEMU              |
-
-> **Note**: We now compile a **static version of OpenCV 4.12.0** automatically. You do **not** need to install `libopencv-dev` or generic system libraries anymore. This ensures the authentication service runs reliably regardless of your OS version.
-
 ### Option A: Install from Package (Recommended)
 
 If you have downloaded a release file (`.deb`), installation is extremely simple:
@@ -142,9 +107,53 @@ sudo apt install ./linuxcampam_*.deb
 
 The package installation will automatically backup your PAM config, configure the cameras, and enable the module.
 
+> [!TIP]
+> **Visual Guide**: detailed flowcharts for installation and enrollment are available in [docs/USER_FLOWS.md](docs/USER_FLOWS.md).
+
+### Build Dependencies & Compatibility
+
+#### Build Dependencies
+
+> **Don't panic!** You don't need to manually install these. The provided script `scripts/install_deps.sh` will automatically install everything you need. This list is just for reference or for those building manually.
+
+These are required to **compile** the project from source (Options B & C).
+
+| Package                      | Purpose                                     |
+| :--------------------------- | :------------------------------------------ |
+| `cmake`, `build-essential`   | Build system                                |
+| `libpam0g-dev`               | PAM module development headers              |
+| `v4l-utils`                  | Camera detection tools (also a runtime dep) |
+| `curl` / `wget`              | Downloading models and dependencies         |
+| `ninja-build` *(optional)*   | Faster builds (recommended)                 |
+
+> **Runtime Dependencies**: If you are installing a pre-built `.deb` package, the package manager (`apt`/`dpkg`) will automatically install the necessary runtime libraries (e.g., `libpam0g`, `libatlas3-base`). You do **not** need the `-dev` development headers for running the software.
+>
+> **Build System Note:** The install scripts use `make` by default. If you have `ninja-build` installed, you can use Ninja for faster incremental builds:
+>
+> ```bash
+> cmake -G Ninja ..
+> ninja
+> ```
+
+#### Compiler Compatibility
+
+The project is C++17 compliant. While we strictly verify on **Ubuntu 24.04**, the codebase includes polyfills (e.g., `<charconv>` fallbacks) to support older compilers found in **Ubuntu 20.04 LTS (GCC 9)** and Debian 11.
+
+| Architecture | Compiler    | Status        | Notes                        |
+| :----------- | :---------- | :------------ | :--------------------------- |
+| **x86_64**   | GCC 9+      | ✅ Compatible | Ubuntu 20.04+ / Debian 11+   |
+| **x86_64**   | GCC 11+     | ✅ Verified   | Ubuntu 22.04+ / Debian 12+   |
+| **x86_64**   | Clang 10+   | ✅ Compatible | Ubuntu 20.04+                |
+| **AARCH64**  | GCC (Cross) | ✅ Verified   | via Docker/QEMU              |
+| **RISC-V**   | GCC (Cross) | ✅ Verified   | via Docker/QEMU              |
+
+> **Note**: We now compile a **static version of OpenCV 4.12.0** automatically. You do **not** need to install `libopencv-dev` or generic system libraries anymore. This ensures the authentication service runs reliably regardless of your OS version.
+
 ## Configuration
 
 The configuration file is at `/etc/linuxcampam/config.ini`.
+
+> **Need help choosing a config?** Check the [Configuration Decision Tree](docs/USER_FLOWS.md#2-configuration-helper-which-setup-is-right-for-me).
 
 The installer runs a smart detection script (`linuxcampam-setup-config`) to auto-configure your cameras. You can re-run this at any time:
 
@@ -202,7 +211,9 @@ linuxcampam version
 
 ## Debugging
 
-If you encounter issues, you can enable verbose debug logging dynamically without restarting the service.
+If you encounter issues, start with the **[Troubleshooting Wizard](docs/USER_FLOWS.md#1-troubleshooting-wizard-why-is-it-failing)**.
+
+If you need deeper logs, you can enable verbose debug logging dynamically without restarting the service.
 
 **Enable Debug Logging:**
 
@@ -281,6 +292,8 @@ If you use the YuNet model included in this project for research, please cite th
 ## Contributing & Support
 
 I am excited to see this project grow beyond the hardware I currently possess! **I am actively accepting Pull Requests, Feature Requests, and Bug Reports.**
+
+New contributors should read **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for a technical overview of the system.
 
 - **Porting:** If you are on a Linux distribution such as [Gentoo](https://www.gentoo.org/), [Calculate](https://www.calculate-linux.org/), [Arch](https://archlinux.org/), [Fedora](https://fedoraproject.org/), or another, and want help adapting the packaging, open an issue! I am happy to help guide the process as my time permits.
 - **Hardware Support:** I am open to supporting different camera configurations and hardware quirks. If you have unique hardware, feel free to report issues or suggest improvements.
