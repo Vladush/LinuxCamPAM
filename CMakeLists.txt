@@ -136,26 +136,37 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
   set(GTEST_DOWNLOAD_ARGS DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 endif()
 
-FetchContent_Declare(
-  googletest
-  GIT_REPOSITORY https://github.com/google/googletest.git
-  GIT_TAG v1.14.0
-  ${GTEST_DOWNLOAD_ARGS}
-)
+# Try to find system-installed GTest and GMock first
+find_package(GTest QUIET)
 
-# Fix for CMP0135 warning in CMake 3.24+
-if(POLICY CMP0135)
-  cmake_policy(SET CMP0135 NEW)
-  # CMake 3.24+ requires explicit timestamp handling for consistency
-  set(FETCHCONTENT_UPDATES_DISCONNECTED_GOOGLETEST ON)
+# We require both GTest and GMock targets to use the system version
+if(TARGET GTest::gtest AND TARGET GTest::gmock)
+    message(STATUS "Found system GTest and GMock: ${GTest_VERSION}")
+    
+    if(NOT TARGET gtest)
+        add_library(gtest ALIAS GTest::gtest)
+    endif()
+    if(NOT TARGET gtest_main)
+        add_library(gtest_main ALIAS GTest::gtest_main)
+    endif()
+    if(NOT TARGET gmock)
+        add_library(gmock ALIAS GTest::gmock)
+    endif()
+    if(NOT TARGET gmock_main AND TARGET GTest::gmock_main)
+        add_library(gmock_main ALIAS GTest::gmock_main)
+    endif()
+else()
+    message(STATUS "System GTest/GMock incomplete or missing, fetching from GitHub (archive)...")
+    
+    # Use archive URL instead of git clone for better robustness against network/proxy issues
+    FetchContent_Declare(
+      googletest
+      URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+      URL_HASH SHA256=1f357c27ca988c3f7c6b4bf68a9395005ac6761f034046e9dde0896e3aba00e4
+      ${GTEST_DOWNLOAD_ARGS}
+    )
+    FetchContent_MakeAvailable(googletest)
 endif()
-# Prevent overriding the parent project's compiler/linker settings
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-# Disable installation of GoogleTest to prevent conflicts with system packages
-set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-set(INSTALL_GMOCK OFF CACHE BOOL "" FORCE)
-
-FetchContent_MakeAvailable(googletest)
 
 if(TARGET gtest)
     add_executable(linuxcampam_tests
