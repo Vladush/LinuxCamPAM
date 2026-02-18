@@ -2,6 +2,7 @@ name: CI
 
 permissions:
   contents: read
+  packages: write
 
 on:
   push:
@@ -226,6 +227,13 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Download models
         run: ./scripts/download_models.sh
 
@@ -237,8 +245,8 @@ jobs:
           platforms: linux/386
           load: true
           tags: linuxcampam:i386
-          cache-from: type=gha,scope=i386
-          cache-to: type=gha,mode=max,scope=i386
+          cache-from: type=registry,ref=ghcr.io/vladush/linuxcampam-cache:i386
+          cache-to: type=registry,ref=ghcr.io/vladush/linuxcampam-cache:i386,mode=max
 
       - name: Extract artifacts
         run: |
@@ -272,6 +280,13 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Download models
         run: ./scripts/download_models.sh
 
@@ -283,8 +298,8 @@ jobs:
           platforms: linux/riscv64
           load: true
           tags: linuxcampam:riscv64
-          cache-from: type=gha,scope=riscv64
-          cache-to: type=gha,mode=max,scope=riscv64
+          cache-from: type=registry,ref=ghcr.io/vladush/linuxcampam-cache:riscv64
+          cache-to: type=registry,ref=ghcr.io/vladush/linuxcampam-cache:riscv64,mode=max
 
       - name: Extract artifacts
         run: |
