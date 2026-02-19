@@ -10,22 +10,22 @@ on:
     tags: ["v*.*.*"]
     paths-ignore:
       - "**.md"
-      - "docs/**"
       - ".gitignore"
       - ".dockerignore"
       - "LICENSE"
       - ".github/ISSUE_TEMPLATE/**"
       - ".github/PULL_REQUEST_TEMPLATE.md"
+      - "docs/**"
   pull_request:
     branches: [master]
     paths-ignore:
       - "**.md"
-      - "docs/**"
       - ".gitignore"
       - ".dockerignore"
       - "LICENSE"
       - ".github/ISSUE_TEMPLATE/**"
       - ".github/PULL_REQUEST_TEMPLATE.md"
+      - "docs/**"
 
 jobs:
   lint:
@@ -37,7 +37,7 @@ jobs:
       - name: Install Tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y cppcheck
+          sudo apt-get install -y cppcheck pandoc
           sudo npm install -g markdownlint-cli
 
       - name: Run Cppcheck (Static Analysis)
@@ -60,7 +60,7 @@ jobs:
           sudo apt-get install -y \
             build-essential cmake libopencv-dev libpam0g-dev \
             libjsoncpp-dev nlohmann-json3-dev v4l-utils \
-            libgtest-dev devscripts debhelper dh-cmake
+            libgtest-dev devscripts debhelper dh-cmake pandoc
 
       - name: Cache OpenCV Static
         id: cache-opencv
@@ -116,7 +116,7 @@ jobs:
           sudo apt-get install -y \
             build-essential cmake libopencv-dev libpam0g-dev \
             libjsoncpp-dev nlohmann-json3-dev v4l-utils \
-            libgtest-dev devscripts debhelper dh-cmake
+            libgtest-dev devscripts debhelper dh-cmake pandoc
 
       - name: Cache OpenCV Static
         id: cache-opencv
@@ -169,7 +169,7 @@ jobs:
           sudo apt-get install -y \
             build-essential cmake libopencv-dev libpam0g-dev \
             libjsoncpp-dev nlohmann-json3-dev v4l-utils \
-            libgtest-dev devscripts debhelper dh-cmake
+            libgtest-dev devscripts debhelper dh-cmake pandoc
 
       - name: Cache OpenCV Static
         id: cache-opencv

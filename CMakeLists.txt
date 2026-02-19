@@ -255,4 +255,37 @@ set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "rocm-opencl-runtime | intel-opencl-icd | nv
 
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_SOURCE_DIR}/debian/postinst")
 
+# Man pages installation (dynamic generation)
+find_program(PANDOC_EXECUTABLE pandoc)
+if(PANDOC_EXECUTABLE)
+    # Define custom target to generate man pages
+    add_custom_target(generate_man_pages ALL
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_man_pages.sh
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Generating man pages..."
+    )
+
+    # Note: installation is evaluated at CMake configure time, so we must
+    # specify the expected generated files explicitly since globs might be empty
+    set(MAN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/man/generated")
+    install(FILES
+        "${MAN_DIR}/linuxcampam.1"
+        DESTINATION "${CMAKE_INSTALL_MANDIR}/man1"
+        COMPONENT doc
+    )
+    install(FILES
+        "${MAN_DIR}/linuxcampam.conf.5"
+        DESTINATION "${CMAKE_INSTALL_MANDIR}/man5"
+        COMPONENT doc
+    )
+    install(FILES
+        "${MAN_DIR}/linuxcampamd.8"
+        "${MAN_DIR}/pam_linuxcampam.8"
+        DESTINATION "${CMAKE_INSTALL_MANDIR}/man8"
+        COMPONENT doc
+    )
+else()
+    message(WARNING "pandoc not found. Man pages will NOT be generated or installed. Please install pandoc.")
+endif()
+
 include(CPack)
