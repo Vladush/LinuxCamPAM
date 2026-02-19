@@ -74,6 +74,8 @@ cmake -D CMAKE_BUILD_TYPE=Release \
     -D BUILD_opencv_stitching=OFF \
     -D BUILD_opencv_ts=OFF \
     -D BUILD_opencv_python_bindings_generator=OFF \
+    -D BUILD_opencv_ml=OFF \
+    -D BUILD_opencv_video=OFF \
     -D OPENCV_DNN_OPENCL=ON \
     ../opencv-$OPENCV_VER
 
