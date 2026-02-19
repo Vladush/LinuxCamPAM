@@ -250,7 +250,8 @@ set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 set(CPACK_GENERATOR "DEB")
 # Runtime dependencies (not -dev packages) for Ubuntu 24.04
 # OpenCV is statically linked, so we don't need libopencv-* packages
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libpam0g, libpam-runtime, v4l-utils, systemd, libgfortran5, libatlas3-base")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libpam0g, libpam-runtime, v4l-utils, systemd, libgfortran5, libatlas3-base, libatomic1")
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "rocm-opencl-runtime | intel-opencl-icd | nvidia-opencl-icd-340 | nvidia-opencl-icd")
 
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_SOURCE_DIR}/debian/postinst")
 

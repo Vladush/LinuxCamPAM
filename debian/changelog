@@ -1,4 +1,4 @@
-linuxcampam (0.9.7.1-1) unstable; urgency=medium
+linuxcampam (0.9.7.2-1) unstable; urgency=medium
 
 * Fix: Correctly parse [Auth] and [Capture] configuration sections
 * Fix: Ensure documentation consistency regarding permissions and configuration

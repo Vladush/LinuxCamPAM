@@ -13,6 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Faster First Login**: AI models are now pre-loaded when the service starts, rather than waiting for the first user to walk by.
 - **Hardened Validation**: Switched input validation from regex to a strict character-allowlist loop. This isn't visible to users, but it removes a potential ReDoS attack vector and makes path traversal protection bulletproof.
 
+## [0.9.7.2] - 2026-02-19
+
+### Improved in 0.9.7.2
+
+- **CI Build Performance**: Implemented GHCR-based Docker layer caching and optimized OpenCV build by disabling unused modules (`ml`, `video`, `flann`, etc.), significantly reducing build times for i386 and riscv64.
+
+### Fixed in 0.9.7.2
+
+- **Configuration Parsing**: Fixed parsing issues with `[Auth]` and `[Capture]` sections in `config.ini`.
+- **Documentation**: Aligned documentation permissions and configuration examples.
+- **Package Update Stability**: Added `preinst` script to archive conflicting manual installations.
+
 ## [0.9.7] - 2026-01-25
 
 ### Improved in 0.9.7
