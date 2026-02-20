@@ -16,7 +16,7 @@ SOURCE_DIR="man"
 OUTPUT_DIR="man/generated"
 
 # Create output directory if it doesn't exist
-mkdir -p "$OUTPUT_DIR"
+mkdir -p "${OUTPUT_DIR}"
 
 echo "Generating man pages..."
 
