@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y \
     nlohmann-json3-dev \
     libgtest-dev \
     v4l-utils \
+    pandoc \
     git \
     wget \
     unzip \

@@ -30,6 +30,11 @@ CMakeFiles/
 cmake_install.cmake
 install_manifest.txt
 compile_commands.json
+_deps/
+Makefile
+CPackConfig.cmake
+CPackSourceConfig.cmake
+CTestTestfile.cmake
 
 # Editors and caches
 .vscode/
@@ -71,3 +76,6 @@ opencv_static/
 opencv_build/
 opencv-*/
 downloads/
+
+# Generated Man Pages
+man/generated/

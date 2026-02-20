@@ -1,100 +1,17 @@
-# ==========================================
-# Stage 1: Builder
-# ==========================================
-FROM ubuntu:22.04 AS builder
-
-# Prevent interactive prompts
+FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
-
-# Install Dependencies (plus build tools for OpenCV)
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
-    libpam0g-dev \
-    libjsoncpp-dev \
-    nlohmann-json3-dev \
-    libgtest-dev \
-    v4l-utils \
-    git \
-    wget \
-    unzip \
-    pkg-config \
-    python3-dev \
-    gfortran \
-    libjpeg-dev libpng-dev libtiff-dev \
-    libv4l-dev \
-    libxvidcore-dev libx264-dev \
-    libatlas-base-dev \
-    libatomic1 \
-    ca-certificates \
-    devscripts \
-    debhelper \
-    dh-cmake \
-    && rm -rf /var/lib/apt/lists/*
+    build-essential cmake libopencv-dev libpam0g-dev \
+    libjsoncpp-dev nlohmann-json3-dev v4l-utils \
+    libgtest-dev devscripts debhelper dh-cmake pandoc git
 
-# Build OpenCV 4.12.0 Static from Source
-COPY scripts/build_opencv.sh /tmp/build_opencv.sh
-RUN chmod +x /tmp/build_opencv.sh && \
-    mkdir -p /opencv_build && cd /opencv_build && \
-    SKIP_DEPS=1 INSTALL_DIR="/app/opencv_static" /tmp/build_opencv.sh && \
-    cd / && rm -rf /opencv_build /tmp/build_opencv.sh
+WORKDIR /src
+COPY . .
+# Clean up any existing artifacts from host
+RUN rm -rf build CMakeFiles CMakeCache.txt
 
-# Set Working Directory
-WORKDIR /app
+# Build using dpkg-buildpackage to match CI
+RUN dpkg-buildpackage -b -uc -us
 
-# Copy Source Code
-COPY . /app
-
-# Download models
-RUN ./scripts/download_models.sh
-
-# Explicit Regression Testing
-ENV TEST_IN_DOCKER=1
-# Install models for testing
-RUN mkdir -p /usr/share/linuxcampam/models && \
-    cp /app/models/*.onnx /usr/share/linuxcampam/models/ && \
-    # Build and run tests before packaging to ensure quality
-    mkdir build_testing && cd build_testing && \
-    cmake .. && \
-    make -j$(nproc) linuxcampam_tests && \
-    ctest --output-on-failure && \
-    cd .. && rm -rf build_testing
-
-# Build and Package
-RUN rm -rf build && mkdir build && \
-    dpkg-buildpackage -b -uc -us -d && \
-    mkdir -p /artifacts && \
-    cp ../*.deb /artifacts/
-
-# ==========================================
-# Stage 2: Runtime
-# ==========================================
-FROM ubuntu:22.04
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Install Runtime Dependencies
-RUN apt-get update && apt-get install -y \
-    libpam0g \
-    libpam-runtime \
-    v4l-utils \
-    systemd \
-    libgfortran5 \
-    libatlas3-base \
-    libgomp1 \
-    libatomic1 \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-
-# Copy the .deb package from the builder stage
-COPY --from=builder /artifacts/*.deb /tmp/linuxcampam.deb
-
-# Install the package
-RUN dpkg -i /tmp/linuxcampam.deb || apt-get install -f -y && \
-    rm /tmp/linuxcampam.deb
-
-# Verification
-CMD ["/usr/bin/linuxcampam", "help"]
-
+# Verify man pages are in the generated deb
+RUN dpkg -c ../linuxcampam_*.deb | grep share/man
