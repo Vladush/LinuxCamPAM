@@ -105,8 +105,6 @@ if [ -f "Cargo.toml" ]; then
         echo ""
         
         echo "=== Installation Complete ==="
-        echo "Running configuration..."
-        linux-enable-ir-emitter configure
         exit 0
     fi
     
@@ -134,5 +132,3 @@ else
 fi
 
 echo "=== Installation Complete ==="
-echo "Running configuration..."
-linux-enable-ir-emitter configure
