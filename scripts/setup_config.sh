@@ -76,10 +76,15 @@ if [ -n "$IR_CAM" ]; then
                 echo
                 if [[ ! $REPLY =~ ^[Nn]$ ]]; then
                     echo "[Setup] Running configuration..."
-                    stty sane
-                    linux-enable-ir-emitter configure -m < /dev/tty
+                    
+                    # Version 7.x (Rust) runs a Ratatui TUI. 
+                    sudo linux-enable-ir-emitter configure
+                    
+                    # Clear screen and restore sane terminal state after TUI exit in case it crashed
+                    stty sane || true
+                    clear
                 else
-                    echo "[Setup] You can configure it later by running: sudo linux-enable-ir-emitter configure -m"
+                    echo "[Setup] You can configure it later by running: sudo linux-enable-ir-emitter configure"
                 fi
             else
                 echo "[Setup] Skipping installation."
