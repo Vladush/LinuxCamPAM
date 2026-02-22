@@ -1,9 +1,8 @@
 #!/bin/bash
 set -e
 
-# Default version: 6.1.2 is stable and uses Meson (no Rust required)
-# 7.0.0-beta requires Rust toolchain and is only for manual selection
-DEFAULT_VERSION="6.1.2"
+# Default version used to be 6.1.2. Using PR branch for tweaked controls.
+DEFAULT_VERSION="feat/tweak-controls"
 
 echo "=== Installing Dependencies ==="
 export DEBIAN_FRONTEND=noninteractive
@@ -13,22 +12,23 @@ apt-get install -y git pkg-config libssl-dev libclang-dev libv4l-dev libopencv-d
 echo "=== Cloning Repository ==="
 cd /tmp
 rm -rf linux-enable-ir-emitter
-git clone https://github.com/EmixamPP/linux-enable-ir-emitter.git
+# Use Vladush fork to test PR changes
+git clone https://github.com/Vladush/linux-enable-ir-emitter.git
 cd linux-enable-ir-emitter
 
 echo "=== Switching to Desired Release ==="
 
 TARGET_VERSION="${1:-$DEFAULT_VERSION}"
-git fetch --tags
+git fetch --all --tags
 
-if git rev-parse "$TARGET_VERSION" >/dev/null 2>&1; then
+if git rev-parse "$TARGET_VERSION" >/dev/null 2>&1 || git rev-parse "origin/$TARGET_VERSION" >/dev/null 2>&1; then
     LATEST_TAG="$TARGET_VERSION"
 else
-    echo "Error: Version '$TARGET_VERSION' not found."
+    echo "Error: Version/branch '$TARGET_VERSION' not found."
     exit 1
 fi
 
-echo "Checking out release: $LATEST_TAG"
+echo "Checking out release/branch: $LATEST_TAG"
 git checkout "$LATEST_TAG"
 
 if [ -f "Cargo.toml" ]; then
