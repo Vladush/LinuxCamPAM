@@ -44,6 +44,35 @@ echo "[Setup] Configuration Selection:"
 echo "  IR Camera: ${IR_CAM:-None}"
 echo "  RGB Camera: ${RGB_CAM:-None}"
 
+if [ -n "$IR_CAM" ]; then
+    if ! command -v linux-enable-ir-emitter &> /dev/null; then
+        echo ""
+        echo "====================================================================="
+        echo "[Setup] WARNING: IR Camera detected but linux-enable-ir-emitter is missing!"
+        echo "        This tool is often required to turn on the IR LEDs."
+        echo "====================================================================="
+        
+        # Check if we are running interactively (e.g. manual run by user vs apt postinst)
+        if [ -t 0 ]; then
+            read -p "[Setup] Would you like to download and install it now? [y/N] " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                echo "[Setup] Fetching install script from GitHub..."
+                curl -sL https://raw.githubusercontent.com/Vladush/LinuxCamPAM/master/scripts/install_ir_emitter.sh | bash
+                echo "[Setup] linux-enable-ir-emitter installed successfully."
+                echo "[Setup] NOTE: You will need to run 'sudo linux-enable-ir-emitter configure' after this setup finishes."
+            else
+                echo "[Setup] Skipping installation."
+            fi
+        else
+            echo "[Setup] Running non-interactively (e.g. package install)."
+            echo "[Setup] Please run 'sudo linuxcampam-setup-config' later if you wish to install it."
+        fi
+        echo "====================================================================="
+        echo ""
+    fi
+fi
+
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "[Setup] Config file not found at $CONFIG_FILE."
     exit 0
