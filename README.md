@@ -161,7 +161,7 @@ The installer runs a smart detection script (`linuxcampam-setup-config`) to auto
 sudo linuxcampam-setup-config
 ```
 
-> **IR Camera Note:** If your IR camera implies it's working but doesn't light up, you likely need to configure the emitter. We rely on the excellent **[linux-enable-ir-emitter](https://github.com/EmixamPP/linux-enable-ir-emitter)** tool for this. Run `scripts/install_ir_emitter.sh` to install it.
+> **IR Camera Note:** If your IR camera implies it's working but doesn't light up, you likely need to configure the emitter. We rely on the excellent **[linux-enable-ir-emitter](https://github.com/EmixamPP/linux-enable-ir-emitter)** tool for this. Run `scripts/install_ir_emitter.sh` to install it (it will use a patched version from <https://github.com/Vladush/linux-enable-ir-emitter> by default).
 
 For advanced policies (e.g., Mandatory IR + Optional RGB), see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
@@ -254,7 +254,7 @@ This project was inspired by and utilizes tools from the open source community:
 
 ### Tools & Inspiration
 
-- **[linux-enable-ir-emitter](https://github.com/EmixamPP/linux-enable-ir-emitter)**: By [EmixamPP](https://github.com/EmixamPP). Essential for enabling IR emitters on many Linux laptops.
+- **[linux-enable-ir-emitter](https://github.com/EmixamPP/linux-enable-ir-emitter)**: By [EmixamPP](https://github.com/EmixamPP). Essential for enabling IR emitters on many Linux laptops. (Note: A patched version 7 with refined UI controls is available at <https://github.com/Vladush/linux-enable-ir-emitter>).
 - **[Howdy](https://github.com/boltgolt/howdy)**: The pioneer of Windows Hello-style authentication on Linux, serving as inspiration for the user experience.
 
 ### Citations

@@ -92,7 +92,8 @@ void print_help() {
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     std::cout
-        << "Usage: linuxcampam <add|train|test|list|remove|version|help> [args]"
+        << "Usage: linuxcampam "
+           "<add|train|test|list|remove|show-config|debug|version|help> [args]"
         << std::endl;
     return 1;
   }

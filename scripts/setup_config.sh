@@ -44,6 +44,60 @@ echo "[Setup] Configuration Selection:"
 echo "  IR Camera: ${IR_CAM:-None}"
 echo "  RGB Camera: ${RGB_CAM:-None}"
 
+if [ -n "$IR_CAM" ]; then
+    if ! command -v linux-enable-ir-emitter &> /dev/null; then
+        echo ""
+        echo "====================================================================="
+        echo "[Setup] WARNING: IR Camera detected but linux-enable-ir-emitter is missing!"
+        echo "        This tool is often required to turn on the IR LEDs."
+        echo "====================================================================="
+        
+        # Check if we are running interactively (e.g. manual run by user vs apt postinst)
+        if [ -t 0 ]; then
+            read -p "[Setup] Would you like to download and install it now? [y/N] " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                echo "[Setup] Fetching install script..."
+                if [ -f "./scripts/install_ir_emitter.sh" ]; then
+                    echo "[Setup] Using local script (./scripts/install_ir_emitter.sh) for installation."
+                    cp "./scripts/install_ir_emitter.sh" /tmp/install_ir_emitter.sh
+                elif [ -f "/usr/share/linuxcampam/install_ir_emitter.sh" ]; then
+                    echo "[Setup] Using package script (/usr/share/linuxcampam/install_ir_emitter.sh) for installation."
+                    cp "/usr/share/linuxcampam/install_ir_emitter.sh" /tmp/install_ir_emitter.sh
+                else
+                    echo "[Setup] Downloading script from GitHub..."
+                    curl -sL https://raw.githubusercontent.com/Vladush/LinuxCamPAM/master/scripts/install_ir_emitter.sh -o /tmp/install_ir_emitter.sh
+                fi
+                chmod +x /tmp/install_ir_emitter.sh
+                /tmp/install_ir_emitter.sh
+                echo ""
+                echo "[Setup] linux-enable-ir-emitter installed successfully."
+                read -p "[Setup] Would you like to configure the IR emitter now? [Y/n] " -n 1 -r
+                echo
+                if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+                    echo "[Setup] Running configuration..."
+                    
+                    # Version 7.x (Rust) runs a Ratatui TUI. 
+                    sudo linux-enable-ir-emitter configure
+                    
+                    # Clear screen and restore sane terminal state after TUI exit in case it crashed
+                    stty sane || true
+                    clear
+                else
+                    echo "[Setup] You can configure it later by running: sudo linux-enable-ir-emitter configure"
+                fi
+            else
+                echo "[Setup] Skipping installation."
+            fi
+        else
+            echo "[Setup] Running non-interactively (e.g. package install)."
+            echo "[Setup] Please run 'sudo linuxcampam-setup-config' later if you wish to install it."
+        fi
+        echo "====================================================================="
+        echo ""
+    fi
+fi
+
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "[Setup] Config file not found at $CONFIG_FILE."
     exit 0
