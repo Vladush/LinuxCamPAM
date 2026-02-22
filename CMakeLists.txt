@@ -158,6 +158,10 @@ if(TARGET GTest::gtest AND TARGET GTest::gmock)
 else()
     message(STATUS "System GTest/GMock incomplete or missing, fetching from GitHub (archive)...")
     
+    # Prevent GTest from installing its files when we run `cpack` or `make install`
+    set(INSTALL_GTEST OFF CACHE BOOL "Disable installation of googletest" FORCE)
+    set(INSTALL_GMOCK OFF CACHE BOOL "Disable installation of gmock" FORCE)
+    
     # Use archive URL instead of git clone for better robustness against network/proxy issues
     FetchContent_Declare(
       googletest

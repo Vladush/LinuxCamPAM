@@ -58,7 +58,9 @@ if [ -n "$IR_CAM" ]; then
             echo
             if [[ $REPLY =~ ^[Yy]$ ]]; then
                 echo "[Setup] Fetching install script from GitHub..."
-                curl -sL https://raw.githubusercontent.com/Vladush/LinuxCamPAM/master/scripts/install_ir_emitter.sh | bash
+                curl -sL https://raw.githubusercontent.com/Vladush/LinuxCamPAM/master/scripts/install_ir_emitter.sh -o /tmp/install_ir_emitter.sh
+                chmod +x /tmp/install_ir_emitter.sh
+                /tmp/install_ir_emitter.sh
                 echo "[Setup] linux-enable-ir-emitter installed successfully."
                 echo "[Setup] NOTE: You will need to run 'sudo linux-enable-ir-emitter configure' after this setup finishes."
             else
