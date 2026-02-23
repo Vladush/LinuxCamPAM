@@ -58,7 +58,7 @@ deb:
 # Docker Build Targets
 docker-amd64:
 	@echo "Building Docker (amd64)..."
-	@docker build --platform linux/amd64 -t linuxcampam:amd64 .
+	@docker build --platform linux/amd64 -t linuxcampam:amd64 -f docker/Dockerfile.amd64 .
 	@echo "Verifying..."
 	@docker run --rm --platform linux/amd64 --entrypoint /usr/bin/linuxcampam linuxcampam:amd64 help
 

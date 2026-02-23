@@ -15,3 +15,4 @@ RUN dpkg-buildpackage -b -uc -us
 
 # Verify man pages are in the generated deb
 RUN dpkg -c ../linuxcampam_*.deb | grep share/man
+RUN apt-get update && apt-get install -y ../linuxcampam_*.deb
