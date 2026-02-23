@@ -71,7 +71,8 @@ if [ -n "$IR_CAM" ]; then
                 chmod +x /tmp/install_ir_emitter.sh
                 /tmp/install_ir_emitter.sh
                 echo ""
-                echo "[Setup] linux-enable-ir-emitter installed successfully."
+                IRE_VERSION=$(linux-enable-ir-emitter -V 2>/dev/null || echo "linux-enable-ir-emitter")
+                echo "[Setup] $IRE_VERSION installed successfully."
                 read -p "[Setup] Would you like to configure the IR emitter now? [Y/n] " -n 1 -r
                 echo
                 if [[ ! $REPLY =~ ^[Nn]$ ]]; then
