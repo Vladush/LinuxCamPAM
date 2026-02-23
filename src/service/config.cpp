@@ -350,6 +350,16 @@ std::string Configuration::toString() const {
     if (!cam.enroll_hdr.empty()) {
       ss << "    Enroll HDR: " << cam.enroll_hdr << "\n";
     }
+    if (cam.type == "ir") {
+      std::string ir_ver =
+          linuxcampam::getIREmitterVersion(ir_emitter_path.string());
+      if (!ir_ver.empty()) {
+        ss << "    IR Emitter Path: " << ir_emitter_path.string() << "\n";
+        ss << "    IR Emitter Version: " << ir_ver << "\n";
+      } else {
+        ss << "    IR Emitter: Not Installed\n";
+      }
+    }
     ss << "\n";
   }
 

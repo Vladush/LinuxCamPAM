@@ -1,7 +1,9 @@
 #include "utils.hpp"
 
-#include "constants.hpp" // For MAX_USERNAME_LENGTH
+#include "constants.hpp"
+
 #include <algorithm>
+#include <array>
 #include <fcntl.h>
 #include <filesystem>
 #include <linux/videodev2.h>
@@ -112,6 +114,27 @@ std::string classifyCameraType(const std::string &device_path) {
 std::vector<std::pair<std::string, std::string>> enumerateCameras() {
   RealCameraBackend backend;
   return enumerateCameras(backend);
+}
+
+std::string getIREmitterVersion(const std::string &path) {
+  std::string version = "";
+  if (path.empty())
+    return version;
+
+  std::string cmd = path + " -V 2>/dev/null";
+  // NOLINTNEXTLINE(cert-env33-c)
+  FILE *fp = popen(cmd.c_str(), "r");
+  if (fp) {
+    constexpr size_t buf_size = 128;
+    std::array<char, buf_size> buf = {};
+    if (fgets(buf.data(), static_cast<int>(buf.size()), fp)) {
+      version = buf.data();
+      if (!version.empty() && version.back() == '\n')
+        version.pop_back();
+    }
+    pclose(fp);
+  }
+  return version;
 }
 
 bool isValidUsername(std::string_view username) {

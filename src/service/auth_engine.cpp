@@ -97,15 +97,26 @@ bool AuthEngine::init(const fs::path &config_path) {
 void AuthEngine::initializeActiveCameras() {
   if (active_cameras.empty()) {
     active_cameras.reserve(config.camera_defs.size());
-    std::transform(config.camera_defs.begin(), config.camera_defs.end(),
-                   std::back_inserter(active_cameras), [&](const auto &def) {
-                     ActiveCamera ac;
-                     ac.config = def; // Copy config
-                     log_info("Initializing Camera: " + def.id + " (" +
-                              def.type + ") at " + def.path);
-                     ac.cam = camera_factory_(def);
-                     return ac;
-                   });
+    std::transform(
+        config.camera_defs.begin(), config.camera_defs.end(),
+        std::back_inserter(active_cameras), [&](const auto &def) {
+          ActiveCamera ac;
+          ac.config = def; // Copy config
+          log_info("Initializing Camera: " + def.id + " (" + def.type +
+                   ") at " + def.path);
+          if (def.type == "ir") {
+            std::string ir_ver = linuxcampam::getIREmitterVersion(
+                config.ir_emitter_path.string());
+            if (!ir_ver.empty()) {
+              log_info("IR Emitter Engine: " + config.ir_emitter_path.string() +
+                       " (" + ir_ver + ")");
+            } else {
+              log_info("IR Emitter Engine: Not Installed");
+            }
+          }
+          ac.cam = camera_factory_(def);
+          return ac;
+        });
   }
 }
 
@@ -138,6 +149,7 @@ bool AuthEngine::loadModels() {
         cv::ocl::setUseOpenCL(true);
         backend_id = cv::dnn::DNN_BACKEND_OPENCV;
         target_id = cv::dnn::DNN_TARGET_OPENCL;
+        active_provider = "OpenCL";
         log_info("Selecting OpenCL Backend.");
         // Log the OpenCL device name for assurance
         cv::ocl::Device dev = cv::ocl::Device::getDefault();
@@ -147,9 +159,16 @@ bool AuthEngine::loadModels() {
                  "detected. Falling back to CPU.");
         backend_id = cv::dnn::DNN_BACKEND_OPENCV;
         target_id = cv::dnn::DNN_TARGET_CPU;
+        active_provider = "CPU (Fallback)";
       }
       break;
     }
+  }
+
+  // If active_provider is still empty (e.g., config.provider_priority is empty,
+  // though defaults are set)
+  if (active_provider.empty()) {
+    active_provider = "CPU (Default)";
   }
 
   try {
@@ -1043,5 +1062,11 @@ void AuthEngine::recordAuthAttempt(const std::string &username, bool success) {
 }
 
 std::string AuthEngine::getConfigString() const {
-  return config.toString();
+  std::string config_output = config.toString();
+
+  config_output += "  Active Provider: " +
+                   (active_provider.empty() ? "None" : active_provider) +
+                   "\n\n";
+
+  return config_output;
 }

@@ -87,10 +87,14 @@ void handle_client(int client_fd, AuthEngine &engine) {
       break;
     }
     case Command::GET_VERSION: {
+      std::string ir_status = linuxcampam::getIREmitterVersion(
+          engine.getConfig().ir_emitter_path.string());
+      std::string ir_append =
+          ir_status.empty() ? "" : " (IR Emitter: " + ir_status + ")";
 #ifdef LINUXCAMPAM_VERSION
-      response = LINUXCAMPAM_VERSION;
+      response = std::string(LINUXCAMPAM_VERSION) + ir_append;
 #else
-      response = "Unknown";
+      response = "Unknown" + ir_append;
 #endif
       break;
     }
