@@ -149,7 +149,6 @@ bool AuthEngine::loadModels() {
         cv::ocl::setUseOpenCL(true);
         backend_id = cv::dnn::DNN_BACKEND_OPENCV;
         target_id = cv::dnn::DNN_TARGET_OPENCL;
-        active_provider = "OpenCL";
         log_info("Selecting OpenCL Backend.");
         // Log the OpenCL device name for assurance
         cv::ocl::Device dev = cv::ocl::Device::getDefault();
@@ -159,16 +158,9 @@ bool AuthEngine::loadModels() {
                  "detected. Falling back to CPU.");
         backend_id = cv::dnn::DNN_BACKEND_OPENCV;
         target_id = cv::dnn::DNN_TARGET_CPU;
-        active_provider = "CPU (Fallback)";
       }
       break;
     }
-  }
-
-  // If active_provider is still empty (e.g., config.provider_priority is empty,
-  // though defaults are set)
-  if (active_provider.empty()) {
-    active_provider = "CPU (Default)";
   }
 
   try {
@@ -1061,12 +1053,33 @@ void AuthEngine::recordAuthAttempt(const std::string &username, bool success) {
   }
 }
 
+std::string AuthEngine::getActiveProvider() const {
+  for (const auto &prov : config.provider_priority) {
+    if (prov == "CUDA") {
+      /*
+      if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
+        return "CUDA";
+      }
+      */
+    } else if (prov == "OpenVINO") {
+      return "OpenVINO";
+    } else if (prov == "OpenCL") {
+      if (cv::ocl::haveOpenCL()) {
+        return "OpenCL";
+      } else {
+        return "CPU (Fallback)";
+      }
+    }
+  }
+  return "CPU (Default)";
+}
+
 std::string AuthEngine::getConfigString() const {
   std::string config_output = config.toString();
 
-  config_output += "  Active Provider: " +
-                   (active_provider.empty() ? "None" : active_provider) +
-                   "\n\n";
+  std::string provider = getActiveProvider();
+  config_output +=
+      "  Active Provider: " + (provider.empty() ? "None" : provider) + "\n\n";
 
   return config_output;
 }

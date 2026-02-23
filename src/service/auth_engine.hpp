@@ -69,6 +69,7 @@ public:
   // Config visibility
   [[nodiscard]] std::string getConfigString() const;
   [[nodiscard]] const Configuration &getConfig() const { return config; }
+  [[nodiscard]] std::string getActiveProvider() const;
 
   // Allows to swap out the camera implementation (e.g., using a mock for
   // testing).
@@ -140,6 +141,4 @@ private:
   mutable std::mutex lockout_mutex_;
   [[nodiscard]] bool isUserLockedOut(const std::string &username);
   void recordAuthAttempt(const std::string &username, bool success);
-
-  std::string active_provider;
 };
