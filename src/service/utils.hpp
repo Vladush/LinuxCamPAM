@@ -89,7 +89,7 @@ enumerateCameras(const ICameraBackend &backend);
 enumerateCameras();
 
 // Helpers
-[[nodiscard]] std::string getIREmitterVersion(const std::string &path);
+[[nodiscard]] std::string getIREmitterVersion(std::string_view path);
 
 // Security Utils
 [[nodiscard]] bool isValidUsername(std::string_view username);

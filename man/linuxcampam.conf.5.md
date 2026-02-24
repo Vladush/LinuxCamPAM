@@ -57,7 +57,7 @@ The file is in standard INI format. Sections and keys are case-insensitive.
 
 **provider_priority** = *LIST*
 :   Comma-separated list of hardware backends to try.
-    (Default: `OpenCL,OpenVINO,CUDA,CPU`).
+    (Default: `OpenCL,CPU`).
 
 **camera_path_ir** = *PATH*
 :   Path to IR camera (e.g., `/dev/video2`).

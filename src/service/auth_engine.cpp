@@ -129,22 +129,8 @@ bool AuthEngine::loadModels() {
   int backend_id = cv::dnn::DNN_BACKEND_OPENCV;
   int target_id = cv::dnn::DNN_TARGET_CPU;
 
-  for (const auto &prov : config.provider_priority) {
-    if (prov == "CUDA") {
-      /*
-      if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
-        backend_id = cv::dnn::DNN_BACKEND_CUDA;
-        target_id = cv::dnn::DNN_TARGET_CUDA;
-        log_info("Selecting CUDA Backend.");
-        break;
-      }
-      */
-    } else if (prov == "OpenVINO") {
-      backend_id = cv::dnn::DNN_BACKEND_INFERENCE_ENGINE;
-      target_id = cv::dnn::DNN_TARGET_CPU;
-      log_info("Selecting OpenVINO Backend.");
-      break;
-    } else if (prov == "OpenCL") {
+  for (std::string_view prov : config.provider_priority) {
+    if (prov == "OpenCL") {
       if (cv::ocl::haveOpenCL()) {
         cv::ocl::setUseOpenCL(true);
         backend_id = cv::dnn::DNN_BACKEND_OPENCV;
@@ -153,13 +139,19 @@ bool AuthEngine::loadModels() {
         // Log the OpenCL device name for assurance
         cv::ocl::Device dev = cv::ocl::Device::getDefault();
         log_info("Hardware Device: " + dev.name() + " " + dev.version());
+        break;
       } else {
-        log_warn("OpenCL requested but not "
-                 "detected. Falling back to CPU.");
-        backend_id = cv::dnn::DNN_BACKEND_OPENCV;
-        target_id = cv::dnn::DNN_TARGET_CPU;
+        log_warn("OpenCL requested but not detected. Trying next provider "
+                 "fallback.");
       }
+    } else if (prov == "CPU") {
+      backend_id = cv::dnn::DNN_BACKEND_OPENCV;
+      target_id = cv::dnn::DNN_TARGET_CPU;
+      log_info("Selecting CPU Backend.");
       break;
+    } else {
+      log_warn("Unsupported or unrecognized backend requested: " +
+               std::string(prov));
     }
   }
 
@@ -1054,21 +1046,13 @@ void AuthEngine::recordAuthAttempt(const std::string &username, bool success) {
 }
 
 std::string AuthEngine::getActiveProvider() const {
-  for (const auto &prov : config.provider_priority) {
-    if (prov == "CUDA") {
-      /*
-      if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
-        return "CUDA";
-      }
-      */
-    } else if (prov == "OpenVINO") {
-      return "OpenVINO";
-    } else if (prov == "OpenCL") {
+  for (std::string_view prov : config.provider_priority) {
+    if (prov == "OpenCL") {
       if (cv::ocl::haveOpenCL()) {
         return "OpenCL";
-      } else {
-        return "CPU (Fallback)";
       }
+    } else if (prov == "CPU") {
+      return "CPU";
     }
   }
   return "CPU (Default)";

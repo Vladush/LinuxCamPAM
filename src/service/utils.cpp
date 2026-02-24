@@ -116,24 +116,25 @@ std::vector<std::pair<std::string, std::string>> enumerateCameras() {
   return enumerateCameras(backend);
 }
 
-std::string getIREmitterVersion(const std::string &path) {
-  std::string version = "";
+std::string getIREmitterVersion(std::string_view path) {
   if (path.empty())
-    return version;
+    return {};
 
-  std::string cmd = path + " -V 2>/dev/null";
+  std::string cmd = std::string(path) + " -V 2>/dev/null";
   // NOLINTNEXTLINE(cert-env33-c)
   FILE *fp = popen(cmd.c_str(), "r");
-  if (fp) {
-    constexpr size_t buf_size = 128;
-    std::array<char, buf_size> buf = {};
-    if (fgets(buf.data(), static_cast<int>(buf.size()), fp)) {
-      version = buf.data();
-      if (!version.empty() && version.back() == '\n')
-        version.pop_back();
-    }
-    pclose(fp);
+  if (!fp)
+    return {};
+
+  std::string version;
+  constexpr size_t buf_size = 128;
+  std::array<char, buf_size> buf{};
+  if (fgets(buf.data(), static_cast<int>(buf.size()), fp)) {
+    version = buf.data();
+    if (!version.empty() && version.back() == '\n')
+      version.pop_back();
   }
+  pclose(fp);
   return version;
 }
 

@@ -268,7 +268,7 @@ void Configuration::parse_ini_into_self(
   }
   if (provider_priority.empty()) {
     Logger::log(LogLevel::DEBUG, "Using defaults for provider_priority");
-    provider_priority = {"OpenCL", "OpenVINO", "CUDA", "CPU"};
+    provider_priority = {"OpenCL", "CPU"};
   }
 
   for (const auto &p : provider_priority) {
