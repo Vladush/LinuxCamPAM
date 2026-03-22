@@ -4,13 +4,16 @@
 #include "icamera.hpp"
 
 #include <chrono>
+#include <cstddef>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <opencv2/dnn.hpp>
 #include <opencv2/opencv.hpp>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace fs = std::filesystem;
