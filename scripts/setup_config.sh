@@ -128,20 +128,29 @@ elif [ -n "$RGB_CAM" ]; then
 else
     echo ""
     echo "=============================================="
-    echo "[Setup] FATAL: No cameras detected!"
-    echo "=============================================="
-    echo ""
-    echo "LinuxCamPAM requires at least one camera to function."
-    echo ""
-    echo "Troubleshooting:"
-    echo "  1. Check if cameras are connected: ls -la /dev/video*"
-    echo "  2. Check camera details: v4l2-ctl --list-devices"
-    echo "  3. Verify permissions: groups \$USER | grep video"
-    echo ""
-    echo "If you have a camera but it wasn't detected, please"
-    echo "manually configure it in: $CONFIG_FILE"
-    echo ""
-    exit 1
+    if [ ! -t 0 ] || [ "$DEBIAN_FRONTEND" = "noninteractive" ]; then
+        echo "[Setup] WARNING: No cameras detected!"
+        echo "=============================================="
+        echo ""
+        echo "Running non-interactively. Ignoring missing camera to continue setup."
+        echo "Please manually configure cameras later in: $CONFIG_FILE"
+        echo ""
+    else
+        echo "[Setup] FATAL: No cameras detected!"
+        echo "=============================================="
+        echo ""
+        echo "LinuxCamPAM requires at least one camera to function."
+        echo ""
+        echo "Troubleshooting:"
+        echo "  1. Check if cameras are connected: ls -la /dev/video*"
+        echo "  2. Check camera details: v4l2-ctl --list-devices"
+        echo "  3. Verify permissions: groups \$USER | grep video"
+        echo ""
+        echo "If you have a camera but it wasn't detected, please"
+        echo "manually configure it in: $CONFIG_FILE"
+        echo ""
+        exit 1
+    fi
 fi
 
 echo "[Setup] Checking System RAM and CPU..."
