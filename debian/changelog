@@ -1,78 +1,78 @@
 linuxcampam (0.9.7.2-1) unstable; urgency=medium
 
-* Fix: Correctly parse [Auth] and [Capture] configuration sections
-* Fix: Ensure documentation consistency regarding permissions and configuration
-* Fix: Add preinst script to archive conflicting manual installations to improve update stability
-* Hotfix release for v0.9.7 issues
+  * Fix: Correctly parse [Auth] and [Capture] configuration sections
+  * Fix: Ensure documentation consistency regarding permissions and configuration
+  * Fix: Add preinst script to archive conflicting manual installations to improve update stability
+  * Hotfix release for v0.9.7 issues
 
  -- Vladimir Orlinski <contact.github.submerge594@slmails.com>  Fri, 30 Jan 2026 00:20:00 +0100
 
 linuxcampam (0.9.7-1) unstable; urgency=medium
 
-* Bump version to 0.9.7 to match project version
-* Refined build process and docker optimization
-* Upgrade OpenCV to 4.12.0 (statically linked)
-* Update Face Detection models (YuNet 2023mar)
+  * Bump version to 0.9.7 to match project version
+  * Refined build process and docker optimization
+  * Upgrade OpenCV to 4.12.0 (statically linked)
+  * Update Face Detection models (YuNet 2023mar)
 
  -- Vladimir Orlinski <contact.github.submerge594@slmails.com>  Thu, 29 Jan 2026 13:50:00 +0100
 
 linuxcampam (0.9.6-1) unstable; urgency=medium
 
-* Dynamic debug logging via CLI (`linuxcampam debug on/off`)
-* Version command for CLI and daemon
-* Fix missing systemd service file in debian package
-* Fix missing PAM config file in debian package
-* Remove bloated -dev dependencies from runtime
+  * Dynamic debug logging via CLI (`linuxcampam debug on/off`)
+  * Version command for CLI and daemon
+  * Fix missing systemd service file in debian package
+  * Fix missing PAM config file in debian package
+  * Remove bloated -dev dependencies from runtime
 
  -- Vladimir Orlinski <contact.github.submerge594@slmails.com>  Tue, 07 Jan 2026 13:30:00 +0100
 
 linuxcampam (0.9.5-1) unstable; urgency=medium
 
-* GPU sync option to prevent OpenCL hangs on some AMD GPUs
-* Fix missing i386/riscv64 debs in releases
-* Add .dockerignore for cleaner cross-arch builds
-* Auto-clear OpenCL kernel cache on startup to prevent upgrade issues
+  * GPU sync option to prevent OpenCL hangs on some AMD GPUs
+  * Fix missing i386/riscv64 debs in releases
+  * Add .dockerignore for cleaner cross-arch builds
+  * Auto-clear OpenCL kernel cache on startup to prevent upgrade issues
 
  -- Vladimir Orlinski <contact.github.submerge594@slmails.com>  Mon, 06 Jan 2026 15:00:00 +0100
 
 linuxcampam (0.9.4-1) unstable; urgency=medium
 
-* Feat: Implement security rate-limiting and lockout mechanism to prevent brute-force attacks.
-* Feat: Add `show-config` CLI command for runtime configuration inspection.
-* Security: Add comprehensive regression tests for lockout logic.
+  * Feat: Implement security rate-limiting and lockout mechanism to prevent brute-force attacks.
+  * Feat: Add `show-config` CLI command for runtime configuration inspection.
+  * Security: Add comprehensive regression tests for lockout logic.
 
  -- Vladimir Orlinski <contact.github.submerge594@slmails.com>  Sun, 05 Jan 2026 10:56:00 +0100
 
 linuxcampam (0.9.3.3-1) unstable; urgency=medium
 
-* Fix: Include AI models in Docker-based cross-arch builds (i386, riscv64).
-* Fix: Preserve versioned .deb filenames in release artifacts.
-* Note: Version bumped to clean test the release workflow.
+  * Fix: Include AI models in Docker-based cross-arch builds (i386, riscv64).
+  * Fix: Preserve versioned .deb filenames in release artifacts.
+  * Note: Version bumped to clean test the release workflow.
 
  -- Vladimir Orlinski <contact.github.submerge594@slmails.com>  Fri, 03 Jan 2026 21:41:00 +0100
 
 linuxcampam (0.9.3.1-1) unstable; urgency=medium
 
-* Multi-arch support (AARCH64, i386, RISC-V).
-* Update Dockerfiles for packaging.
-* Secure release workflow.
+  * Multi-arch support (AARCH64, i386, RISC-V).
+  * Update Dockerfiles for packaging.
+  * Secure release workflow.
 
  -- Vladimir Orlinski <contact.github.submerge594@slmails.com>  Sat, 03 Jan 2026 02:20:00 +0100
 
 linuxcampam (0.9.2-1) unstable; urgency=medium
 
-* Portable camera detection via V4L2 enumeration (no hardcoded paths).
-* Portable GPU detection via sysfs (lspci no longer required).
-* Setup fails with clear error if no cameras detected.
-* Better IR emitter script guidance for non-Rust systems.
+  * Portable camera detection via V4L2 enumeration (no hardcoded paths).
+  * Portable GPU detection via sysfs (lspci no longer required).
+  * Setup fails with clear error if no cameras detected.
+  * Better IR emitter script guidance for non-Rust systems.
 
  -- Vladimir Orlinski <contact.github.submerge594@slmails.com>  Sat, 28 Dec 2025 23:35:00 +0100
 
 linuxcampam (1.0.0-1) unstable; urgency=medium
 
-* Initial release.
-* Bundled stable ONNX models (2022mar/2021dec).
-* Feature: Automatic PAM configuration via pam-auth-update.
-* Feature: Rusticl OpenCL support enabled by default.
+  * Initial release.
+  * Bundled stable ONNX models (2022mar/2021dec).
+  * Feature: Automatic PAM configuration via pam-auth-update.
+  * Feature: Rusticl OpenCL support enabled by default.
 
  -- Vladimir Orlinski <contact.github.submerge594@slmails.com>  Fri, 19 Dec 2025 20:10:00 +0100

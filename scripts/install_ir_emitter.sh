@@ -135,7 +135,12 @@ if [ -f "Cargo.toml" ]; then
         echo "  sudo $0 $LATEST_TAG"
         echo ""
         
-        echo "=== Installation Complete ==="
+        IRE_VERSION=$(linux-enable-ir-emitter -V 2>/dev/null || true)
+        if [ -n "$IRE_VERSION" ]; then
+            echo "=== Installation Complete ($IRE_VERSION) ==="
+        else
+            echo "=== Installation Complete ==="
+        fi
         exit 0
     fi
 
@@ -158,5 +163,9 @@ else
     ninja -C build
     ninja -C build install
 fi
-
-echo "=== Installation Complete ==="
+IRE_VERSION=$(linux-enable-ir-emitter -V 2>/dev/null || true)
+if [ -n "$IRE_VERSION" ]; then
+    echo "=== Installation Complete ($IRE_VERSION) ==="
+else
+    echo "=== Installation Complete ==="
+fi

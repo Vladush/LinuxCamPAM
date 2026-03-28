@@ -1,0 +1,4 @@
+CompileFlags:
+  CompilationDatabase: "."
+  Add: [-std=gnu++17]
+  Compiler: /usr/bin/c++

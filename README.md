@@ -4,7 +4,15 @@
 
 > Face unlock for Linux, like Windows Hello™. Any webcam works; IR recommended for best results.
 
-LinuxCamPAM provides seamless face unlock for Linux `sudo`, `login`, and login/lock screens (GDM, SDDM, LightDM) using OpenCV and AI models (YuNet/SFace). I built it to solve my own need for speed and reliability, supporting hardware acceleration (OpenCL, CUDA) and smart dual-camera configurations (IR + RGB). Virtually any USB webcam works out of the box.
+LinuxCamPAM provides seamless face unlock for Linux `sudo`, `login`, and login/lock screens (GDM, SDDM, LightDM) using OpenCV and AI models (YuNet/SFace). I built it to solve my own need for speed and reliability, supporting hardware acceleration (OpenCL) and smart dual-camera configurations (IR + RGB). Virtually any USB webcam works out of the box.
+
+## Why This Exists Now
+
+There are existing tools like `howdy`, but they often suffer from being slow, lacking hardware acceleration, or failing completely with modern Python environments and D-Bus integration under Wayland.
+
+- **Why OpenCV C++**: It runs instantly. No lag when typing `sudo`.
+- **Why ONNX + YuNet + SFace**: Replaces the sluggish `dlib` backend for state-of-the-art face detection and recognition.
+- **Native Backends**: Native OpenVINO is not enabled in the default static build to maintain a small package size (~15MB vs ~300MB+). OpenCL provides near-native performance for this use case without the bloat.
 
 ## Motivation
 

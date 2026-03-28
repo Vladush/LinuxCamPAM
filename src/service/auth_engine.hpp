@@ -4,13 +4,16 @@
 #include "icamera.hpp"
 
 #include <chrono>
+#include <cstddef>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <opencv2/dnn.hpp>
 #include <opencv2/opencv.hpp>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -68,6 +71,8 @@ public:
 
   // Config visibility
   [[nodiscard]] std::string getConfigString() const;
+  [[nodiscard]] const Configuration &getConfig() const { return config; }
+  [[nodiscard]] std::string getActiveProvider() const;
 
   // Allows to swap out the camera implementation (e.g., using a mock for
   // testing).

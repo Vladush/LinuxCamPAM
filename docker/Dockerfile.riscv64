@@ -73,11 +73,10 @@ FROM debian:sid-slim
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install Runtime Dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libpam0g \
     libpam-runtime \
     v4l-utils \
-    systemd \
     libgfortran5 \
     libgomp1 \
     libatomic1 \

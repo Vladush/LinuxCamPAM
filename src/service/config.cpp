@@ -268,7 +268,7 @@ void Configuration::parse_ini_into_self(
   }
   if (provider_priority.empty()) {
     Logger::log(LogLevel::DEBUG, "Using defaults for provider_priority");
-    provider_priority = {"OpenCL", "OpenVINO", "CUDA", "CPU"};
+    provider_priority = {"OpenCL", "CPU"};
   }
 
   for (const auto &p : provider_priority) {
@@ -349,6 +349,16 @@ std::string Configuration::toString() const {
     ss << "    Min Brightness: " << cam.min_brightness << "\n";
     if (!cam.enroll_hdr.empty()) {
       ss << "    Enroll HDR: " << cam.enroll_hdr << "\n";
+    }
+    if (cam.type == "ir") {
+      std::string ir_ver =
+          linuxcampam::getIREmitterVersion(ir_emitter_path.string());
+      if (!ir_ver.empty()) {
+        ss << "    IR Emitter Path: " << ir_emitter_path.string() << "\n";
+        ss << "    IR Emitter Version: " << ir_ver << "\n";
+      } else {
+        ss << "    IR Emitter: Not Installed\n";
+      }
     }
     ss << "\n";
   }

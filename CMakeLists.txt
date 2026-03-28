@@ -167,7 +167,7 @@ else()
       googletest
       URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
       URL_HASH SHA256=1f357c27ca988c3f7c6b4bf68a9395005ac6761f034046e9dde0896e3aba00e4
-      ${GTEST_DOWNLOAD_ARGS}
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
     FetchContent_MakeAvailable(googletest)
 endif()
@@ -254,7 +254,7 @@ set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 set(CPACK_GENERATOR "DEB")
 # Runtime dependencies (not -dev packages) for Ubuntu 24.04
 # OpenCV is statically linked, so we don't need libopencv-* packages
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libpam0g, libpam-runtime, v4l-utils, systemd, libgfortran5, libatlas3-base, libatomic1")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libpam0g, libpam-runtime, v4l-utils, libgfortran5, libatlas3-base, libatomic1")
 set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "rocm-opencl-runtime | intel-opencl-icd | nvidia-opencl-icd-340 | nvidia-opencl-icd")
 
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_SOURCE_DIR}/debian/postinst")

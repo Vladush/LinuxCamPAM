@@ -97,15 +97,26 @@ bool AuthEngine::init(const fs::path &config_path) {
 void AuthEngine::initializeActiveCameras() {
   if (active_cameras.empty()) {
     active_cameras.reserve(config.camera_defs.size());
-    std::transform(config.camera_defs.begin(), config.camera_defs.end(),
-                   std::back_inserter(active_cameras), [&](const auto &def) {
-                     ActiveCamera ac;
-                     ac.config = def; // Copy config
-                     log_info("Initializing Camera: " + def.id + " (" +
-                              def.type + ") at " + def.path);
-                     ac.cam = camera_factory_(def);
-                     return ac;
-                   });
+    std::transform(
+        config.camera_defs.begin(), config.camera_defs.end(),
+        std::back_inserter(active_cameras), [&](const auto &def) {
+          ActiveCamera ac;
+          ac.config = def; // Copy config
+          log_info("Initializing Camera: " + def.id + " (" + def.type +
+                   ") at " + def.path);
+          if (def.type == "ir") {
+            std::string ir_ver = linuxcampam::getIREmitterVersion(
+                config.ir_emitter_path.string());
+            if (!ir_ver.empty()) {
+              log_info("IR Emitter Engine: " + config.ir_emitter_path.string() +
+                       " (" + ir_ver + ")");
+            } else {
+              log_info("IR Emitter Engine: Not Installed");
+            }
+          }
+          ac.cam = camera_factory_(def);
+          return ac;
+        });
   }
 }
 
@@ -118,22 +129,8 @@ bool AuthEngine::loadModels() {
   int backend_id = cv::dnn::DNN_BACKEND_OPENCV;
   int target_id = cv::dnn::DNN_TARGET_CPU;
 
-  for (const auto &prov : config.provider_priority) {
-    if (prov == "CUDA") {
-      /*
-      if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
-        backend_id = cv::dnn::DNN_BACKEND_CUDA;
-        target_id = cv::dnn::DNN_TARGET_CUDA;
-        log_info("Selecting CUDA Backend.");
-        break;
-      }
-      */
-    } else if (prov == "OpenVINO") {
-      backend_id = cv::dnn::DNN_BACKEND_INFERENCE_ENGINE;
-      target_id = cv::dnn::DNN_TARGET_CPU;
-      log_info("Selecting OpenVINO Backend.");
-      break;
-    } else if (prov == "OpenCL") {
+  for (std::string_view prov : config.provider_priority) {
+    if (prov == "OpenCL") {
       if (cv::ocl::haveOpenCL()) {
         cv::ocl::setUseOpenCL(true);
         backend_id = cv::dnn::DNN_BACKEND_OPENCV;
@@ -142,13 +139,19 @@ bool AuthEngine::loadModels() {
         // Log the OpenCL device name for assurance
         cv::ocl::Device dev = cv::ocl::Device::getDefault();
         log_info("Hardware Device: " + dev.name() + " " + dev.version());
+        break;
       } else {
-        log_warn("OpenCL requested but not "
-                 "detected. Falling back to CPU.");
-        backend_id = cv::dnn::DNN_BACKEND_OPENCV;
-        target_id = cv::dnn::DNN_TARGET_CPU;
+        log_warn("OpenCL requested but not detected. Trying next provider "
+                 "fallback.");
       }
+    } else if (prov == "CPU") {
+      backend_id = cv::dnn::DNN_BACKEND_OPENCV;
+      target_id = cv::dnn::DNN_TARGET_CPU;
+      log_info("Selecting CPU Backend.");
       break;
+    } else {
+      log_warn("Unsupported or unrecognized backend requested: " +
+               std::string(prov));
     }
   }
 
@@ -1042,6 +1045,25 @@ void AuthEngine::recordAuthAttempt(const std::string &username, bool success) {
   }
 }
 
+std::string AuthEngine::getActiveProvider() const {
+  for (std::string_view prov : config.provider_priority) {
+    if (prov == "OpenCL") {
+      if (cv::ocl::haveOpenCL()) {
+        return "OpenCL";
+      }
+    } else if (prov == "CPU") {
+      return "CPU";
+    }
+  }
+  return "CPU (Default)";
+}
+
 std::string AuthEngine::getConfigString() const {
-  return config.toString();
+  std::string config_output = config.toString();
+
+  std::string provider = getActiveProvider();
+  config_output +=
+      "  Active Provider: " + (provider.empty() ? "None" : provider) + "\n\n";
+
+  return config_output;
 }
