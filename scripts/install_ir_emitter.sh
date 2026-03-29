@@ -4,6 +4,13 @@ set -e
 # Default version used to be 6.1.2. Using PR branch for tweaked controls.
 DEFAULT_VERSION="feat/tweak-controls"
 
+# Check for root privileges
+if [ "$EUID" -ne 0 ]; then
+    echo "Error: This script must be run with sudo or as root."
+    echo "Please try: sudo $0 $@"
+    exit 1
+fi
+
 echo "=== Installing Dependencies ==="
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
@@ -42,35 +49,41 @@ if [ -f "Cargo.toml" ]; then
         exit 0
     }
 
-    # Try pre-built binary first
-    echo "Checking for pre-built binary..."
-    if ! command -v curl &> /dev/null; then
-        apt-get update && apt-get install -y curl
-    fi
+    # Try pre-built binary first for release tags
+    IS_TAG=$(git rev-parse --verify --quiet "refs/tags/${LATEST_TAG}" || true)
 
-    # NOTE: since we are on a custom branch/fork, a release tag might not exist for it.
-    API_URL="https://api.github.com/repos/Vladush/linux-enable-ir-emitter/releases/tags/${LATEST_TAG}"
-    DOWNLOAD_URL=$(curl -s "$API_URL" | grep "browser_download_url" | grep "linux-enable-ir-emitter" | grep "x86-64" | head -n 1 | cut -d '"' -f 4)
+    if [ -n "$IS_TAG" ]; then
+        echo "Checking for pre-built binary..."
+        if ! command -v curl &> /dev/null; then
+            apt-get update && apt-get install -y curl
+        fi
 
-    if [ -n "$DOWNLOAD_URL" ]; then
-        echo "Found binary at: $DOWNLOAD_URL"
-        echo "Downloading..."
-        curl -L -o ir-emitter.tar.gz "$DOWNLOAD_URL"
-        
-        echo "Extracting..."
-        tar -xzf ir-emitter.tar.gz
-        
-        FOUND_BIN=$(find . -name "linux-enable-ir-emitter" -type f | head -n 1)
-        if [ -n "$FOUND_BIN" ]; then
-            if [ "$FOUND_BIN" != "./linux-enable-ir-emitter" ]; then
-                mv "$FOUND_BIN" .
+        # NOTE: since we are on a custom branch/fork, a release tag might not exist for it.
+        API_URL="https://api.github.com/repos/Vladush/linux-enable-ir-emitter/releases/tags/${LATEST_TAG}"
+        DOWNLOAD_URL=$(curl -s "$API_URL" | grep "browser_download_url" | grep "linux-enable-ir-emitter" | grep "x86-64" | head -n 1 | cut -d '"' -f 4)
+
+        if [ -n "$DOWNLOAD_URL" ]; then
+            echo "Found binary at: $DOWNLOAD_URL"
+            echo "Downloading..."
+            curl -L -o ir-emitter.tar.gz "$DOWNLOAD_URL"
+            
+            echo "Extracting..."
+            tar -xzf ir-emitter.tar.gz
+            
+            FOUND_BIN=$(find . -name "linux-enable-ir-emitter" -type f | head -n 1)
+            if [ -n "$FOUND_BIN" ]; then
+                if [ "$FOUND_BIN" != "./linux-enable-ir-emitter" ]; then
+                    mv "$FOUND_BIN" .
+                fi
+                install_binary
+            else
+                echo "Binary not found in archive."
             fi
-            install_binary
         else
-            echo "Binary not found in archive."
+            echo "No pre-built binary found for this tag."
         fi
     else
-        echo "No pre-built binary found for this tag."
+        echo "Branch or non-tag version detected ($LATEST_TAG). Skipping binary download and building from source."
     fi
 
     # No pre-built binary - check for Rust toolchain
@@ -108,7 +121,7 @@ if [ -f "Cargo.toml" ]; then
         echo ""
         echo "Version/Branch $LATEST_TAG requires Rust/Cargo to build from source."
         echo ""
-        echo "Auto-installing stable version 6.1.2 instead (no Rust required)..."
+        echo "Auto-installing fallback version 6.1.2 instead (no Rust required)..."
         echo ""
         
         # Switch to stable 6.1.2 repository
@@ -120,13 +133,24 @@ if [ -f "Cargo.toml" ]; then
         
         echo "=== Building and Installing 6.1.2 (Meson) ==="
         rm -rf build
-        meson setup build --prefix=/usr/local
-        ninja -C build
-        ninja -C build install
+        if ! meson setup build --prefix=/usr/local; then
+            echo "ERROR: Failed to configure Meson build for fallback 6.1.2."
+            exit 1
+        fi
+        
+        if ! ninja -C build; then
+            echo "ERROR: Failed to compile fallback 6.1.2."
+            exit 1
+        fi
+        
+        if ! ninja -C build install; then
+            echo "ERROR: Failed to install fallback 6.1.2."
+            exit 1
+        fi
         
         echo ""
         echo "=============================================="
-        echo "Installed version 6.1.2 (stable, Meson-based)"
+        echo "Installed fallback version 6.1.2 (stable, Meson-based)"
         echo "=============================================="
         echo ""
         echo "If you want version $LATEST_TAG, install Rust first:"

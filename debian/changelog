@@ -1,3 +1,10 @@
+linuxcampam (0.9.7.2-2) unstable; urgency=medium
+
+  * Feature: Switch to specialized 'feat/tweak-controls' branch of linux-enable-ir-emitter
+  * Fix: Improved install_ir_emitter.sh logic to skip binary download for branches
+
+ -- Vladimir Orlinski <contact.github.submerge594@slmails.com>  Sun, 29 Mar 2026 11:32:00 +0200
+
 linuxcampam (0.9.7.2-1) unstable; urgency=medium
 
   * Fix: Correctly parse [Auth] and [Capture] configuration sections
