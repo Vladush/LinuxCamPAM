@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Faster First Login**: AI models are now pre-loaded when the service starts, rather than waiting for the first user to walk by.
 - **Hardened Validation**: Switched input validation from regex to a strict character-allowlist loop. This isn't visible to users, but it removes a potential ReDoS attack vector and makes path traversal protection bulletproof.
 
+## [0.9.7.2-2] - 2026-03-29
+
+### Dependencies & Scripts
+
+- **Specialized IR Emitter**: Switched to `feat/tweak-controls` branch of the `linux-enable-ir-emitter` fork for better hardware control management.
+- **Robustness**: Improved the IR emitter installation script to intelligently skip pre-built binary checks when using feature branches, avoiding unnecessary API errors.
+
 ## [0.9.7.2] - 2026-02-19
 
 ### Improved in 0.9.7.2
