@@ -250,11 +250,25 @@ int AuthEngine::generateEmbedding(const cv::Mat &frame,
   detector->setInputSize(frame.size());
   detector->detect(frame, faces);
 
-  Logger::log(LogLevel::INFO, "Profiling: Detection complete. Faces: " +
-                                  std::to_string(faces.rows));
+  // Log top face scores to help diagnose threshold issues (especially IR cameras)
+  int num_faces = faces.rows;
+  if (num_faces == 0) {
+    // YuNet found candidates but all were below detection_threshold.
+    // Log this explicitly: if you see this with IR, lower detection_threshold in config.ini.
+    Logger::log(LogLevel::WARN,
+                "Profiling: Detection complete. 0 faces found above threshold (" +
+                std::to_string(config.detection_threshold) +
+                "). If using IR camera, try lowering detection_threshold to 0.5 in config.ini.");
+  } else {
+    // Log confidence score of best face
+    float best_score = faces.at<float>(0, 14);
+    Logger::log(LogLevel::INFO,
+                "Profiling: Detection complete. Faces: " + std::to_string(num_faces) +
+                " | Best score: " + std::to_string(best_score) +
+                " | Threshold: " + std::to_string(config.detection_threshold));
+  }
   gpuSync(config.gpu_flush, config.gpu_throttle_ms);
 
-  int num_faces = faces.rows;
   if (num_faces < 1)
     return 0;
 
@@ -634,15 +648,34 @@ AuthEngine::enrollUser(const std::string &username) {
       err += " faces in ";
       err += id;
       err += ". Expecting exactly 1.";
-      Logger::log(LogLevel::WARN, "Enroll failed: " + err);
-      if (config.save_fail) {
-        std::string fail_filename = config.log_dir + "failed_enroll_";
-        fail_filename += id;
-        fail_filename += "_";
-        fail_filename += username;
-        fail_filename += ".jpg";
-        cv::imwrite(fail_filename, frame);
+
+      // Always log frame brightness to help diagnose IR camera issues
+      double brightness = calculateBrightness(frame);
+      Logger::log(LogLevel::WARN, "Enroll failed: " + err +
+                                      " | Frame: " +
+                                      std::to_string(frame.cols) + "x" +
+                                      std::to_string(frame.rows) +
+                                      " | Brightness: " +
+                                      std::to_string(static_cast<int>(brightness)) +
+                                      " | threshold: " +
+                                      std::to_string(config.detection_threshold));
+
+      // Always save the failed frame (regardless of save_fail setting) to help
+      // debug IR camera issues (e.g. Lenovo emitter not activated, underexposure).
+      fs::create_directories(config.log_dir);
+      std::string fail_filename = config.log_dir + "failed_enroll_";
+      fail_filename += id;
+      fail_filename += "_";
+      fail_filename += username;
+      fail_filename += ".jpg";
+      if (cv::imwrite(fail_filename, frame)) {
+        Logger::log(LogLevel::INFO,
+                    "Debug frame saved: " + fail_filename +
+                        " - inspect to verify camera output.");
+      } else {
+        Logger::log(LogLevel::WARN, "Could not save debug frame: " + fail_filename);
       }
+
       return {false, err};
     }
 

@@ -15,7 +15,11 @@ public:
   // TODO: Move defaults to cpp or keep here? Keeping here for easy reference
   // akin to previous struct
   static constexpr float DEFAULT_THRESHOLD = 0.363f;
-  static constexpr float DEFAULT_DETECTION_THRESHOLD = 0.9f;
+  // Lowered from 0.9 to 0.6: IR cameras (e.g. Lenovo, Dell) produce low-contrast
+  // grayscale images where YuNet confidence scores rarely exceed 0.7.
+  // A threshold of 0.9 works well for RGB webcams but effectively blocks
+  // all detection on IR streams. Override via detection_threshold in config.ini.
+  static constexpr float DEFAULT_DETECTION_THRESHOLD = 0.6f;
   static constexpr int DEFAULT_TIMEOUT_MS = 3000;
   static constexpr int DEFAULT_MAX_EMBEDDINGS = 5;
   static constexpr int DEFAULT_ENROLL_AVG_FRAMES = 5;

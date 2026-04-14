@@ -18,10 +18,18 @@ inline constexpr double RGB_CHANNELS = 3.0;
 inline constexpr uid_t DEFAULT_MIN_UID = 1000;
 
 // Camera & Auth constants
-inline constexpr int CAMERA_WARMUP_FRAMES = 10;
-inline constexpr int CAMERA_WARMUP_DELAY_MS = 100;
+// WARMUP_FRAMES and WARMUP_DELAY_MS increased from 10/100 to 15/200:
+// IR cameras (e.g. Lenovo) need more frames discarded and longer settle time
+// before the auto-exposure stabilizes and produces a usable image.
+inline constexpr int CAMERA_WARMUP_FRAMES = 15;
+inline constexpr int CAMERA_WARMUP_DELAY_MS = 200;
 inline constexpr int CAMERA_AVERAGE_FRAMES = 5;
-inline constexpr int IR_TRIGGER_DELAY_MS = 200;
+
+// IR_TRIGGER_DELAY_MS increased from 200ms to 1500ms:
+// On Lenovo laptops the IR emitter hardware needs significantly more time
+// to activate after being triggered before the sensor receives usable IR light.
+// 200ms was too short, resulting in near-black frames (brightness ~14/255).
+inline constexpr int IR_TRIGGER_DELAY_MS = 1500;
 inline constexpr int CAPTURE_RETRY_DELAY_S = 1;
 
 // HDR Constants
@@ -36,5 +44,5 @@ inline constexpr int CAPTURE_RETRY_ATTEMPTS = 3;
 
 inline constexpr float MIRROR_THRESHOLD_DEFAULT = 0.6f; // detection confidence
 inline constexpr int MIRROR_SIZE = 640;
-inline constexpr int MIRROR_NMS = 5000; // keep top K bboxes before NMS .
+inline constexpr int MIRROR_NMS = 5000; // keep top K bboxes before NMS
 } // namespace linuxcampam
