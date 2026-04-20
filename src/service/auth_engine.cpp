@@ -8,7 +8,6 @@
 #include "logger.hpp"
 
 #include <algorithm>
-#include <cmath>
 #include <fcntl.h>
 #include <filesystem>
 #include <fstream>
@@ -31,7 +30,7 @@ inline void gpuSync(bool do_flush, int delay_ms) {
       cv::ocl::finish();
     } catch (const cv::Exception &e) {
       // Driver might be unstable, log warning but keep running
-      std::cerr << "GPU Sync warning: " << e.what() << std::endl;
+      std::cerr << "GPU Sync warning: " << e.what() << '\n';
     }
   }
   if (delay_ms > 0) {
@@ -137,7 +136,7 @@ bool AuthEngine::loadModels() {
         target_id = cv::dnn::DNN_TARGET_OPENCL;
         log_info("Selecting OpenCL Backend.");
         // Log the OpenCL device name for assurance
-        cv::ocl::Device dev = cv::ocl::Device::getDefault();
+        const cv::ocl::Device &dev = cv::ocl::Device::getDefault();
         log_info("Hardware Device: " + dev.name() + " " + dev.version());
         break;
       } else {
@@ -488,7 +487,7 @@ bool AuthEngine::verifyUser(const std::string &username) {
         // Logging & Saving Logic (from original verifyUser)
         if (msg == "Capture failed") {
           std::cout << "[AuthEngine] Camera " << id << " failed to capture."
-                    << std::endl;
+                    << '\n';
           return;
         }
 
@@ -570,7 +569,7 @@ AuthEngine::enrollUser(const std::string &username) {
     return {false, "Failed to load AI models."};
   if (!linuxcampam::isValidUsername(username)) {
     std::cerr << "[AuthEngine] Security Warn: Invalid username string: "
-              << username << std::endl;
+              << username << '\n';
     return {false, "Invalid username (security restriction)."};
   }
 

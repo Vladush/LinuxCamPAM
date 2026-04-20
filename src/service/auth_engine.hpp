@@ -4,7 +4,6 @@
 #include "icamera.hpp"
 
 #include <chrono>
-#include <cstddef>
 #include <filesystem>
 #include <functional>
 #include <memory>
