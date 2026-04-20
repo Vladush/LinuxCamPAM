@@ -184,19 +184,13 @@ void Configuration::parse_ini_into_self(
       def.id = id;
       def.path = get("Camera." + id + ".path", "/dev/video0");
       def.type = get("Camera." + id + ".type", "generic");
-      try {
-        def.min_brightness =
-            std::stoi(get("Camera." + id + ".min_brightness", "0"));
-      } catch (...) {
-      }
+      std::string mb_str = get("Camera." + id + ".min_brightness", "0");
+      parse_int(mb_str, def.min_brightness);
       def.mandatory = (get("Camera." + id + ".mandatory", "false") == "true");
       def.enroll_hdr = get("Camera." + id + ".enroll_hdr", "");
       def.enroll_averaging = get("Camera." + id + ".enroll_averaging", "");
-      try {
-        def.enroll_average_frames =
-            std::stoi(get("Camera." + id + ".enroll_average_frames", "0"));
-      } catch (...) {
-      }
+      std::string eaf_str = get("Camera." + id + ".enroll_average_frames", "0");
+      parse_int(eaf_str, def.enroll_average_frames);
 
       camera_defs.push_back(def);
     }
@@ -209,12 +203,9 @@ void Configuration::parse_ini_into_self(
         camera_defs.push_back({"ir", path_ir, "ir", 0, true});
       if (!path_rgb.empty()) {
         int mb = linuxcampam::DEFAULT_MIN_BRIGHTNESS;
-        try {
-          mb = std::stoi(
-              get("Hardware.min_brightness",
-                  std::to_string(linuxcampam::DEFAULT_MIN_BRIGHTNESS)));
-        } catch (...) {
-        }
+        std::string hmb_str = get("Hardware.min_brightness",
+                                  std::to_string(linuxcampam::DEFAULT_MIN_BRIGHTNESS));
+        parse_int(hmb_str, mb);
         camera_defs.push_back({"rgb", path_rgb, "rgb", mb, false});
       }
     } else {
