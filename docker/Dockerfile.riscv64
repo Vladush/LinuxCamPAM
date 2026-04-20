@@ -32,18 +32,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Build OpenCV 4.12.0 Static from Source
-COPY scripts/build_opencv.sh /tmp/build_opencv.sh
-RUN chmod +x /tmp/build_opencv.sh && \
-    mkdir -p /opencv_build && cd /opencv_build && \
-    SKIP_DEPS=1 MAKE_JOBS=2 INSTALL_DIR="/app/opencv_static" /tmp/build_opencv.sh && \
-    cd / && rm -rf /opencv_build /tmp/build_opencv.sh
-
 # Set Working Directory
 WORKDIR /app
 
 # Copy Source Code
 COPY . /app
+
+# Restore cached OpenCV or build from Source
+RUN if [ -d "/app/opencv_static_cached" ]; then \
+        echo "Using cached OpenCV" && \
+        mv /app/opencv_static_cached /app/opencv_static; \
+    fi && \
+    if [ ! -f "/app/opencv_static/lib/libopencv_core.a" ]; then \
+        chmod +x /app/scripts/build_opencv.sh && \
+        mkdir -p /opencv_build && cd /opencv_build && \
+        SKIP_DEPS=1 MAKE_JOBS=2 INSTALL_DIR="/app/opencv_static" /app/scripts/build_opencv.sh && \
+        cd / && rm -rf /opencv_build; \
+    fi
 
 # Download models
 RUN ./scripts/download_models.sh
