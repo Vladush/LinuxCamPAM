@@ -3,7 +3,6 @@
 #include "logger.hpp"
 #include "utils.hpp"
 #include <array>
-#include <cstdlib>
 #include <fcntl.h>
 #include <filesystem>
 #include <linux/videodev2.h>
