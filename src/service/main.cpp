@@ -9,7 +9,6 @@
 #include <atomic>
 #include <csignal>
 #include <filesystem>
-#include <iostream>
 #include <string>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -250,15 +249,15 @@ int main(int argc, char *argv[]) {
     try {
       fs::remove_all(opencv_cache);
       Logger::log(LogLevel::DEBUG, "Cleared OpenCL cache");
-    } catch (...) {
-      // Best-effort, ignore errors
+    } catch (const std::exception &e) {
+      Logger::log(LogLevel::DEBUG, "OpenCL cache cleanup failed: " + std::string(e.what()));
     }
   }
 
   AuthEngine engine;
   // Initialize Engine
   if (!engine.init(config_path)) {
-    std::cerr << "Failed to initialize AuthEngine. Exiting." << std::endl;
+    Logger::log(LogLevel::ERROR, "AuthEngine init failed, shutting down.");
     return 1;
   }
 

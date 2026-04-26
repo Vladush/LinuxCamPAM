@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include <cstdint>
 
 namespace fs = std::filesystem;
 
@@ -28,12 +29,12 @@ public:
   static constexpr int DEFAULT_LOCKOUT_DURATION_SEC = 300;
   static constexpr int DEFAULT_GPU_THROTTLE_MS = 20;
 
-  enum class AuthPolicy { STRICT_ALL, LENIENT_ANY, ADAPTIVE };
+  enum class AuthPolicy : std::uint8_t { STRICT_ALL, LENIENT_ANY, ADAPTIVE };
 
   struct CameraDefinition {
-    std::string id;
-    std::string path;
-    std::string type; // "ir", "rgb"
+    std::string id{};
+    std::string path{};
+    std::string type{}; // "ir", "rgb"
     int min_brightness = 0;
     bool mandatory = false;
     std::string enroll_hdr = "";
@@ -48,12 +49,12 @@ public:
   int max_embeddings = DEFAULT_MAX_EMBEDDINGS;
 
   AuthPolicy policy = AuthPolicy::ADAPTIVE;
-  std::vector<CameraDefinition> camera_defs;
+  std::vector<CameraDefinition> camera_defs{};
 
   bool save_success = false;
   bool save_fail = false;
   std::string log_dir = "/var/log/linuxcampam/";
-  std::vector<std::string> provider_priority;
+  std::vector<std::string> provider_priority{};
   int model_keep_alive_sec = 0;
 
   std::string enroll_hdr = "auto";
