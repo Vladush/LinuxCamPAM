@@ -256,7 +256,7 @@ jobs:
           load: true
           tags: linuxcampam:i386
           cache-from: type=registry,ref=ghcr.io/vladush/linuxcampam-cache:i386
-          cache-to: type=registry,ref=ghcr.io/vladush/linuxcampam-cache:i386,mode=max
+          cache-to: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 'type=registry,ref=ghcr.io/vladush/linuxcampam-cache:i386,mode=max' || '' }}
 
       - name: Extract artifacts
         run: |
@@ -318,7 +318,7 @@ jobs:
           load: true
           tags: linuxcampam:riscv64
           cache-from: type=registry,ref=ghcr.io/vladush/linuxcampam-cache:riscv64
-          cache-to: type=registry,ref=ghcr.io/vladush/linuxcampam-cache:riscv64,mode=max
+          cache-to: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 'type=registry,ref=ghcr.io/vladush/linuxcampam-cache:riscv64,mode=max' || '' }}
 
       - name: Extract artifacts
         run: |
