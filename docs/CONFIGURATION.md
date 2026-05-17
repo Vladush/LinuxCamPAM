@@ -133,10 +133,20 @@ You can configure this behavior in the `[Security]` section:
 ```ini
 [Security]
 min_uid = 1000
+show_welcome = true
+welcome_message = "LinuxCamPAM: Welcome, %u!"
 ```
 
 - **Standard Method (Recommended)**: Leave `min_uid` at `1000`. This effectively tells the module: "If the user has a UID less than 1000, don't even try to authenticate them." This is the safest and easiest way to avoid boot-up loops.
 - **Manual PAM Method (Advanced)**: Set `min_uid = 0` to disable this check. Do this only if you want to control everything yourself using PAM configuration files (e.g., adding `pam_succeed_if.so uid >= 1000` manually in `/etc/pam.d/common-auth`). If you disable this setting and don't add your own safeguards, your login screen might hang while it waits for a face that isn't there.
+
+### Welcome Message
+
+By default, a welcome message is displayed upon successful authentication. You can customize or disable it in the `[Security]` section:
+
+- **show_welcome**: `true` or `false`. If `false`, the module succeeds silently. This can also be overridden per-auth by passing `no_welcome` as a PAM argument in `/etc/pam.d/`.
+- **welcome_message**: Custom string. Use `%u` to inject the username. Quotes are optional but recommended for strings with spaces.
+- **Compile-time Override**: If the module was compiled with `cmake -DDISABLE_WELCOME_MESSAGE=ON ..`, all welcome message logic is stripped for maximum security/stealth. INI settings and PAM arguments will have no effect.
 
 ### GPU Stability
 

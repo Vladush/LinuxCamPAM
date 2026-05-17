@@ -24,7 +24,10 @@ It communicates with the `linuxcampamd` service to perform the actual biometric 
 
 # MODULE ARGUMENTS
 
-This module currently accepts no arguments. All configuration is handled via `/etc/linuxcampam/config.ini` to ensure security and centralization.
+**no_welcome**
+:   Suppresses the welcome message usually displayed upon successful authentication. This overrides any configuration set in `/etc/linuxcampam/config.ini`.
+
+All other configuration is handled via `/etc/linuxcampam/config.ini` to ensure security and centralization.
 
 # FILES
 
