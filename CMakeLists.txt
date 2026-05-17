@@ -41,16 +41,23 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+option(DISABLE_WELCOME_MESSAGE "Disable PAM welcome message completely at compile time" OFF)
+if(DISABLE_WELCOME_MESSAGE)
+    add_compile_definitions(DISABLE_WELCOME_MESSAGE)
+    message(STATUS "Compile-time option: PAM welcome message is DISABLED")
+endif()
+
 # --- Security Hardening ---
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(
         -Wall -Wextra -Werror
         -fstack-protector-strong
         -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
-        -fPIE
         -Wformat -Wformat-security
         -Werror=format-security
     )
+    # -fPIE is applied per-target to executables only (not the PAM .so module,
+    # which needs pure -fPIC to avoid relocation errors with STL internals).
     add_link_options(
         -Wl,-z,relro,-z,now
         $<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>:-pie>
@@ -125,6 +132,13 @@ target_link_libraries(linuxcampam PRIVATE stdc++fs)
 add_executable(check_opencl src/tools/check_opencl.cpp)
 target_link_libraries(check_opencl PRIVATE ${OpenCV_LIBS})
 
+# Apply -fPIE to executables only (the PAM .so needs pure -fPIC).
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    foreach(exe_target linuxcampamd linuxcampam check_opencl)
+        target_compile_options(${exe_target} PRIVATE -fPIE)
+    endforeach()
+endif()
+
 # --- Testing ---
 # --- Testing ---
 enable_testing()
@@ -194,6 +208,9 @@ if(TARGET gtest)
         service_core
     )
     
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(linuxcampam_tests PRIVATE -fPIE)
+    endif()
     add_test(NAME UnitTests COMMAND linuxcampam_tests)
 endif()
 

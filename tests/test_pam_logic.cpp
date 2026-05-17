@@ -98,3 +98,40 @@ TEST_F(PamConfigTest, ExplicitZeroAllowed) {
   auto config = loadConfig("min_uid = 0");
   EXPECT_EQ(config.min_uid, 0);
 }
+
+TEST_F(PamConfigTest, WelcomeDefaults) {
+  auto config = loadConfig("");
+  EXPECT_TRUE(config.show_welcome);
+  EXPECT_EQ(config.welcome_message, "LinuxCamPAM: Welcome, %u!");
+}
+
+TEST_F(PamConfigTest, WelcomeMessageParsing) {
+  auto config = loadConfig(R"(
+[Security]
+show_welcome = false
+welcome_message = "Hello, %u!"
+)");
+  EXPECT_FALSE(config.show_welcome);
+  EXPECT_EQ(config.welcome_message, "Hello, %u!");
+}
+
+TEST_F(PamConfigTest, WelcomeMessageUnquoted) {
+  auto config = loadConfig(R"(
+[Security]
+welcome_message = Hello World
+)");
+  EXPECT_EQ(config.welcome_message, "Hello World");
+}
+
+TEST_F(PamConfigTest, WelcomeMessagePrecedence) {
+  auto config = loadConfig(R"(
+show_welcome = true
+welcome_message = "Default"
+
+[Security]
+show_welcome = false
+welcome_message = "Security"
+)");
+  EXPECT_FALSE(config.show_welcome);
+  EXPECT_EQ(config.welcome_message, "Security");
+}
