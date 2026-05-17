@@ -2,6 +2,7 @@
 #include "ipc_protocol.hpp"
 #include "pam_config.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <memory>
@@ -95,10 +96,10 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
 
     PamConfig config = load_pam_config(linuxcampam::CONFIG_PATH);
 
-    for (int i = 0; i < argc; ++i) {
-      if (argv[i] != nullptr && std::strcmp(argv[i], "no_welcome") == 0) {
-        config.show_welcome = false;
-      }
+    if (std::any_of(argv, argv + argc, [](const char *arg) {
+          return arg != nullptr && std::strcmp(arg, "no_welcome") == 0;
+        })) {
+      config.show_welcome = false;
     }
 
     struct passwd *pwd = getpwnam(user);
