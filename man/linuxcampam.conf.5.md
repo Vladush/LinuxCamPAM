@@ -53,6 +53,20 @@ The file is in standard INI format. Sections and keys are case-insensitive.
     Values: `adaptive` (smart logic), `strict` (all cameras match), `lenient` (any camera match).
     (Default: `adaptive`).
 
+## [Security]
+
+**min_uid** = *INT*
+:   Minimum user ID (UID) required to attempt face authentication. System users (e.g., root, daemon) with UIDs lower than this are ignored and fall back to password automatically.
+    (Default: `1000`).
+
+**show_welcome** = *BOOL*
+:   Whether to show a welcome message upon successful authentication.
+    (Default: `true`).
+
+**welcome_message** = *STRING*
+:   Custom welcome message to display if `show_welcome` is enabled. Use `%u` to inject the username into the message. Quotes are supported but optional.
+    (Default: `LinuxCamPAM: Welcome, %u!`).
+
 ## [Hardware]
 
 **provider_priority** = *LIST*

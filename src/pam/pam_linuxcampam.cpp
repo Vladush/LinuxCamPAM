@@ -2,9 +2,11 @@
 #include "ipc_protocol.hpp"
 #include "pam_config.hpp"
 
+#ifndef DISABLE_WELCOME_MESSAGE
+#include <algorithm>
+#endif
 #include <array>
 #include <cstring>
-#include <memory>
 #include <pwd.h>
 #include <security/pam_ext.h>
 #include <security/pam_modules.h>
@@ -13,7 +15,6 @@
 #include <sys/un.h>
 #include <syslog.h>
 #include <unistd.h>
-#include <vector>
 
 namespace {
 constexpr size_t BUFFER_SIZE = 128;
@@ -94,10 +95,18 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
       return retval;
     }
 
+    PamConfig config = load_pam_config(linuxcampam::CONFIG_PATH);
+
+#ifndef DISABLE_WELCOME_MESSAGE
+    if (std::any_of(argv, argv + argc, [](const char *arg) {
+          return arg != nullptr && std::strcmp(arg, "no_welcome") == 0;
+        })) {
+      config.show_welcome = false;
+    }
+#endif
+
     struct passwd *pwd = getpwnam(user);
     if (pwd) {
-      PamConfig config = load_pam_config(linuxcampam::CONFIG_PATH);
-
       // If min_uid is 0, the check is disabled.
       // Otherwise, skip authentication for any user with UID < min_uid.
       if (config.min_uid > 0 && pwd->pw_uid < config.min_uid) {
@@ -169,37 +178,43 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
     if (valread > 0) {
       std::string resp(buffer.data());
       if (resp.find("AUTH_SUCCESS") != std::string::npos) {
-        // Display Welcome Message
-        struct pam_message msg = {};
-        const struct pam_message *msgp = nullptr;
-        struct pam_response *resp_pam = nullptr;
+#ifndef DISABLE_WELCOME_MESSAGE
+        if (config.show_welcome) {
+          std::string welcome_msg = config.welcome_message;
+          for (size_t pos = welcome_msg.find("%u");
+               pos != std::string::npos;
+               pos = welcome_msg.find("%u", pos + std::strlen(user))) {
+            welcome_msg.replace(pos, 2, user);
+          }
 
-        std::string welcome_msg =
-            "LinuxCamPAM: Welcome, " + std::string(user) + "!";
+          if (!welcome_msg.empty()) {
+            struct pam_message msg = {};
+            const struct pam_message *msgp = nullptr;
+            struct pam_response *resp_pam = nullptr;
 
-        // PAM standard requires a mutable char* for messages.
-        // We create a writable copy here to ensure strict API compliance.
-        std::vector<char> msg_buf(welcome_msg.begin(), welcome_msg.end());
-        msg_buf.push_back('\0');
-        char *msg_cstr = msg_buf.data();
+            std::vector<char> msg_buf(welcome_msg.begin(), welcome_msg.end());
+            msg_buf.push_back('\0');
+            char *msg_cstr = msg_buf.data();
 
-        msg.msg_style = PAM_TEXT_INFO;
-        msg.msg = msg_cstr;
-        msgp = &msg;
+            msg.msg_style = PAM_TEXT_INFO;
+            msg.msg = msg_cstr;
+            msgp = &msg;
 
-        const struct pam_conv *conv = nullptr;
-        // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
-        int ret = pam_get_item(pamh, PAM_CONV,
-                               reinterpret_cast<const void **>(&conv));
-        // NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
-        if (ret == PAM_SUCCESS && conv != NULL) {
-          // Best effort message, ignore return code
-          conv->conv(1, &msgp, &resp_pam, conv->appdata_ptr);
-          if (resp_pam) {
-            std::unique_ptr<struct pam_response, decltype(&free)> resp_ptr(
-                resp_pam, free);
+            const struct pam_conv *conv = nullptr;
+            // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
+            int ret = pam_get_item(pamh, PAM_CONV,
+                                   reinterpret_cast<const void **>(&conv));
+            // NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
+            if (ret == PAM_SUCCESS && conv != NULL) {
+              conv->conv(1, &msgp, &resp_pam, conv->appdata_ptr);
+              if (resp_pam) {
+                std::unique_ptr<struct pam_response, decltype(&free)> resp_ptr(
+                    resp_pam, free);
+              }
+            }
           }
         }
+#endif // DISABLE_WELCOME_MESSAGE
 
         syslog(LOG_INFO, "Authentication successful for user: %s", user);
         return PAM_SUCCESS;

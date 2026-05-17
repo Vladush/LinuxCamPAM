@@ -70,7 +70,8 @@ RUN mkdir build_testing && cd build_testing && \
 RUN rm -rf build && mkdir build && \
     dpkg-buildpackage -b -uc -us -d && \
     mkdir -p /artifacts && \
-    cp ../*.deb /artifacts/
+    cp ../*.deb /artifacts/ && \
+    cp -r /app/opencv_static /artifacts/
 
 # ==========================================
 # Stage 2: Runtime
@@ -108,4 +109,3 @@ RUN apt-get update && \
 
 # Verification
 CMD ["/usr/bin/linuxcampam", "help"]
-
