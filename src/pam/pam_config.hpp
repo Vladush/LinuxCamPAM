@@ -13,8 +13,10 @@
 
 struct PamConfig {
   uid_t min_uid = linuxcampam::DEFAULT_MIN_UID;
+#ifndef DISABLE_WELCOME_MESSAGE
   bool show_welcome = true;
   std::string welcome_message = "LinuxCamPAM: Welcome, %u!";
+#endif
 };
 
 // Section name → { key → value }. Last write wins within each section.
@@ -96,6 +98,7 @@ inline PamConfig resolve_pam_config(const PamConfigState &state) {
     }
   }
 
+#ifndef DISABLE_WELCOME_MESSAGE
   // --- show_welcome ---
   std::string sw_str = get_value("show_welcome");
   if (!sw_str.empty()) {
@@ -110,6 +113,7 @@ inline PamConfig resolve_pam_config(const PamConfigState &state) {
     }
     config.welcome_message = std::move(wm_str);
   }
+#endif
 
   return config;
 }

@@ -99,6 +99,7 @@ TEST_F(PamConfigTest, ExplicitZeroAllowed) {
   EXPECT_EQ(config.min_uid, 0);
 }
 
+#ifndef DISABLE_WELCOME_MESSAGE
 TEST_F(PamConfigTest, WelcomeDefaults) {
   auto config = loadConfig("");
   EXPECT_TRUE(config.show_welcome);
@@ -135,3 +136,4 @@ welcome_message = "Security"
   EXPECT_FALSE(config.show_welcome);
   EXPECT_EQ(config.welcome_message, "Security");
 }
+#endif

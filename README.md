@@ -109,7 +109,7 @@ cpack -G DEB
 
 ### Build Options (CMake)
 
-When building from source, you can customize the compilation by passing variables to `cmake`. 
+When building from source, you can customize the compilation by passing variables to `cmake`.
 
 | CMake Option | Default | Description |
 | :--- | :--- | :--- |
