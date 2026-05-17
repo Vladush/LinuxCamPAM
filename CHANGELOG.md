@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.7.3] - 2026-05-17
+
+### Added
+
+- **Configurable Welcome Message**: Added support to configure or disable the PAM welcome message via module arguments (`disable_welcome`) or config file (`[Auth] welcome_message`). Also added a compile-time option (`DISABLE_WELCOME_MESSAGE`) to disable it entirely.
+
 ### Performance & Security
 
 - **Smoother Default experience**: Changed default `gpu_throttle_ms` to 20ms. This small pause between GPU operations prevents the dreaded "UI freeze" on laptops with integrated graphics during authentication.
