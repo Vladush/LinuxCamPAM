@@ -263,7 +263,7 @@ jobs:
           docker create --name temp_container linuxcampam:i386
           docker cp temp_container:/artifacts/. .
           rm -rf ./opencv_static_cached
-          docker cp temp_container:/app/opencv_static ./opencv_static_cached || true
+          mv ./opencv_static ./opencv_static_cached || true
           docker rm temp_container
           echo "Extracted files:"
           ls -la linuxcampam_*.deb || { echo "ERROR: No .deb files found!"; exit 1; }
@@ -325,7 +325,7 @@ jobs:
           docker create --name temp_container linuxcampam:riscv64
           docker cp temp_container:/artifacts/. .
           rm -rf ./opencv_static_cached
-          docker cp temp_container:/app/opencv_static ./opencv_static_cached || true
+          mv ./opencv_static ./opencv_static_cached || true
           docker rm temp_container
           echo "Extracted files:"
           ls -la linuxcampam_*.deb || { echo "ERROR: No .deb files found!"; exit 1; }
