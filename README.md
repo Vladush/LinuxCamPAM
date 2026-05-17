@@ -107,6 +107,14 @@ cmake ..
 cpack -G DEB
 ```
 
+### Build Options (CMake)
+
+When building from source, you can customize the compilation by passing variables to `cmake`. 
+
+| CMake Option | Default | Description |
+| :--- | :--- | :--- |
+| `-DDISABLE_WELCOME_MESSAGE=ON` | `OFF` | Completely strips the welcome message logic from the compiled PAM module and executable. This provides maximum stealth and security, ignoring any INI or PAM arguments. |
+
 Then install the generated package:
 
 ```bash
