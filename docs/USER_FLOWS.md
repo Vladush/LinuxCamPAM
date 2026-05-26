@@ -8,31 +8,31 @@ Use this flowchart to diagnose authentication issues.
 
 ```mermaid
 graph TD
-    Start[Authentication Failed] --> Q1{Did the Camera/IR Light Turn On?}
+    Start["Authentication Failed"] --> Q1{"Did the Camera/IR Light Turn On?"}
     
-    Q1 -- No --> CheckService[Check Service Status]
+    Q1 -->|No| CheckService["Check Service Status"]
     CheckService --> Cmd1["sudo systemctl status linuxcampam"]
-    Cmd1 --> Q2{Is Active/Running?}
-    Q2 -- No --> Restart[sudo systemctl restart linuxcampam]
-    Q2 -- Yes --> CheckLog["journalctl -u linuxcampam -f"]
-    CheckLog --> Err{See Error?}
-    Err -- "Device Busy" --> CloseApp[Close other camera apps &#40;Cheese, Zoom&#41;]
-    Err -- "No Camera" --> Config[Check /etc/linuxcampam/config.ini path]
+    Cmd1 --> Q2{"Is Active/Running?"}
+    Q2 -->|No| Restart["sudo systemctl restart linuxcampam"]
+    Q2 -->|Yes| CheckLog["journalctl -u linuxcampam -f"]
+    CheckLog --> Err{"See Error?"}
+    Err -->|Device Busy| CloseApp["Close other camera apps: Cheese, Zoom"]
+    Err -->|No Camera| Config["Check /etc/linuxcampam/config.ini path"]
 
-    Q1 -- Yes --> Q3{Did it recognize you?}
-    Q3 -- No/Unknown --> TestCmd["Run: linuxcampam test"]
-    TestCmd --> Result{Result?}
+    Q1 -->|Yes| Q3{"Did it recognize you?"}
+    Q3 -->|No/Unknown| TestCmd["Run: linuxcampam test"]
+    TestCmd --> Result{"Result?"}
     
-    Result -- "No Face Detected" --> Lighting[Check Lighting / Position]
-    Lighting --> EnrollAgain
+    Result -->|No Face Detected| Lighting["Check Lighting / Position"]
+    Lighting --> EnrollAgain["Re-enroll"]
     
-    Result -- "Face Detected, Low Score" --> Retrain[Retrain Model]
-    Retrain --> CmdTrain["linuxcampam train <user>"]
+    Result -->|Face Detected, Low Score| Retrain["Retrain Model"]
+    Retrain --> CmdTrain["linuxcampam train USER"]
     
-    Result -- "Too Dark" --> MinBright[Lower 'min_brightness' in config]
+    Result -->|Too Dark| MinBright["Lower min_brightness in config"]
     
-    Result -- "Success" --> PAM{Fails only in Sudo?}
-    PAM -- Yes --> PAMConfig[Check /etc/pam.d/sudo]
+    Result -->|Success| PAM{"Fails only in Sudo?"}
+    PAM -->|Yes| PAMConfig["Check /etc/pam.d/sudo"]
     
     style Start fill:#f96,stroke:#333
     style Cmd1 fill:#eee,stroke:#333,stroke-dasharray: 5 5
@@ -46,21 +46,21 @@ Choose the right configuration based on your hardware.
 
 ```mermaid
 graph TD
-    Start[I want to set up LinuxCamPAM] --> Q1{Do you have an IR Emitter?}
+    Start["I want to set up LinuxCamPAM"] --> Q1{"Do you have an IR Emitter?"}
     
-    Q1 -- Yes --> Q2{Do you have a separate RGB Webcam?}
-    Q2 -- Yes --> Dual[**Dual Camera Setup**]
-    Dual --> C1[Use Policy: **adaptive**]
-    C1 --> C2[Set IR Camera as **Mandatory**]
-    C2 --> C3[Set RGB Camera as **Conditional**]
+    Q1 -->|Yes| Q2{"Do you have a separate RGB Webcam?"}
+    Q2 -->|Yes| Dual["Dual Camera Setup"]
+    Dual --> C1["Use Policy: adaptive"]
+    C1 --> C2["Set IR Camera as Mandatory"]
+    C2 --> C3["Set RGB Camera as Conditional"]
     
-    Q2 -- No --> SingleIR[**Single IR Setup**]
-    SingleIR --> C4[Use Policy: **strict**]
+    Q2 -->|No| SingleIR["Single IR Setup"]
+    SingleIR --> C4["Use Policy: strict"]
     
-    Q1 -- No --> RGB[**Standard RGB Webcam**]
-    RGB --> Warn[**Security Warning**: RGB is easier to spoof]
-    Warn --> C5[Use Policy: **lenient**]
-    C5 --> C6[Set min_brightness: 40+]
+    Q1 -->|No| RGB["Standard RGB Webcam"]
+    RGB --> Warn["Security Warning: RGB is easier to spoof"]
+    Warn --> C5["Use Policy: lenient"]
+    C5 --> C6["Set min_brightness: 40+"]
 ```
 
 ## 3. The Authentication Process (Simplified)
@@ -72,24 +72,24 @@ sequenceDiagram
     participant You
     participant Cam as Camera
     participant Brain as AI Model
-    participant Door as Access (sudo/login)
+    participant Door as Access Control
 
     You->>Door: Request Access
-    Door->>Brain: "Is this <User>?"
-    Brain->>Cam: "Look for user..."
+    Door->>Brain: Is this the user?
+    Brain->>Cam: Look for user...
     
     activate Cam
-    Cam-->>Brain: [Image Frame]
+    Cam-->>Brain: Image Frame
     deactivate Cam
     
     Brain->>Brain: 1. Is it bright enough?
     Brain->>Brain: 2. Is there a face?
-    Brain->>Brain: 3. Does it look like <User>?
+    Brain->>Brain: 3. Does it match the user?
     
     alt Match > Threshold
-        Brain-->>Door: YES (Unlock)
+        Brain-->>Door: YES - Unlock
         Door-->>You: Success!
-    else No Match / Timeout
+    else No Match or Timeout
         Brain-->>Door: NO
         Door-->>You: Password Required
     end
@@ -102,25 +102,27 @@ Bad enrollment data is the #1 cause of failure. Follow this loop for best result
 ```mermaid
 stateDiagram-v2
     [*] --> GoodLighting
-    GoodLighting --> Capture: Run 'linuxcampam add user'
+    GoodLighting --> Capture: Run linuxcampam add user
     
-    state "Capture Conditions" as Capture {
-        AvoidBacklight: No window behind you
-        StraightFace: Look directly at camera
-        NoGlasses: Remove heavy reflection
+    state Capture {
+        [*] --> AvoidBacklight: No window behind you
+        AvoidBacklight --> StraightFace: Look directly at camera
+        StraightFace --> NoGlasses: Remove heavy reflections
+        NoGlasses --> [*]
     }
     
-    Capture --> Verify: Run 'linuxcampam test'
+    Capture --> Verify: Run linuxcampam test
     
-    state "Verification" as Verify {
-        CheckScore: Score > 0.6 is GOOD
-        CheckSpeed: Time < 300ms is GOOD
+    state Verify {
+        [*] --> CheckScore: Score greater than 0.6 is GOOD
+        CheckScore --> CheckSpeed: Time less than 300ms is GOOD
+        CheckSpeed --> [*]
     }
     
-    Verify --> Quality{Is Quality Good?}
-    Quality --> Yes: Done
-    Quality --> No: TrainMore
+    Verify --> Quality: Is Quality Good?
+    Quality --> Done: Yes
+    Quality --> TrainMore: No
     
-    TrainMore: Run 'linuxcampam train user'
-    TrainMore --> Capture: (Add variations: glasses, angles)
+    TrainMore --> Capture: Run linuxcampam train user - Add variations glasses and angles
+    Done --> [*]
 ```
