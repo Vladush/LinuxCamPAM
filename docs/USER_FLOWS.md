@@ -16,7 +16,7 @@ graph TD
     Q2 -- No --> Restart[sudo systemctl restart linuxcampam]
     Q2 -- Yes --> CheckLog["journalctl -u linuxcampam -f"]
     CheckLog --> Err{See Error?}
-    Err -- "Device Busy" --> CloseApp[Close other camera apps (Cheese, Zoom)]
+    Err -- "Device Busy" --> CloseApp[Close other camera apps &#40;Cheese, Zoom&#41;]
     Err -- "No Camera" --> Config[Check /etc/linuxcampam/config.ini path]
 
     Q1 -- Yes --> Q3{Did it recognize you?}
