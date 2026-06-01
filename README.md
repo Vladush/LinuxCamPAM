@@ -229,6 +229,8 @@ linuxcampam version
 
 If you encounter issues, start with the **[Troubleshooting Wizard](docs/USER_FLOWS.md#1-troubleshooting-wizard-why-is-it-failing)**.
 
+If you are using an IR camera and it fails to enroll or authenticate, see the **[IR Camera Troubleshooting Guide](docs/IR_CAMERA_TROUBLESHOOTING.md)**.
+
 If you need deeper logs, you can enable verbose debug logging dynamically without restarting the service.
 
 **Enable Debug Logging:**
