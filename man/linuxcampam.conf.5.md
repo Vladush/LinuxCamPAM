@@ -38,11 +38,11 @@ The file is in standard INI format. Sections and keys are case-insensitive.
 
 **threshold** = *FLOAT*
 :   Similarity threshold for face matching (0.0 - 1.0).
-    Lower is stricter. (Default: `0.4`).
+    Lower is stricter. (Default: `0.363`).
 
 **detection_threshold** = *FLOAT*
 :   Confidence threshold for face detection (0.0 - 1.0).
-    (Default: `0.6`).
+    (Default: `0.9`).
 
 **timeout_ms** = *INT*
 :   Timeout in milliseconds to wait for a successful match.
@@ -54,6 +54,14 @@ The file is in standard INI format. Sections and keys are case-insensitive.
     (Default: `adaptive`).
 
 ## [Security]
+
+**lockout_attempts** = *INT*
+:   Number of consecutive failed attempts before lockout.
+    (Default: `5`).
+
+**lockout_duration_sec** = *INT*
+:   Duration of lockout in seconds.
+    (Default: `300`).
 
 **min_uid** = *INT*
 :   Minimum user ID (UID) required to attempt face authentication. System users (e.g., root, daemon) with UIDs lower than this are ignored and fall back to password automatically.
@@ -87,7 +95,33 @@ The file is in standard INI format. Sections and keys are case-insensitive.
 
 **gpu_flush** = *BOOL*
 :   Explicit sync after GPU inference (fixes AMD driver hangs).
+    (Default: `on`).
+
+**gpu_throttle_ms** = *INT*
+:   Sleep time between heavy GPU operations.
+    (Default: `20`).
+
+## [Capture]
+
+**enroll_hdr** = *MODE*
+:   Uses multiple exposures if camera supports manual exposure control.
+    Values: `auto`, `on`, `off`. (Default: `auto`).
+
+**enroll_averaging** = *BOOL*
+:   Reduce noise by averaging frames during enrollment.
+    (Default: `on`).
+
+**enroll_average_frames** = *INT*
+:   Number of frames to average during enrollment.
+    (Default: `5`).
+
+**verify_averaging** = *BOOL*
+:   Use frame averaging during authentication (slower, but more reliable).
     (Default: `off`).
+
+**verify_average_frames** = *INT*
+:   Number of frames to average during verification if averaging is enabled.
+    (Default: `3`).
 
 ## [Storage]
 
