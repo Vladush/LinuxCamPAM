@@ -9,8 +9,12 @@
 #include <linux/videodev2.h>
 #include <string_view>
 #include <sys/ioctl.h>
+#include <spawn.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
+
+extern char **environ;
 
 namespace fs = std::filesystem;
 
@@ -32,8 +36,8 @@ std::vector<std::string> RealCameraBackend::getDevicePaths() const {
   return paths;
 }
 
-bool RealCameraBackend::isVideoCaptureDevice(const std::string &path) const {
-  FileDescriptor fd(open(path.c_str(), O_RDONLY));
+bool RealCameraBackend::isVideoCaptureDevice(std::string_view path) const {
+  FileDescriptor fd(open(std::string(path).c_str(), O_RDONLY | O_NONBLOCK));
   if (!fd.isValid())
     return false;
 
@@ -44,9 +48,9 @@ bool RealCameraBackend::isVideoCaptureDevice(const std::string &path) const {
 }
 
 std::vector<uint32_t>
-RealCameraBackend::getPixelFormats(const std::string &path) const {
+RealCameraBackend::getPixelFormats(std::string_view path) const {
   std::vector<uint32_t> formats;
-  FileDescriptor fd(open(path.c_str(), O_RDONLY));
+  FileDescriptor fd(open(std::string(path).c_str(), O_RDONLY | O_NONBLOCK));
   if (!fd.isValid())
     return formats;
 
@@ -61,7 +65,7 @@ RealCameraBackend::getPixelFormats(const std::string &path) const {
 
 // --- Core Logic with Dependency Injection ---
 
-std::string classifyCameraType(const std::string &device_path,
+std::string classifyCameraType(std::string_view device_path,
                                const ICameraBackend &backend) {
   if (!backend.isVideoCaptureDevice(device_path)) {
     return "";
@@ -106,7 +110,7 @@ enumerateCameras(const ICameraBackend &backend) {
 
 // --- Default Overloads ---
 
-std::string classifyCameraType(const std::string &device_path) {
+std::string classifyCameraType(std::string_view device_path) {
   RealCameraBackend backend;
   return classifyCameraType(device_path, backend);
 }
@@ -117,24 +121,49 @@ std::vector<std::pair<std::string, std::string>> enumerateCameras() {
 }
 
 std::string getIREmitterVersion(std::string_view path) {
-  if (path.empty())
-    return {};
+  if (path.empty()) return {};
 
-  std::string cmd = std::string(path) + " -V 2>/dev/null";
-  // NOLINTNEXTLINE(cert-env33-c)
-  FILE *fp = popen(cmd.c_str(), "r");
-  if (!fp)
-    return {};
+  auto is_safe = [](char c) {
+    return std::isalnum(static_cast<unsigned char>(c))
+        || c == '/' || c == '.' || c == '_' || c == '-';
+  };
+  if (!std::all_of(path.begin(), path.end(), is_safe)) return {};
+  if (!fs::exists(path)) return {};
+
+  int pipefd[2];
+  if (pipe(pipefd) != 0) return {};
+
+  posix_spawn_file_actions_t actions;
+  posix_spawn_file_actions_init(&actions);
+  posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO);
+  posix_spawn_file_actions_addclose(&actions, pipefd[0]);
+
+  std::string path_str(path);
+  std::array<char*, 3> argv = {
+    path_str.data(),
+    const_cast<char*>("-V"),
+    nullptr
+  };
+
+  pid_t pid = 0;
+  int status = posix_spawn(&pid, path_str.c_str(), &actions, nullptr,
+                           argv.data(), environ);
+  posix_spawn_file_actions_destroy(&actions);
+  close(pipefd[1]);
 
   std::string version;
-  constexpr size_t buf_size = 128;
-  std::array<char, buf_size> buf{};
-  if (fgets(buf.data(), static_cast<int>(buf.size()), fp)) {
-    version = buf.data();
-    if (!version.empty() && version.back() == '\n')
-      version.pop_back();
+  if (status == 0) {
+    constexpr size_t buf_size = 128;
+    std::array<char, buf_size> buf{};
+    ssize_t n = read(pipefd[0], buf.data(), buf.size() - 1);
+    if (n > 0) {
+      version.assign(buf.data(), static_cast<size_t>(n));
+      while (!version.empty() && (version.back() == '\n' || version.back() == '\r'))
+        version.pop_back();
+    }
+    waitpid(pid, nullptr, 0);
   }
-  pclose(fp);
+  close(pipefd[0]);
   return version;
 }
 

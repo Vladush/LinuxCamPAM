@@ -50,23 +50,23 @@ public:
   [[nodiscard]] bool init(const fs::path &config_path);
 
   // Operations
-  [[nodiscard]] bool verifyUser(const std::string &username);
-  [[nodiscard]] AuthResult verifyUserWithDetails(const std::string &username);
+  [[nodiscard]] bool verifyUser(std::string_view username);
+  [[nodiscard]] AuthResult verifyUserWithDetails(std::string_view username);
   [[nodiscard]] std::pair<bool, std::string>
-  enrollUser(const std::string &username);
-  [[nodiscard]] bool setLabel(const std::string &username,
-                              const std::string &label);
-  [[nodiscard]] bool trainUser(const std::string &username,
-                               const std::string &label = "default",
+  enrollUser(std::string_view username);
+  [[nodiscard]] bool setLabel(std::string_view username,
+                              std::string_view label);
+  [[nodiscard]] bool trainUser(std::string_view username,
+                               std::string_view label = "default",
                                bool create_new = false);
   [[nodiscard]] bool testCameraAndAuth();
   [[nodiscard]] bool performMaintenance();
 
   // Multi-embedding management
   [[nodiscard]] std::vector<std::string>
-  listEmbeddings(const std::string &username);
-  [[nodiscard]] bool removeEmbedding(const std::string &username,
-                                     const std::string &label);
+  listEmbeddings(std::string_view username);
+  [[nodiscard]] bool removeEmbedding(std::string_view username,
+                                     std::string_view label);
 
   // Config visibility
   [[nodiscard]] std::string getConfigString() const;
@@ -115,7 +115,7 @@ private:
 
   // Core verification logic (PAM + CLI)
   [[nodiscard]] AuthResult
-  verifyUserCore(const std::string &username,
+  verifyUserCore(std::string_view username,
                  const PerCameraCallback &callback = nullptr);
 
   // Helper to match a face in a frame against a stored embedding
@@ -141,6 +141,6 @@ private:
   };
   std::unordered_map<std::string, LockoutState> lockout_map_;
   mutable std::mutex lockout_mutex_;
-  [[nodiscard]] bool isUserLockedOut(const std::string &username);
-  void recordAuthAttempt(const std::string &username, bool success);
+  [[nodiscard]] bool isUserLockedOut(std::string_view username);
+  void recordAuthAttempt(std::string_view username, bool success);
 };

@@ -3,11 +3,13 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -65,11 +67,9 @@ inline PamConfig resolve_pam_config(const PamConfigState &state) {
   PamConfig config;
 
   // Lookup: [Security] > any other section that defines the key > default.
-  auto get_value = [&](const std::string &key) -> std::string {
-    auto sec_it = state.data.find("Security");
-    if (sec_it != state.data.end()) {
-      auto kv_it = sec_it->second.find(key);
-      if (kv_it != sec_it->second.end()) {
+  auto get_value = [&](const std::string &key) -> std::optional<std::string> {
+    if (auto sec_it = state.data.find("Security"); sec_it != state.data.end()) {
+      if (auto kv_it = sec_it->second.find(key); kv_it != sec_it->second.end()) {
         return kv_it->second;
       }
     }
@@ -84,30 +84,31 @@ inline PamConfig resolve_pam_config(const PamConfigState &state) {
       return it->second.at(key);
     }
 
-    return {};
+    return std::nullopt;
   };
 
   // --- min_uid ---
-  std::string uid_str = get_value("min_uid");
-  if (!uid_str.empty() && uid_str[0] != '-') {
-    char *end = nullptr;
-    constexpr int BASE_DECIMAL = 10;
-    unsigned long parsed = std::strtoul(uid_str.c_str(), &end, BASE_DECIMAL);
-    if (end != uid_str.c_str()) {
-      config.min_uid = static_cast<uid_t>(parsed);
+  if (auto uid_opt = get_value("min_uid")) {
+    const std::string &uid_str = *uid_opt;
+    if (!uid_str.empty() && uid_str[0] != '-') {
+      unsigned int parsed;
+      auto [ptr, ec] = std::from_chars(uid_str.data(), uid_str.data() + uid_str.size(), parsed);
+      if (ec == std::errc{}) {
+        config.min_uid = static_cast<uid_t>(parsed);
+      }
     }
   }
 
 #ifndef DISABLE_WELCOME_MESSAGE
   // --- show_welcome ---
-  std::string sw_str = get_value("show_welcome");
-  if (!sw_str.empty()) {
+  if (auto sw_opt = get_value("show_welcome")) {
+    const std::string &sw_str = *sw_opt;
     config.show_welcome = (sw_str == "true" || sw_str == "1" || sw_str == "yes");
   }
 
   // --- welcome_message ---
-  std::string wm_str = get_value("welcome_message");
-  if (!wm_str.empty()) {
+  if (auto wm_opt = get_value("welcome_message")) {
+    std::string wm_str = *wm_opt;
     if (wm_str.size() >= 2 && wm_str.front() == '"' && wm_str.back() == '"') {
       wm_str = wm_str.substr(1, wm_str.size() - 2);
     }

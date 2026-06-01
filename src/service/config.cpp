@@ -1,5 +1,5 @@
 #include "config.hpp"
-
+#include "constants.hpp"
 #include "logger.hpp"
 #include "utils.hpp"
 
@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <sys/ioctl.h>
 #include <unistd.h>
@@ -48,26 +49,31 @@ parse_ini_stream(std::istream &input) {
 }
 
 // Safe int parsing without exceptions
-inline bool parse_int(const std::string &str, int &out) {
+inline std::optional<int> parse_int(std::string_view str) {
   if (str.empty())
-    return false;
+    return std::nullopt;
+  int out;
   auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), out);
-  return ec == std::errc{};
+  if (ec == std::errc{})
+    return out;
+  return std::nullopt;
 }
 
 // Safe float parsing (from_chars float support varies by compiler)
-inline bool parse_float(const std::string &str, float &out) {
+inline std::optional<float> parse_float(std::string_view str) {
   if (str.empty())
-    return false;
+    return std::nullopt;
 #if defined(__cpp_lib_to_chars) && __cpp_lib_to_chars >= 201611L
+  float out;
   auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), out);
-  return ec == std::errc{};
+  if (ec == std::errc{})
+    return out;
+  return std::nullopt;
 #else
   try {
-    out = std::stof(str);
-    return true;
+    return std::stof(std::string(str));
   } catch (...) {
-    return false;
+    return std::nullopt;
   }
 #endif
 }
@@ -106,18 +112,18 @@ void Configuration::parse_ini_into_self(
   std::string th_str = get("Auth.threshold");
   if (th_str.empty())
     th_str = get("General.threshold", std::to_string(DEFAULT_THRESHOLD));
-  parse_float(th_str, threshold);
+  if (auto val = parse_float(th_str)) threshold = *val;
 
   std::string dt_str = get("Auth.detection_threshold");
   if (dt_str.empty())
     dt_str = get("General.detection_threshold",
                  std::to_string(DEFAULT_DETECTION_THRESHOLD));
-  parse_float(dt_str, detection_threshold);
+  if (auto val = parse_float(dt_str)) detection_threshold = *val;
 
   std::string to_str = get("Auth.timeout_ms");
   if (to_str.empty())
     to_str = get("General.timeout_ms", std::to_string(DEFAULT_TIMEOUT_MS));
-  parse_int(to_str, timeout_ms);
+  if (auto val = parse_int(to_str)) timeout_ms = *val;
 
   // Auth Policy
   std::string method = get("Auth.policy");
@@ -149,7 +155,7 @@ void Configuration::parse_ini_into_self(
   if (me_str.empty())
     me_str =
         get("General.max_embeddings", std::to_string(DEFAULT_MAX_EMBEDDINGS));
-  parse_int(me_str, max_embeddings);
+  if (auto val = parse_int(me_str)) max_embeddings = *val;
 
   // Capture Settings (Global)
   if (ini.count("Capture.enroll_hdr"))
@@ -157,16 +163,16 @@ void Configuration::parse_ini_into_self(
   if (ini.count("Capture.enroll_averaging"))
     enroll_averaging = (get("Capture.enroll_averaging") == "on" ||
                         get("Capture.enroll_averaging") == "true");
-  parse_int(get("Capture.enroll_average_frames",
-                std::to_string(DEFAULT_ENROLL_AVG_FRAMES)),
-            enroll_average_frames);
+  if (auto val = parse_int(get("Capture.enroll_average_frames",
+                std::to_string(DEFAULT_ENROLL_AVG_FRAMES))))
+    enroll_average_frames = *val;
 
   if (ini.count("Capture.verify_averaging"))
     verify_averaging = (get("Capture.verify_averaging") == "on" ||
                         get("Capture.verify_averaging") == "true");
-  parse_int(get("Capture.verify_average_frames",
-                std::to_string(DEFAULT_VERIFY_AVG_FRAMES)),
-            verify_average_frames);
+  if (auto val = parse_int(get("Capture.verify_average_frames",
+                std::to_string(DEFAULT_VERIFY_AVG_FRAMES))))
+    verify_average_frames = *val;
 
   // Cameras
   std::string cam_names = get("Cameras.names", "");
@@ -185,12 +191,12 @@ void Configuration::parse_ini_into_self(
       def.path = get("Camera." + id + ".path", "/dev/video0");
       def.type = get("Camera." + id + ".type", "generic");
       std::string mb_str = get("Camera." + id + ".min_brightness", "0");
-      parse_int(mb_str, def.min_brightness);
+      if (auto val = parse_int(mb_str)) def.min_brightness = *val;
       def.mandatory = (get("Camera." + id + ".mandatory", "false") == "true");
       def.enroll_hdr = get("Camera." + id + ".enroll_hdr", "");
       def.enroll_averaging = get("Camera." + id + ".enroll_averaging", "");
       std::string eaf_str = get("Camera." + id + ".enroll_average_frames", "0");
-      parse_int(eaf_str, def.enroll_average_frames);
+      if (auto val = parse_int(eaf_str)) def.enroll_average_frames = *val;
 
       camera_defs.push_back(def);
     }
@@ -205,7 +211,7 @@ void Configuration::parse_ini_into_self(
         int mb = linuxcampam::DEFAULT_MIN_BRIGHTNESS;
         std::string hmb_str = get("Hardware.min_brightness",
                                   std::to_string(linuxcampam::DEFAULT_MIN_BRIGHTNESS));
-        parse_int(hmb_str, mb);
+        if (auto val = parse_int(hmb_str)) mb = *val;
         camera_defs.push_back({"rgb", path_rgb, "rgb", mb, false});
       }
     } else {
@@ -269,9 +275,9 @@ void Configuration::parse_ini_into_self(
   // Other settings
   save_success = (get("Storage.save_success_images") == "true");
   save_fail = (get("Storage.save_fail_images") == "true");
-  parse_int(get("Performance.model_keep_alive_sec", "0"), model_keep_alive_sec);
-  parse_int(get("Security.lockout_attempts", "5"), lockout_attempts);
-  parse_int(get("Security.lockout_duration_sec", "300"), lockout_duration_sec);
+  if (auto val = parse_int(get("Performance.model_keep_alive_sec", "0"))) model_keep_alive_sec = *val;
+  if (auto val = parse_int(get("Security.lockout_attempts", "5"))) lockout_attempts = *val;
+  if (auto val = parse_int(get("Security.lockout_duration_sec", "300"))) lockout_duration_sec = *val;
 
   // Minimal UID (shared with PAM module)
   // We use int for parsing, then cast to uid_t
@@ -290,7 +296,7 @@ void Configuration::parse_ini_into_self(
   if (uid_str.empty()) {
     min_uid_int = linuxcampam::DEFAULT_MIN_UID;
   } else {
-    parse_int(uid_str, min_uid_int);
+    if (auto val = parse_int(uid_str)) min_uid_int = *val;
   }
 
   // Safety check (similar to PAM module negative check, though parse_int
@@ -299,7 +305,7 @@ void Configuration::parse_ini_into_self(
     min_uid_int = linuxcampam::DEFAULT_MIN_UID;
   min_uid = static_cast<uid_t>(min_uid_int);
   gpu_flush = (get("Performance.gpu_flush", "on") == "on");
-  parse_int(get("Performance.gpu_throttle_ms", "20"), gpu_throttle_ms);
+  if (auto val = parse_int(get("Performance.gpu_throttle_ms", "20"))) gpu_throttle_ms = *val;
 }
 
 std::string Configuration::toString() const {

@@ -176,7 +176,7 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
     ssize_t valread = read(sock.get(), buffer.data(), buffer.size() - 1);
 
     if (valread > 0) {
-      std::string resp(buffer.data());
+      std::string resp(buffer.data(), static_cast<size_t>(valread));
       if (resp.find("AUTH_SUCCESS") != std::string::npos) {
 #ifndef DISABLE_WELCOME_MESSAGE
         if (config.show_welcome) {

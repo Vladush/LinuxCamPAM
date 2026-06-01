@@ -57,7 +57,7 @@ std::string send_cmd(const std::string &cmd) {
   close(sock);
 
   if (bytes_read > 0) {
-    return std::string(buffer.data());
+    return std::string(buffer.data(), static_cast<size_t>(bytes_read));
   }
   return "";
 }
