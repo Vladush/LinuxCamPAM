@@ -181,17 +181,20 @@ The configuration dictates hardware usage, logging, and security policies (e.g.,
 
 LinuxCamPAM relies heavily on Linux filesystem and process boundaries for security. For an in-depth threat model, refer to [THREAT_MODEL_AND_RISK_ASSESSMENT.md](THREAT_MODEL_AND_RISK_ASSESSMENT.md).
 
-*   **Process Isolation**: The PAM module runs in the user-space context of the calling application (e.g., `sudo`). It possesses zero biometric processing capabilities and relies entirely on the IPC socket.
-*   **Root Daemon**: `linuxcampamd` runs as root. This is strictly required to read from `/dev/video*`, write to the root-owned JSON databases, and drop root privileges dynamically when verifying file ownership.
-*   **IPC Socket**: Located at `/run/linuxcampam/socket` with `0666` permissions. While world-writable, the daemon meticulously sanitizes input strings (usernames) and only returns boolean states (`AUTH_SUCCESS`/`AUTH_FAIL`), preventing memory leaks or data exfiltration.
+* **Process Isolation**: The PAM module runs in the user-space context of the calling application (e.g., `sudo`). It possesses zero biometric processing capabilities and relies entirely on the IPC socket.
+* **Root Daemon**: `linuxcampamd` runs as root. This is strictly required to read from `/dev/video*`, write to the root-owned JSON databases, and drop root privileges dynamically when verifying file ownership.
+* **IPC Socket**: Located at `/run/linuxcampam/socket` with `0666` permissions. While world-writable, the daemon meticulously sanitizes input strings (usernames) and only returns boolean states (`AUTH_SUCCESS`/`AUTH_FAIL`), preventing memory leaks or data exfiltration.
 
 ---
 
 ## 7. Cross-Cutting Concerns
 
 ### Hardware Acceleration (OpenCL)
+
 We prioritize **OpenCL** via OpenCV's Transparent API (T-API) rather than proprietary CUDA or bloated OpenVINO static libraries. This allows a single ~15MB binary to leverage GPU acceleration on Intel, AMD, NVIDIA, and ARM devices identically.
-*   *Fallback*: If OpenCL is unavailable (or the driver hangs), the system falls back to optimized CPU instructions (AVX2/NEON).
+
+* *Fallback*: If OpenCL is unavailable (or the driver hangs), the system falls back to optimized CPU instructions (AVX2/NEON).
 
 ### Rate Limiting (Brute-Force Protection)
+
 Statefulness is maintained in-memory within the `auth_engine.cpp`. If a user fails authentication `lockout_attempts` times (default 5), they are denied service for `lockout_duration_sec` (default 300s). This state is cleared on daemon restart.
