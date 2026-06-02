@@ -48,17 +48,11 @@ We use the STRIDE framework to analyze potential threats to the authentication p
 *   **Threat 3 (USB/V4L2 Bus Interception):** An attacker with physical access uses a hardware tap to intercept or inject raw video frames over the USB bus.
 *   **Mitigation:** Physical security of the hardware. The software inherently trusts the `V4L2` video stream. Unlike some enterprise biometric setups, generic webcams do not provide encrypted sensor links to the OS. **System-Level Recommendation:** For highly sensitive environments, administrators are strongly advised to deploy `usbguard` to block unauthorized USB devices from enumerating, preventing hot-plug camera swap attacks.
 
-### 3.5 Denial of Service (DoS) & Local Lockout
-*   **Threat 1 (Resource Exhaustion / Socket Spamming):** An attacker spams the socket with authentication requests to exhaust system resources or lock the camera.
+### 3.5 Denial of Service (DoS)
+*   **Threat:** An attacker spams the socket with authentication requests to exhaust system resources or lock the camera.
 *   **Mitigation:** 
     *   **Timeouts:** Hard timeouts (default 3s) on authentication requests.
     *   **Rate Limiting / Lockout:** Configurable lockout after *N* failed attempts (e.g., 5 failures triggers a 5-minute lockout). State is tracked in-memory.
-*   **Threat 2 (Display Server / Session Startup Lockout):** System boot or resume failures prevent the display manager (GDM, SDDM) from rendering the login screen properly. This locks the user out of the graphical interface, forcing them to authenticate via a TTY console.
-    *   **KMS/Driver Mismatch:** Missing Kernel Mode Setting (KMS) drivers in initramfs (e.g., NVIDIA or AMDGPU modules loading too late) causes the display server (Xorg/Wayland) to crash or fail to initialize graphical screens, leaving the user with a blank screen or a frozen cursor.
-    *   **Display Server Permission Locks:** The display manager fails to acquire permissions to raw graphics device nodes (e.g., `Permission denied` on `/dev/dri/card0`), permitting cursor movement but blocking UI rendering.
-*   **Threat 3 (Wake-from-Hibernate Driver or Memory Faults):** The system fails to restore its state upon waking from hibernation, leading to lockups or crash loops during boot.
-    *   **Driver Resume Failures:** Hard dependency drivers (such as PCI Wi-Fi drivers like `mt7921e` or graphics drivers) failing to restore their power state (e.g., returning `-110` timeouts during `pci_pm_restore`) can freeze the kernel or block authentication.
-    *   **Memory Preallocation Aborts:** The systemd hibernation daemon fails to preallocate memory pages for the snapshot (e.g., kernel preallocation failure with error `-12` / `Cannot allocate memory` due to the 2/5 RAM image size limit being exceeded), leaving the system unable to sleep or resume cleanly.
 
 ### 3.6 Elevation of Privilege
 *   **Threat 1 (Daemon Exploitation):** Exploiting a vulnerability (e.g., buffer overflow) in the root-level `linuxcampamd` daemon via the user-accessible IPC socket.
@@ -92,8 +86,6 @@ Overall Risk is calculated by combining **Likelihood** (Low, Medium, High) and *
 | **Info Disclosure**| Read Socket Traffic | Medium | Low | **Low** | Yes | Socket only sends booleans and usernames. |
 | **Info Disclosure**| Biometric Embedding Theft | Low | High | **Medium** | Partially | Secured by root-only filesystem permissions. Encryption planned. |
 | **DoS** | Auth Request Spamming | Low | Medium | **Low** | Yes | Rate limiting and hard timeouts implemented. |
-| **DoS** | Display Server Startup Lockout | Medium | High | **High** | Out of Scope | Requires proper system config (KMS modules in initramfs, correct graphics drivers, `/dev/dri/*` user access). |
-| **DoS** | Wake-from-Hibernate Freeze | Medium | High | **High** | Out of Scope | System hardware stability issue. Adjust swap size, configure proper resume UUID/offset, and unload unstable modules on sleep. |
 | **Elevation** | Buffer Overflow in Daemon | Low | Critical | **Medium** | Yes | Modern C++, sanitizers, strict socket parsing. |
 | **Elevation** | Unauthorized IPC Commands | Medium | High | **High** | No | Lacks socket peer credential verification (`SO_PEERCRED`) in daemon. |
 
