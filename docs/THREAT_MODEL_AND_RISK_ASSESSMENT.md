@@ -81,8 +81,8 @@ Overall Risk is calculated by combining **Likelihood** (Low, Medium, High) and *
 | **Spoofing** | RGB Photo/Video Replay | High (if RGB used) | High | **Critical** | Partially | Warn users against RGB-only setups. Defaults to IR if exists. (See [Roadmap #6](#5-future-security-enhancements-roadmap)) |
 | **Spoofing** | Advanced 3D/Heated Mask | Low | High | **Medium** | Partially | IR Liveness detection provides baseline defense. |
 | **Tampering** | Root User Modifies Embeddings | Low | High | **Medium** | WiP | Relies on OS boundaries; attacker already has root. (HMAC/encryption planned, see [Roadmap #1](#5-future-security-enhancements-roadmap), [#8](#5-future-security-enhancements-roadmap)) |
-| **Tampering** | Evil Maid (USB Camera Swap) | Low | High | **Medium** | Out of Scope | Hardware trust issue. Mitigate via BIOS passwords. (Hardware ID verification planned, see [Roadmap #5](#5-future-security-enhancements-roadmap)) |
-| **Tampering** | USB Bus Frame Injection | Low | High | **Medium** | No | No encrypted sensor links. Recommend `usbguard` for strict environments. |
+| **Tampering** | Evil Maid (USB Camera Swap) | Low | High | **Medium** | Out of Scope | Hardware trust issue. Mitigate via BIOS passwords. Device ID verification (VID/PID/Serial) provides partial mitigation (see [Roadmap #5](#5-future-security-enhancements-roadmap)). |
+| **Tampering** | USB Bus Frame Injection | Low | High | **Medium** | No | No encrypted sensor links. Device ID checks do not mitigate bus taps. Recommend `usbguard` for physical port control. |
 | **Info Disclosure**| Read Socket Traffic | Medium | Low | **Low** | Yes | Socket only sends booleans and usernames. |
 | **Info Disclosure**| Biometric Embedding Theft | Low | High | **Medium** | Partially | Secured by root-only filesystem permissions. (Encryption planned, see [Roadmap #8](#5-future-security-enhancements-roadmap)) |
 | **DoS** | Auth Request Spamming | Low | Medium | **Low** | Yes | Rate limiting and hard timeouts implemented. |
@@ -97,7 +97,7 @@ To further harden the LinuxCamPAM architecture, the following enhancements are p
 2.  **Model Verification:** Enforce SHA256 hash verification of ONNX model files upon load to prevent the injection of backdoored models.
 3.  **SELinux / AppArmor Profiles:** Provide strict Mandatory Access Control (MAC) policies confining the daemon strictly to required devices (`/dev/video*`) and sockets, neutralizing potential privilege escalation.
 4.  **Configurable Logging Restrictions:** Allow administrators to disable the logging of usernames in production to prevent identity leakage via syslog.
-5.  **Hardware ID Verification:** Validate USB Vendor ID (VID) and Product ID (PID) alongside the `/dev/video*` path to mitigate "Evil Maid" physical camera swap attacks.
+5.  **Hardware ID Verification:** Validate USB Vendor ID (VID), Product ID (PID), and unique Serial Number (where supported by UVC descriptors) to detect and block unauthorized camera hardware swaps.
 6.  **Active Liveness Detection (Challenge-Response):** Implement randomized user prompts (e.g., "blink", "turn head") to thwart video replay injection attacks by forcing unpredictable live interaction.
 7.  **IPC Socket Peer Verification:** Implement `SO_PEERCRED` checks in the daemon to verify that only root or the corresponding target user can issue administrative commands.
 8.  **Embedding Encryption & Hardware Binding:** Encrypt user embedding files locally using a host key or hardware-backed key (via TPM) to protect them from offline extraction and relocation.
