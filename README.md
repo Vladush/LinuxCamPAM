@@ -299,7 +299,9 @@ If you use the YuNet model included in this project for research, please cite th
   - *Passive:* Frame variance analysis during enrollment (static images = spoof attempt).
   - *Active:* Challenges like blink, smile, head turn to prevent video replay attacks.
 - [x] **Rate Limiting:** Per-user lockout after failed auth attempts (configurable via `[Security]` in config.ini).
+- [ ] **Socket Security:** IPC Socket peer credential verification (`SO_PEERCRED`) to prevent DoS attacks.
 - [ ] **Security Hardening:** Embedding integrity (HMAC), model file verification, and configurable logging.
+- [ ] **Privilege Separation:** Transition the daemon from running as `root` to a dedicated `linuxcampam` service user.
 - [ ] **Adaptive Enrollment** *(needs investigation)*: Auto-update embeddings when face auth fails but password succeeds. Requires careful security analysis.
 - [ ] **GUI Config Tool:** A simple GTK/Qt app for managing users and cameras.
 - [ ] **Enterprise Features:**

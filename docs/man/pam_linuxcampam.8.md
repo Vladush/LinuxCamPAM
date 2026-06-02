@@ -2,8 +2,8 @@
 title: PAM_LINUXCAMPAM
 section: 8
 header: LinuxCamPAM System Manager's Manual
-footer: LinuxCamPAM 0.9.7.2
-date: February 2026
+footer: LinuxCamPAM 0.9.7.3
+date: June 2026
 ---
 
 <!-- markdownlint-disable MD025 -->

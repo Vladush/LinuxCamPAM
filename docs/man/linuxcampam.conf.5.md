@@ -2,8 +2,8 @@
 title: LINUXCAMPAM.CONF
 section: 5
 header: LinuxCamPAM Configuration File
-footer: LinuxCamPAM 0.9.7.2
-date: February 2026
+footer: LinuxCamPAM 0.9.7.3
+date: June 2026
 ---
 
 <!-- markdownlint-disable MD025 -->
@@ -127,7 +127,7 @@ The file is in standard INI format. Sections and keys are case-insensitive.
 
 **save_fail_images** = *BOOL*
 :   Save images of failed attempts for debugging.
-    (Default: `true`).
+    (Default: `false`).
 
 **save_success_images** = *BOOL*
 :   Save images of successful authentications.

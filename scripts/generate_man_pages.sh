@@ -12,8 +12,8 @@ if ! command -v pandoc &> /dev/null; then
 fi
 
 # Define directories
-SOURCE_DIR="man"
-OUTPUT_DIR="man/generated"
+SOURCE_DIR="docs/man"
+OUTPUT_DIR="docs/man/generated"
 
 # Create output directory if it doesn't exist
 mkdir -p "${OUTPUT_DIR}"

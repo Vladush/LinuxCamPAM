@@ -161,6 +161,14 @@ These frustrations led to the decision to architect a new solution from scratch:
 * Once available, enable the specific backend flags to offload inference to AMD Ryzen AI (XDNA) and other NPU architectures.
 * **Why wait?** Waiting for upstream OpenCV support ensures the project avoids the "Dependency Hell" of maintaining custom kernel drivers or forked libraries.
 
+### Goal: Security Hardening & Privilege Separation
+
+**Context:** The daemon currently runs as `root` and the Unix socket is world-writable (`0666`).
+**Future Plan:**
+
+* Implement `SO_PEERCRED` checks on the Unix socket to authorize administrative commands and prevent local DoS.
+* Transition the daemon to run as a dedicated `linuxcampam` system user instead of `root`, isolating it from the rest of the system using standard Linux groups (`video`, `render`).
+
 ### Decision: Deferred Modular Backend (YAGNI)
 
 **Context:** The architecture initially considered abstracting the inference engine into a plugin system or `IBackend` interface to allow mixing OpenCV, ONNX Runtime, or other providers.

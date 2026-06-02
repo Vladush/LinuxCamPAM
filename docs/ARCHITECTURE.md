@@ -160,14 +160,16 @@ User biometric profiles are strictly isolated to the `/etc/linuxcampam/users/` d
 ```json
 {
   "username": "vlad",
-  "embeddings": [
+  "created": 1717280000,
+  "embeddings_ir": [
     {
       "label": "default",
-      "timestamp": 1717280000,
-      "camera_type": "ir",
-      "vector": [0.123, -0.456, 0.789, ...] // 128-dimensional float array
+      "data": [0.123, -0.456, 0.789],
+      "created": 1717280000,
+      "model_version": "sface_2021dec"
     }
-  ]
+  ],
+  "embeddings_rgb": []
 }
 ```
 
@@ -182,8 +184,8 @@ The configuration dictates hardware usage, logging, and security policies (e.g.,
 LinuxCamPAM relies heavily on Linux filesystem and process boundaries for security. For an in-depth threat model, refer to [THREAT_MODEL_AND_RISK_ASSESSMENT.md](THREAT_MODEL_AND_RISK_ASSESSMENT.md).
 
 * **Process Isolation**: The PAM module runs in the user-space context of the calling application (e.g., `sudo`). It possesses zero biometric processing capabilities and relies entirely on the IPC socket.
-* **Root Daemon**: `linuxcampamd` runs as root. This is strictly required to read from `/dev/video*`, write to the root-owned JSON databases, and drop root privileges dynamically when verifying file ownership.
-* **IPC Socket**: Located at `/run/linuxcampam/socket` with `0666` permissions. While world-writable, the daemon meticulously sanitizes input strings (usernames) and only returns boolean states (`AUTH_SUCCESS`/`AUTH_FAIL`), preventing memory leaks or data exfiltration.
+* **Root Daemon**: `linuxcampamd` runs as root. This is strictly required to read from `/dev/video*` and write to the restricted root-owned JSON databases (`0700` and `0600`). A future architectural enhancement plans to isolate this via a dedicated `linuxcampam` service user.
+* **IPC Socket**: Located at `/run/linuxcampam/socket` with `0666` permissions. While world-writable, the daemon meticulously sanitizes input strings (usernames) and returns rich text responses (`AUTH_SUCCESS`, `AUTH_FAIL`, `ENROLL_SUCCESS`, etc.) and config data, while ensuring no raw biometric data is ever transmitted over the socket.
 
 ---
 

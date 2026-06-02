@@ -2,8 +2,8 @@
 title: LINUXCAMPAMD
 section: 8
 header: LinuxCamPAM System Manager's Manual
-footer: LinuxCamPAM 0.9.7.2
-date: February 2026
+footer: LinuxCamPAM 0.9.7.3
+date: June 2026
 ---
 
 <!-- markdownlint-disable MD025 -->
@@ -37,7 +37,7 @@ It listens on a UNIX socket (`/run/linuxcampam/socket` by default) for requests 
 
 # LOGGING
 
-Logs are sent to syslog with the tag `linuxcampamd`. Use `journalctl -u linuxcampamd` to view logs.
+Logs are sent to syslog with the tag `linuxcampamd`. Use `journalctl -u linuxcampam` to view logs.
 
 # SEE ALSO
 

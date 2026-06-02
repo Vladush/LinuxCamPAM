@@ -82,10 +82,10 @@ Control image quality logic to improve enrollment and verification success rates
 ```ini
 [Capture]
 enroll_hdr = auto             ; auto | on | off. Uses multi-exposure if supported.
-enroll_averaging = on         ; true | false. Reduce noise by averaging frames.
+enroll_averaging = on         ; on | off. Reduce noise by averaging frames.
 enroll_average_frames = 5     ; Number of frames to average.
 
-verify_averaging = false      ; Averaging during auth (slower, but more reliable).
+verify_averaging = off        ; Averaging during auth (slower, but more reliable).
 verify_average_frames = 3
 ```
 

@@ -2,8 +2,8 @@
 title: LINUXCAMPAM
 section: 1
 header: LinuxCamPAM User Manual
-footer: LinuxCamPAM 0.9.7.2
-date: February 2026
+footer: LinuxCamPAM 0.9.7.3
+date: June 2026
 ---
 
 <!-- markdownlint-disable MD025 -->
