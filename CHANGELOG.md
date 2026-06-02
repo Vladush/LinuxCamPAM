@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.7.4] - 2026-06-02
+
+### Fixed
+
+- **Code:** Addressed documented invariants and enforced CLI privileges.
+- **Docs:** Resolved configuration and documentation discrepancies.
+- **CI:** Fixed Docker timeout and updated lint workflows with explicit permissions.
+
+### Added
+
+- **Docs:** Updated installation steps with Pre-Build Debian Package instructions and a link to the latest release.
+
 ## [0.9.7.3] - 2026-05-17
 
 ### Added

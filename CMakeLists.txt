@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(LinuxCamPAM VERSION 0.9.7.3 LANGUAGES C CXX)
+project(LinuxCamPAM VERSION 0.9.7.4 LANGUAGES C CXX)
 
 # --- Automatic Git Hook Installation ---
 # Installs/Updates the pre-push hook to prevent accidental pushes to master
