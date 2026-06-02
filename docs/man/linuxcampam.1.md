@@ -2,7 +2,7 @@
 title: LINUXCAMPAM
 section: 1
 header: LinuxCamPAM User Manual
-footer: LinuxCamPAM 0.9.7.3
+footer: LinuxCamPAM 0.9.7.4
 date: June 2026
 ---
 

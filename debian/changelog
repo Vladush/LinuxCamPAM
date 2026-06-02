@@ -1,3 +1,13 @@
+linuxcampam (0.9.7.4-1) unstable; urgency=medium
+
+  * Release 0.9.7.4
+  * Fix: Address documented invariants and enforce CLI privileges
+  * Fix: Resolve configuration and documentation discrepancies
+  * CI: Fix docker timeout, run lint on all pushes, and add explicit permissions
+  * Docs: Update recommended Debian package installation steps
+
+ -- Vladimir Orlinski <contact.github.submerge594@slmails.com>  Tue, 02 Jun 2026 15:16:31 +0200
+
 linuxcampam (0.9.7.3-1) unstable; urgency=medium
 
   * Release 0.9.7.3: Performance & Security improvements

@@ -51,9 +51,9 @@ Since open-sourcing, I've put effort into making it hardware-agnostic and well-d
 
 ## Installation
 
-### Option A: Install from Package (Recommended)
+### Option A: Install from Pre-Build Debian Package (Recommended)
 
-If you have downloaded a release file (`.deb`), installation is extremely simple:
+If you have downloaded a release file (`.deb`) from the [latest release](https://github.com/Vladush/LinuxCamPAM/releases/latest), installation is extremely simple:
 
 ```bash
 sudo apt install ./linuxcampam_*.deb
@@ -221,8 +221,8 @@ Shows the version of both the CLI client and the running daemon service.
 ```bash
 linuxcampam version
 # Output:
-# Client Version: 0.9.7.2+ga8f02f6
-# Daemon Version: 0.9.7.2+ga8f02f6
+# Client Version: 0.9.7.4+ga8f02f6
+# Daemon Version: 0.9.7.4+ga8f02f6
 ```
 
 ## Debugging
