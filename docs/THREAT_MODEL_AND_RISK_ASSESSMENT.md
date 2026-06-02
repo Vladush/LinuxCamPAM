@@ -78,7 +78,7 @@ Overall Risk is calculated by combining **Likelihood** (Low, Medium, High) and *
 
 ### 4.2 Risk Matrix
 
-| Threat Category | Specific Threat | Likelihood | Impact | Overall Risk | Mitigation Status | Mitigation Notes |
+| Threat Category | Specific Threat | Likelihood | Impact | Overall Risk | Current Mitigation Status | Mitigation Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Spoofing** | RGB Photo/Video Replay | High (if RGB used) | High | **Critical** | Partially | Warn users against RGB-only setups. Defaults to IR if exists. (See [Roadmap #6](#5-future-security-enhancements-roadmap)) |
 | **Spoofing** | Advanced 3D/Heated Mask | Low | High | **Medium** | Partially | IR Liveness detection provides baseline defense. |
