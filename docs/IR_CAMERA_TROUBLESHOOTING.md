@@ -4,7 +4,7 @@
 
 ## Symptom
 
-```
+```text
 Response: ENROLL_FAIL Found 0 faces in ir. Expecting exactly 1.
 ```
 
@@ -30,6 +30,7 @@ enroll_average_frames = 7
 ```
 
 Then restart the daemon:
+
 ```bash
 sudo systemctl restart linuxcampam
 ```
@@ -47,9 +48,9 @@ journalctl -u linuxcampam -f
 What to look for:
 
 | Log message | Meaning |
-|-------------|---------|
+| ------------- | --------- |
 | `0 faces found above threshold (0.9)` | Threshold too high → lower it |
-| `Best score: 0.65 \| Threshold: 0.9` | Face found but below threshold → lower your config to 0.60 |
+| `Best score: 0.65 / Threshold: 0.9` | Face found but below threshold → lower your config to 0.60 |
 | `Brightness: 12` | Frame nearly black → IR emitter not activating |
 | `Brightness: 240` | Frame overexposed → camera exposure issue |
 
@@ -59,11 +60,12 @@ What to look for:
 
 On every failed enrollment, the captured frame is automatically saved to help you debug:
 
-```
+```text
 /var/log/linuxcampam/failed_enroll_<camera_id>_<username>.jpg
 ```
 
 Open it to check what the camera actually captured:
+
 ```bash
 xdg-open /var/log/linuxcampam/failed_enroll_cam_ir_username.jpg
 ```
@@ -80,25 +82,30 @@ xdg-open /var/log/linuxcampam/failed_enroll_cam_ir_username.jpg
 If the saved frame is nearly black, your IR lights are not turning on.
 
 1. Verify `linux-enable-ir-emitter` is installed:
+
    ```bash
    ls /usr/local/bin/linux-enable-ir-emitter
    ```
 
 2. Test it manually:
+
    ```bash
    sudo linux-enable-ir-emitter run
    ```
 
 3. If not installed:
+
    ```bash
    sudo apt install linux-enable-ir-emitter
    # or from source: https://github.com/EmixamPP/linux-enable-ir-emitter
    ```
 
 4. Configure for your specific hardware model:
+
    ```bash
    sudo linux-enable-ir-emitter configure
    ```
+
    Follow the interactive procedure — move your head in front of the camera while it tries different configurations. When the emitter blinks and you see `The infrared emitter has been successfully enabled!` you are done.
 
 ---

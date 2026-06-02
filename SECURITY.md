@@ -15,4 +15,4 @@ If you discover a security vulnerability in this project, please email [contact.
 
 ## Threat Model
 
-We take security seriously. Please refer to our detailed [Security Assessment](docs/SECURITY_ASSESSMENT.md) for an overview of the threat model, protected assets, and design decisions regarding the daemon and standard users.
+We take security seriously. Please refer to our detailed [Threat Model & Risk Assessment](docs/THREAT_MODEL_AND_RISK_ASSESSMENT.md) for an overview of the threat model, protected assets, and design decisions regarding the daemon and standard users.
