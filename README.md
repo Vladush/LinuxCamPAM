@@ -34,7 +34,7 @@ Since open-sourcing, I've put effort into making it hardware-agnostic and well-d
   - **Enhanced Enrollment**: HDR capture when supported, frame averaging for all cameras.
 - **Multi-Embedding Support**: Store multiple face embeddings per user for different lighting (`linuxcampam list`, `train --new`).
 - **PAM Integration**: Standard PAM module for Debian/Ubuntu.
-- **Security First**: [Threat Model & Security Assessment](docs/SECURITY_ASSESSMENT.md) included.
+- **Security First**: [Threat Model & Risk Assessment](docs/THREAT_MODEL_AND_RISK_ASSESSMENT.md) included.
 
 ## System Requirements
 
