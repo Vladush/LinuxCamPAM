@@ -265,10 +265,21 @@ int AuthEngine::generateEmbedding(const cv::Mat &frame,
     detector->setInputSize(frame.size());
     detector->detect(frame, faces);
 
-    log_debug("Profiling: Detection complete. Faces: " + std::to_string(faces.rows));
+    int num_faces = faces.rows;
+    if (num_faces == 0) {
+      Logger::log(LogLevel::WARN,
+                  "Profiling: Detection complete. 0 faces found above threshold (" +
+                  std::to_string(config.detection_threshold) +
+                  "). If using IR camera, try lowering detection_threshold to 0.5 in config.ini.");
+    } else {
+      float best_score = faces.at<float>(0, 14);
+      Logger::log(LogLevel::INFO,
+                  "Profiling: Detection complete. Faces: " + std::to_string(num_faces) +
+                  " | Best score: " + std::to_string(best_score) +
+                  " | Threshold: " + std::to_string(config.detection_threshold));
+    }
     gpuSync(config.gpu_flush, config.gpu_throttle_ms);
 
-    int num_faces = faces.rows;
     if (num_faces < 1)
       return 0;
 
@@ -656,15 +667,31 @@ AuthEngine::enrollUser(std::string_view username) {
       err += " faces in ";
       err += id;
       err += ". Expecting exactly 1.";
-      Logger::log(LogLevel::WARN, "Enroll failed: " + err);
-      if (config.save_fail) {
-        std::string fail_filename = (config.log_dir / "failed_enroll_").string();
-        fail_filename += id;
-        fail_filename += "_";
-        fail_filename += std::string(username);
-        fail_filename += ".jpg";
-        cv::imwrite(fail_filename, frame);
+
+      double brightness = calculateBrightness(frame);
+      Logger::log(LogLevel::WARN, "Enroll failed: " + err +
+                                      " | Frame: " +
+                                      std::to_string(frame.cols) + "x" +
+                                      std::to_string(frame.rows) +
+                                      " | Brightness: " +
+                                      std::to_string(static_cast<int>(brightness)) +
+                                      " | threshold: " +
+                                      std::to_string(config.detection_threshold));
+
+      fs::create_directories(config.log_dir);
+      std::string fail_filename = (config.log_dir / "failed_enroll_").string();
+      fail_filename += id;
+      fail_filename += "_";
+      fail_filename += std::string(username);
+      fail_filename += ".jpg";
+      if (cv::imwrite(fail_filename, frame)) {
+        Logger::log(LogLevel::INFO,
+                    "Debug frame saved: " + fail_filename +
+                        " - inspect to verify camera output.");
+      } else {
+        Logger::log(LogLevel::WARN, "Could not save debug frame: " + fail_filename);
       }
+
       return {false, err};
     }
 

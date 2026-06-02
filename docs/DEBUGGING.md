@@ -84,6 +84,11 @@ sudo ./linuxcampamd
 
 ## 5. Common Issues
 
+### IR Camera Failing to Enroll or Authenticate
+
+* **Cause:** IR cameras produce low-contrast grayscale images that require different settings, or the IR emitter isn't activating.
+* **Fix:** Please see the dedicated **[IR Camera Troubleshooting Guide](IR_CAMERA_TROUBLESHOOTING.md)**.
+
 ### "Camera failed to capture"
 
 * **Cause:** Another application (Zoom, browser) is using the camera.

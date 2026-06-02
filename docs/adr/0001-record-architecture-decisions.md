@@ -18,6 +18,6 @@ We will keep ADRs in the `docs/adr` directory. Each ADR will follow a simple str
 
 ## Consequences
 
-*   We have a durable, version-controlled history of our architectural decisions.
-*   Contributors will be required to write an ADR when proposing significant architectural changes.
-*   The barrier to understanding the codebase's history is significantly lowered.
+* We have a durable, version-controlled history of our architectural decisions.
+* Contributors will be required to write an ADR when proposing significant architectural changes.
+* The barrier to understanding the codebase's history is significantly lowered.
