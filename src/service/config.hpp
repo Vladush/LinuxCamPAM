@@ -50,6 +50,8 @@ public:
   bool save_success = false;
   bool save_fail = false;
   fs::path log_dir = "/var/log/linuxcampam/";
+  std::string log_level = "info";
+  std::string log_file = "";
   std::vector<std::string> provider_priority{};
   int model_keep_alive_sec = 0;
 
@@ -67,7 +69,7 @@ public:
   int lockout_duration_sec = DEFAULT_LOCKOUT_DURATION_SEC;
   uid_t min_uid = linuxcampam::DEFAULT_MIN_UID;
 
-  bool gpu_flush = false;
+  bool gpu_flush = true;
   int gpu_throttle_ms = DEFAULT_GPU_THROTTLE_MS;
 
   // Methods

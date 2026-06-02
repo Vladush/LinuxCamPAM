@@ -261,6 +261,22 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  // Apply log settings from config
+  const auto& cfg = engine.getConfig();
+  if (cfg.log_level == "debug") {
+    Logger::setLevel(LogLevel::DEBUG);
+  } else if (cfg.log_level == "info") {
+    Logger::setLevel(LogLevel::INFO);
+  } else if (cfg.log_level == "warn" || cfg.log_level == "warning") {
+    Logger::setLevel(LogLevel::WARN);
+  } else if (cfg.log_level == "error") {
+    Logger::setLevel(LogLevel::ERROR);
+  }
+
+  if (!cfg.log_file.empty()) {
+    Logger::setLogFile(cfg.log_file);
+  }
+
   // Socket Setup
   linuxcampam::FileDescriptor server_fd(socket(AF_UNIX, SOCK_STREAM, 0));
   struct sockaddr_un address = {};
