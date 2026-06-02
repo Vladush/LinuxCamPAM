@@ -60,11 +60,11 @@ public:
 
   // Returns true if the device at path supports video capture
   [[nodiscard]] virtual bool
-  isVideoCaptureDevice(const std::string &path) const = 0;
+  isVideoCaptureDevice(std::string_view path) const = 0;
 
   // Returns a list of supported pixel formats (V4L2_PIX_FMT_*) for the device
   [[nodiscard]] virtual std::vector<uint32_t>
-  getPixelFormats(const std::string &path) const = 0;
+  getPixelFormats(std::string_view path) const = 0;
 };
 
 // Concrete implementation using real V4L2 calls
@@ -72,19 +72,19 @@ class RealCameraBackend : public ICameraBackend {
 public:
   [[nodiscard]] std::vector<std::string> getDevicePaths() const override;
   [[nodiscard]] bool
-  isVideoCaptureDevice(const std::string &path) const override;
+  isVideoCaptureDevice(std::string_view path) const override;
   [[nodiscard]] std::vector<uint32_t>
-  getPixelFormats(const std::string &path) const override;
+  getPixelFormats(std::string_view path) const override;
 };
 
 // Core logic with dependency injection
-[[nodiscard]] std::string classifyCameraType(const std::string &device_path,
+[[nodiscard]] std::string classifyCameraType(std::string_view device_path,
                                              const ICameraBackend &backend);
 [[nodiscard]] std::vector<std::pair<std::string, std::string>>
 enumerateCameras(const ICameraBackend &backend);
 
-// Default overloads for backward compatibility
-[[nodiscard]] std::string classifyCameraType(const std::string &device_path);
+// Default wrappers using RealCameraBackend
+[[nodiscard]] std::string classifyCameraType(std::string_view device_path);
 [[nodiscard]] std::vector<std::pair<std::string, std::string>>
 enumerateCameras();
 

@@ -49,7 +49,7 @@ public:
 
   bool save_success = false;
   bool save_fail = false;
-  std::string log_dir = "/var/log/linuxcampam/";
+  fs::path log_dir = "/var/log/linuxcampam/";
   std::vector<std::string> provider_priority{};
   int model_keep_alive_sec = 0;
 

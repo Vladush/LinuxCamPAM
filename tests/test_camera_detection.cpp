@@ -13,15 +13,15 @@ public:
   std::map<std::string, std::vector<uint32_t>> formats;
 
   std::vector<std::string> getDevicePaths() const override { return paths; }
-  bool isVideoCaptureDevice(const std::string &path) const override {
-    auto it = is_video.find(path);
+  bool isVideoCaptureDevice(std::string_view path) const override {
+    auto it = is_video.find(std::string(path));
     if (it != is_video.end())
       return it->second;
     return false;
   }
   std::vector<uint32_t>
-  getPixelFormats(const std::string &path) const override {
-    auto it = formats.find(path);
+  getPixelFormats(std::string_view path) const override {
+    auto it = formats.find(std::string(path));
     if (it != formats.end())
       return it->second;
     return {};

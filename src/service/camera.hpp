@@ -11,7 +11,7 @@ namespace fs = std::filesystem;
 
 class Camera : public ICamera {
 public:
-  explicit Camera(const std::string &device_path, bool is_ir = false,
+  explicit Camera(std::string_view device_path, bool is_ir = false,
                   const fs::path &ir_cmd_path = "");
   ~Camera() override;
 

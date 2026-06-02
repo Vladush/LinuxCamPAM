@@ -83,7 +83,7 @@ bool Camera::detectExposureSupport() {
   return supported;
 }
 
-Camera::Camera(const std::string &device_path, bool is_ir,
+Camera::Camera(std::string_view device_path, bool is_ir,
                const fs::path &ir_cmd_path)
     : device_path(device_path), is_ir_camera(is_ir) {
   if (ir_cmd_path.empty()) {
@@ -95,8 +95,7 @@ Camera::Camera(const std::string &device_path, bool is_ir,
 
   if (device_path.rfind("/dev/video", 0) == 0) {
     try {
-      device_id =
-          std::stoi(device_path.substr(std::string("/dev/video").length()));
+      device_id = std::stoi(std::string(device_path.substr(std::string("/dev/video").length())));
     } catch (...) {
       device_id = 0;
     }
@@ -105,7 +104,7 @@ Camera::Camera(const std::string &device_path, bool is_ir,
   // Detect exposure control support
   supports_manual_exposure_ = detectExposureSupport();
   if (supports_manual_exposure_) {
-    log_info("[Camera] " + device_path + " supports manual exposure");
+    log_info("[Camera] " + std::string(device_path) + " supports manual exposure");
   }
 }
 

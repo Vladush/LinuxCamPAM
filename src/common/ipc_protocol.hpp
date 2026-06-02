@@ -95,14 +95,23 @@ struct Request {
     return out;
   }
 
-  [[nodiscard]] static Request deserialize(const std::string &data) {
-    std::istringstream iss(data);
-    std::string cmdStr;
-    iss >> cmdStr;
-    Request req{stringToCommand(cmdStr), {}};
-    std::string arg;
-    while (iss >> arg) {
-      req.args.push_back(arg);
+  [[nodiscard]] static Request deserialize(std::string_view data) {
+    auto cmd_end = data.find(' ');
+    auto cmd_sv = (cmd_end == std::string_view::npos) ? data : data.substr(0, cmd_end);
+    Request req{stringToCommand(cmd_sv), {}};
+
+    if (cmd_end != std::string_view::npos) {
+      auto rest = data.substr(cmd_end + 1);
+      size_t start = 0;
+      while (start < rest.size()) {
+        auto pos = rest.find(' ', start);
+        auto token = rest.substr(start, (pos == std::string_view::npos) ? std::string_view::npos : pos - start);
+        if (!token.empty()) {
+          req.args.emplace_back(token);
+        }
+        if (pos == std::string_view::npos) break;
+        start = pos + 1;
+      }
     }
     return req;
   }

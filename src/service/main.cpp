@@ -36,16 +36,17 @@ struct Config {
   std::string socket_path = linuxcampam::SOCKET_PATH;
 };
 
-void handle_client(int client_fd, AuthEngine &engine) {
+void handle_client(int fd, AuthEngine &engine) {
+  linuxcampam::FileDescriptor client_fd(fd);
   std::array<char, BUFFER_SIZE> buffer = {};
-  ssize_t valread = read(client_fd, buffer.data(), buffer.size());
+  ssize_t valread = read(client_fd.get(), buffer.data(), buffer.size() - 1);
   if (valread <= 0) {
-    close(client_fd);
     return;
   }
 
-  std::string request(buffer.data());
-  log_debug("Received Request: " + request);
+  buffer[static_cast<size_t>(valread)] = '\0';
+  std::string_view request(buffer.data(), static_cast<size_t>(valread));
+  log_debug("Received Request: " + std::string(request));
 
   // Protocol: COMMAND argument via ipc_protocol.hpp
   // e.g. AUTH_REQUEST john | ADD_USER john | TRAIN_USER john default |
@@ -203,8 +204,7 @@ void handle_client(int client_fd, AuthEngine &engine) {
     response = "ERROR Unknown Exception";
   }
 
-  send(client_fd, response.c_str(), response.length(), 0);
-  close(client_fd);
+  send(client_fd.get(), response.c_str(), response.length(), 0);
 }
 
 int main(int argc, char *argv[]) {
@@ -262,11 +262,10 @@ int main(int argc, char *argv[]) {
   }
 
   // Socket Setup
-  int server_fd = 0;
+  linuxcampam::FileDescriptor server_fd(socket(AF_UNIX, SOCK_STREAM, 0));
   struct sockaddr_un address = {};
 
-  server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-  if (server_fd == 0) {
+  if (!server_fd.isValid()) {
     perror("socket failed");
     return 1;
   }
@@ -278,7 +277,7 @@ int main(int argc, char *argv[]) {
 
   (void)unlink(socket_path.c_str()); // Remove old socket
   // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
-  if (bind(server_fd, reinterpret_cast<struct sockaddr *>(&address),
+  if (bind(server_fd.get(), reinterpret_cast<struct sockaddr *>(&address),
            sizeof(address)) < 0) {
     // NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
     perror("bind failed");
@@ -291,7 +290,7 @@ int main(int argc, char *argv[]) {
   // World-readable socket allows console users to trigger authentication
   chmod(socket_path.c_str(), SOCKET_PERMS);
 
-  if (listen(server_fd, BACKLOG) < 0) {
+  if (listen(server_fd.get(), BACKLOG) < 0) {
     perror("listen");
     return 1;
   }
@@ -301,14 +300,14 @@ int main(int argc, char *argv[]) {
   while (g_running) {
     fd_set readfds;
     FD_ZERO(&readfds);
-    FD_SET(server_fd, &readfds);
+    FD_SET(server_fd.get(), &readfds);
 
     // Timeout for select to allow checking g_running
     struct timeval timeout = {};
     timeout.tv_sec = 1;
     timeout.tv_usec = 0;
 
-    int activity = select(server_fd + 1, &readfds, NULL, NULL, &timeout);
+    int activity = select(server_fd.get() + 1, &readfds, NULL, NULL, &timeout);
 
     if ((activity < 0) && (errno != EINTR)) {
       // Error
@@ -317,12 +316,12 @@ int main(int argc, char *argv[]) {
       (void)engine.performMaintenance();
     }
 
-    if (g_running && activity > 0 && FD_ISSET(server_fd, &readfds)) {
+    if (g_running && activity > 0 && FD_ISSET(server_fd.get(), &readfds)) {
       int new_socket = 0;
       int addrlen = sizeof(address);
       // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
       new_socket =
-          accept(server_fd, reinterpret_cast<struct sockaddr *>(&address),
+          accept(server_fd.get(), reinterpret_cast<struct sockaddr *>(&address),
                  reinterpret_cast<socklen_t *>(&addrlen));
       // NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
       if (new_socket >= 0) {
@@ -333,7 +332,6 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  close(server_fd);
   (void)unlink(socket_path.c_str());
   Logger::log(LogLevel::INFO, "Stopped.");
   return 0;
