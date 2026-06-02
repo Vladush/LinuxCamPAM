@@ -96,6 +96,18 @@ threshold = 0.65
   EXPECT_EQ(config.lockout_attempts, Configuration::DEFAULT_LOCKOUT_ATTEMPTS);
 }
 
+TEST_F(AuthConfigTest, ParsesLoggingConfig) {
+  createConfig(R"(
+[General]
+log_level = debug
+log_file = /tmp/linuxcampam.log
+)");
+  Configuration config;
+  ASSERT_TRUE(config.load("config_test.ini"));
+  EXPECT_EQ(config.log_level, "debug");
+  EXPECT_EQ(config.log_file, "/tmp/linuxcampam.log");
+}
+
 TEST_F(AuthConfigTest, FallbackOnInvalidData) {
   createConfig(R"(
 [General]

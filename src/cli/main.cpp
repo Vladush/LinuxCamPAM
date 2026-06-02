@@ -104,6 +104,10 @@ int main(int argc, char *argv[]) {
   std::string_view op = argv[1];
 
   if (op == "add") {
+    if (getuid() != 0) {
+      std::cerr << "Error: Adding a user requires root privileges (sudo)." << '\n';
+      return 1;
+    }
     if (argc < 3) {
       std::cout << "Usage: linuxcampam add <username>" << '\n';
       return 1;
@@ -172,6 +176,11 @@ int main(int argc, char *argv[]) {
       }
     }
 
+    if (user != get_current_user() && getuid() != 0) {
+      std::cerr << "Error: Training for other users requires root privileges (sudo)." << '\n';
+      return 1;
+    }
+
     if (is_new) {
       // Prompt for new label
       std::cout << "New label: ";
@@ -213,7 +222,12 @@ int main(int argc, char *argv[]) {
       std::cout << "Usage: linuxcampam list <username>" << '\n';
       return 1;
     }
-    print_response(send_cmd("LIST_EMBEDDINGS " + std::string(argv[2])));
+    std::string user = argv[2];
+    if (user != get_current_user() && getuid() != 0) {
+      std::cerr << "Error: Listing other users requires root privileges (sudo)." << '\n';
+      return 1;
+    }
+    print_response(send_cmd("LIST_EMBEDDINGS " + user));
 
   } else if (op == "remove") {
     if (argc < 4) {
@@ -222,6 +236,10 @@ int main(int argc, char *argv[]) {
       return 1;
     }
     std::string user = argv[2];
+    if (user != get_current_user() && getuid() != 0) {
+      std::cerr << "Error: Removing embeddings for other users requires root privileges (sudo)." << '\n';
+      return 1;
+    }
     std::string label;
     for (int i = 3; i < argc; i++) {
       if (std::string(argv[i]) == "--label" && i + 1 < argc) {

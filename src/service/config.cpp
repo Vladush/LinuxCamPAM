@@ -125,6 +125,9 @@ void Configuration::parse_ini_into_self(
     to_str = get("General.timeout_ms", std::to_string(DEFAULT_TIMEOUT_MS));
   if (auto val = parse_int(to_str)) timeout_ms = *val;
 
+  log_level = get("General.log_level", "info");
+  log_file = get("General.log_file", "");
+
   // Auth Policy
   std::string method = get("Auth.policy");
   if (method.empty()) {
@@ -313,6 +316,10 @@ std::string Configuration::toString() const {
   ss << "=== Active Configuration ===\n\n";
 
   ss << "[General]\n";
+  ss << "  Log Level: " << log_level << "\n";
+  if (!log_file.empty()) {
+    ss << "  Log File: " << log_file << "\n";
+  }
   ss << "  Threshold: " << threshold << "\n";
   ss << "  Detection Threshold: " << detection_threshold << "\n";
   ss << "  Timeout: " << timeout_ms << " ms\n";
