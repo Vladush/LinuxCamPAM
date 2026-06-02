@@ -78,16 +78,16 @@ Overall Risk is calculated by combining **Likelihood** (Low, Medium, High) and *
 
 | Threat Category | Specific Threat | Likelihood | Impact | Overall Risk | Mitigation Status | Mitigation Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Spoofing** | RGB Photo/Video Replay | High (if RGB used) | High | **Critical** | Partially | Warn users against RGB-only setups. Defaults to IR if exists. |
+| **Spoofing** | RGB Photo/Video Replay | High (if RGB used) | High | **Critical** | Partially | Warn users against RGB-only setups. Defaults to IR if exists. (See [Roadmap #6](#5-future-security-enhancements-roadmap)) |
 | **Spoofing** | Advanced 3D/Heated Mask | Low | High | **Medium** | Partially | IR Liveness detection provides baseline defense. |
-| **Tampering** | Root User Modifies Embeddings | Low | High | **Medium** | WiP | Relies on OS boundaries; attacker already has root. (HMAC planned) |
-| **Tampering** | Evil Maid (USB Camera Swap) | Low | High | **Medium** | Out of Scope | Hardware trust issue. Mitigate via BIOS passwords. |
+| **Tampering** | Root User Modifies Embeddings | Low | High | **Medium** | WiP | Relies on OS boundaries; attacker already has root. (HMAC/encryption planned, see [Roadmap #1](#5-future-security-enhancements-roadmap), [#8](#5-future-security-enhancements-roadmap)) |
+| **Tampering** | Evil Maid (USB Camera Swap) | Low | High | **Medium** | Out of Scope | Hardware trust issue. Mitigate via BIOS passwords. (Hardware ID verification planned, see [Roadmap #5](#5-future-security-enhancements-roadmap)) |
 | **Tampering** | USB Bus Frame Injection | Low | High | **Medium** | No | No encrypted sensor links. Recommend `usbguard` for strict environments. |
 | **Info Disclosure**| Read Socket Traffic | Medium | Low | **Low** | Yes | Socket only sends booleans and usernames. |
-| **Info Disclosure**| Biometric Embedding Theft | Low | High | **Medium** | Partially | Secured by root-only filesystem permissions. Encryption planned. |
+| **Info Disclosure**| Biometric Embedding Theft | Low | High | **Medium** | Partially | Secured by root-only filesystem permissions. (Encryption planned, see [Roadmap #8](#5-future-security-enhancements-roadmap)) |
 | **DoS** | Auth Request Spamming | Low | Medium | **Low** | Yes | Rate limiting and hard timeouts implemented. |
 | **Elevation** | Buffer Overflow in Daemon | Low | Critical | **Medium** | Yes | Modern C++, sanitizers, strict socket parsing. |
-| **Elevation** | Unauthorized IPC Commands | Medium | High | **High** | No | Lacks socket peer credential verification (`SO_PEERCRED`) in daemon. |
+| **Elevation** | Unauthorized IPC Commands | Medium | High | **High** | No | Lacks socket peer credential verification (`SO_PEERCRED`) in daemon. (Verification planned, see [Roadmap #7](#5-future-security-enhancements-roadmap)) |
 
 ## 5. Future Security Enhancements (Roadmap)
 
