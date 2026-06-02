@@ -179,7 +179,7 @@ The configuration dictates hardware usage, logging, and security policies (e.g.,
 
 ## 6. Security Boundaries
 
-LinuxCamPAM relies heavily on Linux filesystem and process boundaries for security. For an in-depth threat model, refer to [SECURITY_ASSESSMENT.md](SECURITY_ASSESSMENT.md).
+LinuxCamPAM relies heavily on Linux filesystem and process boundaries for security. For an in-depth threat model, refer to [THREAT_MODEL_AND_RISK_ASSESSMENT.md](THREAT_MODEL_AND_RISK_ASSESSMENT.md).
 
 *   **Process Isolation**: The PAM module runs in the user-space context of the calling application (e.g., `sudo`). It possesses zero biometric processing capabilities and relies entirely on the IPC socket.
 *   **Root Daemon**: `linuxcampamd` runs as root. This is strictly required to read from `/dev/video*`, write to the root-owned JSON databases, and drop root privileges dynamically when verifying file ownership.
