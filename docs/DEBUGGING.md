@@ -7,7 +7,7 @@ This guide helps you troubleshoot issues with the LinuxCamPAM service. There are
 
 ## 1. Checking Logs
 
-LinuxCamPAM runs as a systemd service (`linuxcampamd`). Logs are managed by `journalctl`.
+LinuxCamPAM runs as a systemd service (`linuxcampam`). Logs are managed by `journalctl`.
 
 ### View Live Logs
 
@@ -107,4 +107,4 @@ sudo ./linuxcampamd
 ### "Service not listening" / PAM errors
 
 * **Cause:** The service crashed or socket permissions are wrong.
-* **Fix:** Check `sudo systemctl status linuxcampam`. Ensure `/run/linuxcampam/users/` exists.
+* **Fix:** Check `sudo systemctl status linuxcampam`. Ensure `/run/linuxcampam/` exists.

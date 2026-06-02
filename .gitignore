@@ -78,4 +78,4 @@ opencv-*/
 downloads/
 
 # Generated Man Pages
-man/generated/
+docs/man/generated/

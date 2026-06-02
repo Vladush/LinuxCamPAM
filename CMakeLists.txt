@@ -281,7 +281,7 @@ find_program(PANDOC_EXECUTABLE pandoc)
 if(PANDOC_EXECUTABLE)
     # Define custom target to generate man pages
     add_custom_target(generate_man_pages ALL
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_SOURCE_DIR}/man/generated
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_SOURCE_DIR}/docs/man/generated
         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_man_pages.sh
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Generating man pages..."
@@ -289,7 +289,7 @@ if(PANDOC_EXECUTABLE)
 
     # Note: installation is evaluated at CMake configure time, so we must
     # specify the expected generated files explicitly since globs might be empty
-    set(MAN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/man/generated")
+    set(MAN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/docs/man/generated")
     install(FILES
         "${MAN_DIR}/linuxcampam.1"
         DESTINATION "${CMAKE_INSTALL_MANDIR}/man1"

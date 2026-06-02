@@ -60,7 +60,7 @@ We use the STRIDE framework to analyze potential threats to the authentication p
 * **Threat:** An attacker spams the socket with authentication requests to exhaust system resources or lock the camera.
 * **Mitigation:**
   * **Timeouts:** Hard timeouts (default 3s) on authentication requests.
-  * **Rate Limiting / Lockout:** Configurable lockout after *N* failed attempts (e.g., 5 failures triggers a 5-minute lockout). State is tracked in-memory.
+  * **Per-User Lockout:** Configurable lockout after *N* failed attempts (e.g., 5 failures triggers a 5-minute lockout). State is tracked in-memory.
 
 ### 3.6 Elevation of Privilege
 
@@ -96,9 +96,9 @@ Overall Risk is calculated by combining **Likelihood** (Low, Medium, High) and *
 | **Tampering** | USB Bus Frame Injection | Low | High | **Medium** | No | No encrypted sensor links. Device ID checks do not mitigate bus taps. Challenge-response mitigates pre-recorded frame loops (see [Roadmap #6](#5-future-security-enhancements-roadmap)). Recommend `usbguard` for physical port control. |
 | **Info Disclosure** | Read Socket Traffic | Medium | Low | **Low** | Yes | Socket only sends booleans and usernames. |
 | **Info Disclosure** | Biometric Embedding Theft | Low | High | **Medium** | Partially | Secured by root-only filesystem permissions. (Encryption planned, see [Roadmap #8](#5-future-security-enhancements-roadmap)) |
-| **DoS** | Auth Request Spamming | Low | Medium | **Low** | Yes | Rate limiting and hard timeouts implemented. |
+| **DoS** | Auth Request Spamming | Low | Medium | **Low** | Partially | Per-user lockout after N failed auth attempts. |
 | **Elevation** | Buffer Overflow in Daemon | Low | Critical | **Medium** | Yes | Modern C++, sanitizers, strict socket parsing. |
-| **Elevation** | Unauthorized IPC Commands | Medium | High | **High** | No | Lacks socket peer credential verification (`SO_PEERCRED`) in daemon. (Verification planned, see [Roadmap #7](#5-future-security-enhancements-roadmap)) |
+| **Elevation** | Unauthorized IPC Commands | Medium | High | **High** | No | Lacks socket peer credential verification (`SO_PEERCRED`) in daemon to prevent socket DoS. (Verification planned, see [Roadmap #7](#5-future-security-enhancements-roadmap)) |
 
 ## 5. Future Security Enhancements (Roadmap)
 
@@ -112,3 +112,4 @@ To further harden the LinuxCamPAM architecture, the following enhancements are p
 6. **Active Liveness Detection (Challenge-Response):** Implement randomized user prompts (e.g., "blink", "turn head") to thwart video replay injection attacks by forcing unpredictable live interaction.
 7. **IPC Socket Peer Verification:** Implement `SO_PEERCRED` checks in the daemon to verify that only root or the corresponding target user can issue administrative commands.
 8. **Embedding Encryption & Hardware Binding:** Encrypt user embedding files locally using a host key or hardware-backed key (via TPM) to protect them from offline extraction and relocation.
+9. **Privilege Separation:** Transition the daemon from running as `root` to a dedicated `linuxcampam` service user, with hardware access restricted via standard Linux groups (`video`, `render`).
