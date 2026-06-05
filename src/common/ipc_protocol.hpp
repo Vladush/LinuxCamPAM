@@ -1,6 +1,6 @@
 #pragma once
 
-#include <sstream>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -8,7 +8,7 @@
 namespace linuxcampam {
 namespace protocol {
 
-enum class Command {
+enum class Command : std::uint8_t {
   AUTH_REQUEST,
   ADD_USER,
   TRAIN_USER,

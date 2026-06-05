@@ -272,7 +272,8 @@ int AuthEngine::generateEmbedding(const cv::Mat &frame,
                   std::to_string(config.detection_threshold) +
                   "). If using IR camera, try lowering detection_threshold to 0.5 in config.ini.");
     } else {
-      float best_score = faces.at<float>(0, 14);
+      constexpr int FACE_SCORE_INDEX = 14;
+      float best_score = faces.at<float>(0, FACE_SCORE_INDEX);
       Logger::log(LogLevel::INFO,
                   "Profiling: Detection complete. Faces: " + std::to_string(num_faces) +
                   " | Best score: " + std::to_string(best_score) +

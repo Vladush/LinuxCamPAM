@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <cstdint>
 #include <chrono>
 #include <fstream>
 #include <iomanip>
@@ -9,7 +10,7 @@
 #include <string>
 #include <syslog.h>
 
-enum class LogLevel { DEBUG, INFO, WARN, ERROR };
+enum class LogLevel : std::uint8_t { DEBUG, INFO, WARN, ERROR };
 
 class Logger {
 public:
@@ -28,7 +29,7 @@ public:
     }
     log_file_.open(path, std::ios::app);
     if (!log_file_.is_open()) {
-      std::cerr << "[Logger] Failed to open log file: " << path << std::endl;
+      std::cerr << "[Logger] Failed to open log file: " << path << '\n';
     }
   }
 
@@ -90,14 +91,14 @@ public:
 
     // Output to stdout/stderr
     if (level >= LogLevel::ERROR) {
-      std::cerr << fullMsg << std::endl;
+      std::cerr << fullMsg << '\n';
     } else {
-      std::cout << fullMsg << std::endl;
+      std::cout << fullMsg << '\n';
     }
 
     // Output to file if open
     if (log_file_.is_open()) {
-      log_file_ << fullMsg << std::endl;
+      log_file_ << fullMsg << '\n';
     }
   }
 
