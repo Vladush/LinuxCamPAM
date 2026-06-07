@@ -54,17 +54,22 @@ public:
   [[nodiscard]] AuthResult verifyUserWithDetails(std::string_view username);
   [[nodiscard]] std::pair<bool, std::string>
   enrollUser(std::string_view username);
+  // NOLINTBEGIN(bugprone-easily-swappable-parameters)
+  // Risk of swapping username and label is low since they are strictly validated
+  // by the IPC protocol parser in main.cpp. Strong types are overkill here.
   [[nodiscard]] bool setLabel(std::string_view username,
                               std::string_view label);
   [[nodiscard]] bool trainUser(std::string_view username,
                                std::string_view label = "default",
                                bool create_new = false);
+  // NOLINTEND(bugprone-easily-swappable-parameters)
   [[nodiscard]] bool testCameraAndAuth();
   [[nodiscard]] bool performMaintenance();
 
   // Multi-embedding management
   [[nodiscard]] std::vector<std::string>
   listEmbeddings(std::string_view username);
+  // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
   [[nodiscard]] bool removeEmbedding(std::string_view username,
                                      std::string_view label);
 
