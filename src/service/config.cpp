@@ -52,7 +52,7 @@ parse_ini_stream(std::istream &input) {
 inline std::optional<int> parse_int(std::string_view str) {
   if (str.empty())
     return std::nullopt;
-  int out;
+  int out = 0;
   auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), out);
   if (ec == std::errc{})
     return out;
@@ -64,7 +64,7 @@ inline std::optional<float> parse_float(std::string_view str) {
   if (str.empty())
     return std::nullopt;
 #if defined(__cpp_lib_to_chars) && __cpp_lib_to_chars >= 201611L
-  float out;
+  float out = 0.0f;
   auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), out);
   if (ec == std::errc{})
     return out;

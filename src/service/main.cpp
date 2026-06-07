@@ -44,7 +44,7 @@ void handle_client(int fd, AuthEngine &engine) {
     return;
   }
 
-  buffer[static_cast<size_t>(valread)] = '\0';
+  buffer.at(static_cast<size_t>(valread)) = '\0';
   std::string_view request(buffer.data(), static_cast<size_t>(valread));
   log_debug("Received Request: " + std::string(request));
 

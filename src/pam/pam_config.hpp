@@ -91,7 +91,7 @@ inline PamConfig resolve_pam_config(const PamConfigState &state) {
   if (auto uid_opt = get_value("min_uid")) {
     const std::string &uid_str = *uid_opt;
     if (!uid_str.empty() && uid_str[0] != '-') {
-      unsigned int parsed;
+      unsigned int parsed = 0;
       auto [ptr, ec] = std::from_chars(uid_str.data(), uid_str.data() + uid_str.size(), parsed);
       if (ec == std::errc{}) {
         config.min_uid = static_cast<uid_t>(parsed);

@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <vector>
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 extern char **environ;
 
 namespace fs = std::filesystem;
@@ -130,8 +131,8 @@ std::string getIREmitterVersion(std::string_view path) {
   if (!std::all_of(path.begin(), path.end(), is_safe)) return {};
   if (!fs::exists(path)) return {};
 
-  int pipefd[2];
-  if (pipe(pipefd) != 0) return {};
+  std::array<int, 2> pipefd{};
+  if (pipe(pipefd.data()) != 0) return {};
 
   posix_spawn_file_actions_t actions;
   posix_spawn_file_actions_init(&actions);
@@ -139,9 +140,10 @@ std::string getIREmitterVersion(std::string_view path) {
   posix_spawn_file_actions_addclose(&actions, pipefd[0]);
 
   std::string path_str(path);
+  std::string flag = "-V";
   std::array<char*, 3> argv = {
     path_str.data(),
-    const_cast<char*>("-V"),
+    flag.data(),
     nullptr
   };
 
