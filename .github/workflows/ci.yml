@@ -31,8 +31,30 @@ on:
       - "docs/**"
 
 jobs:
+  download-models:
+    name: Download Models
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download models
+        run: ./scripts/download_models.sh
+
+      - name: Verify models exist
+        run: |
+          test -s models/face_detection_yunet_2023mar.onnx
+          test -s models/face_recognition_sface_2021dec.onnx
+
+      - name: Upload models artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-models
+          path: models/*.onnx
+          retention-days: 1
+
   build-gcc:
     name: Build (GCC)
+    needs: download-models
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -58,8 +80,11 @@ jobs:
           chmod +x scripts/build_opencv.sh
           ./scripts/build_opencv.sh
 
-      - name: Download models
-        run: ./scripts/download_models.sh
+      - name: Retrieve models
+        uses: actions/download-artifact@v4
+        with:
+          name: ai-models
+          path: models
 
       - name: Install models to system
         run: |
@@ -89,6 +114,7 @@ jobs:
 
   build-clang:
     name: Build (Clang)
+    needs: download-models
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -117,8 +143,11 @@ jobs:
           chmod +x scripts/build_opencv.sh
           ./scripts/build_opencv.sh
 
-      - name: Download models
-        run: ./scripts/download_models.sh
+      - name: Retrieve models
+        uses: actions/download-artifact@v4
+        with:
+          name: ai-models
+          path: models
 
       - name: Install models to system
         run: |
@@ -142,6 +171,7 @@ jobs:
 
   build-aarch64:
     name: Build (aarch64)
+    needs: download-models
     runs-on: ubuntu-24.04-arm # Native ARM runner - faster than QEMU
     steps:
       - uses: actions/checkout@v6
@@ -167,8 +197,11 @@ jobs:
           chmod +x scripts/build_opencv.sh
           ./scripts/build_opencv.sh
 
-      - name: Download models
-        run: ./scripts/download_models.sh
+      - name: Retrieve models
+        uses: actions/download-artifact@v4
+        with:
+          name: ai-models
+          path: models
 
       - name: Install models to system
         run: |
@@ -198,6 +231,7 @@ jobs:
 
   build-i386:
     name: Build (i386)
+    needs: download-models
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -229,8 +263,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download models
-        run: ./scripts/download_models.sh
+      - name: Retrieve models
+        uses: actions/download-artifact@v4
+        with:
+          name: ai-models
+          path: models
 
       - name: Cache OpenCV Static
         id: cache-opencv
@@ -272,6 +309,7 @@ jobs:
 
   build-riscv64:
     name: Build (riscv64)
+    needs: download-models
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -303,8 +341,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download models
-        run: ./scripts/download_models.sh
+      - name: Retrieve models
+        uses: actions/download-artifact@v4
+        with:
+          name: ai-models
+          path: models
 
       - name: Cache OpenCV Static
         id: cache-opencv

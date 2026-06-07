@@ -67,6 +67,7 @@ public:
   }
 
   // Writes a user JSON file with a single embedding entry under embeddings_rgb.
+  // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) - local test helper; parameters are self-documenting.
   void writeUserWithEmbedding(const std::string &username,
                               const std::string &label) {
     std::string vec = makeDummyVec();
