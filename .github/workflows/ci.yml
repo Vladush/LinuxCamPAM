@@ -1,8 +1,5 @@
 name: CI
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 permissions:
   contents: read
   packages: write
@@ -46,7 +43,7 @@ jobs:
           test -s models/face_recognition_sface_2021dec.onnx
 
       - name: Upload models artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ai-models
           path: models/*.onnx
@@ -81,7 +78,7 @@ jobs:
           ./scripts/build_opencv.sh
 
       - name: Retrieve models
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ai-models
           path: models
@@ -144,7 +141,7 @@ jobs:
           ./scripts/build_opencv.sh
 
       - name: Retrieve models
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ai-models
           path: models
@@ -198,7 +195,7 @@ jobs:
           ./scripts/build_opencv.sh
 
       - name: Retrieve models
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ai-models
           path: models
@@ -240,6 +237,7 @@ jobs:
         uses: docker/setup-qemu-action@v4
         with:
           platforms: linux/386
+          cache-image: false
         continue-on-error: true
 
       - name: Set up QEMU (Retry)
@@ -247,6 +245,7 @@ jobs:
         uses: docker/setup-qemu-action@v4
         with:
           platforms: linux/386
+          cache-image: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -264,7 +263,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Retrieve models
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ai-models
           path: models
@@ -318,6 +317,7 @@ jobs:
         uses: docker/setup-qemu-action@v4
         with:
           platforms: linux/riscv64
+          cache-image: false
         continue-on-error: true
 
       - name: Set up QEMU (Retry)
@@ -325,6 +325,7 @@ jobs:
         uses: docker/setup-qemu-action@v4
         with:
           platforms: linux/riscv64
+          cache-image: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -342,7 +343,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Retrieve models
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ai-models
           path: models
