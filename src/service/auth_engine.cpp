@@ -711,6 +711,7 @@ AuthEngine::enrollUser(std::string_view username) {
   return {true, "Success"};
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 bool AuthEngine::setLabel(std::string_view username,
                           std::string_view label) {
   if (!linuxcampam::isValidUsername(username))
@@ -805,6 +806,7 @@ bool AuthEngine::setLabel(std::string_view username,
   return updated;
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 bool AuthEngine::trainUser(std::string_view username,
                            std::string_view label, bool create_new) {
   if (!ensureModelsLoaded())
@@ -952,6 +954,7 @@ AuthEngine::listEmbeddings(std::string_view username) {
   return {unique_labels.begin(), unique_labels.end()};
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 bool AuthEngine::removeEmbedding(std::string_view username,
                                  std::string_view label) {
   if (!linuxcampam::isValidUsername(username))
