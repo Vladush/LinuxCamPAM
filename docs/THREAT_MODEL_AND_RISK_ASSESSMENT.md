@@ -82,8 +82,8 @@ We use the STRIDE framework to analyze potential threats to the authentication p
 
 ### 3.7 Authorization Bypass (Physical Proximity)
 
-* **Threat:** The proximity lock/wake logic could trigger unintentionally due to environmental noise, or an attacker could physically access the machine during the `lock_timeout_seconds` window immediately after the legitimate user walks away.
-* **Mitigation:** Adjustable lock and wake confidence thresholds decouple the logic, preventing rapid toggling. Administrators in high-security environments should set `lock_timeout_seconds` to `0` or `1` to minimize the physical vulnerability window.
+* **Threat:** A user leaves their machine unattended. Under standard Desktop Environment conditions, the machine remains unlocked until the screensaver timeout triggers (often 5 to 15 minutes), leaving a massive vulnerability window for an opportunistic attacker with physical access.
+* **Mitigation:** LinuxCamPAM's proximity lock feature *drastically reduces* this vulnerability window. By aggressively polling for physical absence, it locks the machine within a configurable `lock_timeout_seconds` (default: 10s). While an attacker could theoretically access the machine during this short 10-second window, it represents a massive security improvement over relying on standard OS idle timers. Disabling the proximity lock feature simply reverts the system to the typical native OS behavior.
 
 ## 4. Risk Assessment Matrix
 
@@ -112,7 +112,7 @@ Overall Risk is calculated by combining **Likelihood** (Low, Medium, High) and *
 | **Elevation** | Unauthorized IPC Commands | Medium | High | **Low** | Yes | Implemented socket peer credential verification (`SO_PEERCRED`) in daemon to prevent unauthorized administration. |
 | **Elevation** | Virtual Hardware Injection (`uinput`) | Low | High | **Medium** | Yes | Kernel-level capability dropping restricts injection to `KEY_WAKEUP`. |
 | **Elevation** | Config Command Injection (`system()`) | Low | Critical | **Medium** | Yes | Relies on strict OS file permissions (`root:root`) for `config.ini`. |
-| **Bypass** | Physical Access during Lock Timeout | Medium | High | **High** | Partially | Mitigated by tuning `lock_timeout_seconds` and confidence thresholds. |
+| **Bypass** | Physical Access during OS Idle Timeout | High | High | **Critical** | Yes | LinuxCamPAM proximity lock reduces the typical native 5-15 minute vulnerability window down to seconds (`lock_timeout_seconds`). Disabling it reverts to typical OS behavior. |
 
 ## 5. Future Security Enhancements (Roadmap)
 
