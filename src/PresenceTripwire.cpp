@@ -72,7 +72,7 @@ void PresenceTripwire::poll_loop() noexcept {
             // log_debug("HID read " + std::to_string(bytes) + " bytes");
             if (auto state = parser_->parse_payload(buffer.data(), static_cast<size_t>(bytes))) {
                 if (callback_) {
-                    callback_(state->human_present, state->distance_cm);
+                    callback_(state->human_present, state->confidence_cm);
                 }
             } else {
                 log_debug("HID payload failed to parse.");

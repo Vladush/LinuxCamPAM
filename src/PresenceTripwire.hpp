@@ -12,7 +12,7 @@
 
 class PresenceTripwire {
 public:
-    using PresenceCallback = std::function<void(bool present, int distance)>;
+    using PresenceCallback = std::function<void(bool present, int confidence)>;
 
     explicit PresenceTripwire(const ISensorFactory& factory);
     ~PresenceTripwire() noexcept;

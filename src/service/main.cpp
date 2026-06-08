@@ -377,20 +377,20 @@ int main(int argc, char *argv[]) {
       hw_manager.emplace(i2c_addr);
       if (hw_manager->seize_sensor()) {
         if (std::optional<std::string> hidraw_node = hw_manager->get_hidraw_node(); hidraw_node) {
-          if (!tripwire.start(*hidraw_node, HardwareId(hw_id), [](bool present, int distance) {
+          if (!tripwire.start(*hidraw_node, HardwareId(hw_id), [](bool present, int confidence) {
             static bool last_state = false;
-            static int last_distance = 0;
+            static int last_confidence = 0;
             g_proximity_present.store(present);
             if (present != last_state) {
               if (present) {
-                log_info("Presence detected start at " + std::to_string(distance) + "cm");
+                log_info("Presence detected start at " + std::to_string(confidence) + "% confidence");
               } else {
-                log_info("Presence detected stop (last seen at " + std::to_string(last_distance) + "cm)");
+                log_info("Presence detected stop (last seen at " + std::to_string(last_confidence) + "% confidence)");
               }
               last_state = present;
             }
             if (present) {
-              last_distance = distance;
+              last_confidence = confidence;
             }
           })) {
             log_warn("Failed to start PresenceTripwire.");

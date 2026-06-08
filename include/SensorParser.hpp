@@ -5,7 +5,7 @@
 #include <optional>
 
 struct SensorState {
-    int distance_cm;
+    int confidence_cm;
     bool human_present;
 };
 

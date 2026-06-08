@@ -15,7 +15,7 @@ private:
     struct PayloadFormat {
         uint8_t magic;
         std::array<uint8_t, RESERVED_1_SIZE> reserved1;
-        uint8_t distance;
+        uint8_t confidence;
         std::array<uint8_t, RESERVED_2_SIZE> reserved2;
         uint8_t presence;
     };
@@ -30,7 +30,7 @@ public:
         std::memcpy(&payload, buffer, sizeof(PayloadFormat));
         
         if (payload.magic == MAGIC_BYTE) {
-            return SensorState{payload.distance, payload.presence == 1};
+            return SensorState{payload.confidence, payload.presence == 1};
         }
         return std::nullopt;
     }
