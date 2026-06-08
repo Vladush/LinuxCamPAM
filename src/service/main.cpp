@@ -7,9 +7,11 @@
 #include "HardwareManager.hpp"
 #include "SensorFactory.hpp"
 #include "PresenceTripwire.hpp"
+#include "VirtualKeyboard.hpp"
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <csignal>
 #include <filesystem>
 #include <optional>
@@ -280,11 +282,11 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  // Ensure run directory exists
+  // Ensure run directory exists.
   std::string socket_path = linuxcampam::SOCKET_PATH;
-  // In dev mode, maybe use local tmp if not root?
-  // For now assuming system service usage or sudo.
-  // Create directory for socket if needed
+  // Execution environments without root privileges might require a local temporary directory.
+  // System service usage with elevated privileges is assumed.
+  // Directory for socket is created if needed.
   fs::path p(socket_path);
   if (p.has_parent_path()) {
     fs::create_directories(p.parent_path());
@@ -300,7 +302,7 @@ int main(int argc, char *argv[]) {
   log_info("Starting LinuxCamPAM Service...");
   log_info("Loading Config: " + config_path);
 
-  // Wipe OpenCL cache - stale kernels cause hangs after Mesa updates
+  // OpenCL cache is wiped to prevent system hangs caused by stale kernels following Mesa updates.
   std::filesystem::path home = "/root";
   if (auto user_home = linuxcampam::getHomeDir(getuid())) {
     home = *user_home;
@@ -338,7 +340,7 @@ int main(int argc, char *argv[]) {
     Logger::setLogFile(cfg.log_file);
   }
 
-  // Enable syslog early so we capture hardware init logs
+  // Syslog is enabled early to capture hardware initialization logs
   Logger::enableSyslog("linuxcampamd");
 
   // Proximity Sensor Integration Lifecycle
@@ -377,9 +379,16 @@ int main(int argc, char *argv[]) {
       hw_manager.emplace(i2c_addr);
       if (hw_manager->seize_sensor()) {
         if (std::optional<std::string> hidraw_node = hw_manager->get_hidraw_node(); hidraw_node) {
-          if (!tripwire.start(*hidraw_node, HardwareId(hw_id), [](bool present, int confidence) {
+          // Initialize VirtualKeyboard for wake functionality
+          static VirtualKeyboard vkb;
+
+          if (!tripwire.start(*hidraw_node, HardwareId(hw_id), [&cfg](bool present, int confidence) {
             static bool last_state = false;
             static int last_confidence = 0;
+            static bool was_away = true;
+            static std::chrono::steady_clock::time_point absence_start;
+            static bool absence_timer_active = false;
+
             g_proximity_present.store(present);
             if (present != last_state) {
               if (present) {
@@ -392,6 +401,52 @@ int main(int argc, char *argv[]) {
             if (present) {
               last_confidence = confidence;
             }
+
+            // Wake Logic
+            if (cfg.wake_enabled && confidence >= cfg.wake_confidence_threshold) {
+              if (was_away) {
+                log_info("Wake threshold reached, waking screen...");
+                if (!vkb.emit_wakeup()) {
+                  log_warn("Failed to emit wake event via VirtualKeyboard");
+                }
+                was_away = false;
+              }
+            }
+
+            // Lock Logic
+            if (cfg.lock_enabled) {
+              if (confidence < cfg.lock_confidence_threshold || !present) {
+                if (!was_away) {
+                  if (!absence_timer_active) {
+                    absence_start = std::chrono::steady_clock::now();
+                    absence_timer_active = true;
+                  } else {
+                    auto now = std::chrono::steady_clock::now();
+                    auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - absence_start).count();
+                    if (duration >= cfg.lock_timeout_seconds) {
+                      log_info("Lock timeout reached (" + std::to_string(duration) + "s), locking screen...");
+                      // NOLINTNEXTLINE(cert-env33-c, concurrency-mt-unsafe)
+                      int ret = system(cfg.lock_command.c_str());
+                      if (ret != 0) {
+                        log_warn("Lock command returned non-zero exit code: " + std::to_string(ret));
+                      }
+                      was_away = true;
+                      absence_timer_active = false;
+                    }
+                  }
+                }
+              } else {
+                // Reset lock timer if confidence goes back up
+                absence_timer_active = false;
+              }
+            } else {
+              // If locking is disabled, the was_away state must still be maintained based on confidence drops 
+              // to ensure wake events can be triggered appropriately upon return.
+              if (confidence < cfg.lock_confidence_threshold || !present) {
+                was_away = true;
+              }
+            }
+
           })) {
             log_warn("Failed to start PresenceTripwire.");
           } else {
@@ -475,8 +530,7 @@ int main(int argc, char *argv[]) {
                  reinterpret_cast<socklen_t *>(&addrlen));
       // NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
       if (new_socket >= 0) {
-        // Handle in thread or blocking? Blocking for now - camera is
-        // single-access anyway
+        // Blocking execution is utilized; the camera enforces single-access exclusively.
         handle_client(new_socket, engine);
       }
     }

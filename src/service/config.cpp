@@ -84,9 +84,8 @@ bool Configuration::load(const fs::path &config_path,
                          const linuxcampam::ICameraBackend *backend) {
   std::ifstream file(config_path);
   if (!file.is_open()) {
-    // It's valid to load nothing/defaults if file missing?
-    // Existing code just returned empty map.
-    // Execution proceeds with an empty stream or just parsing empty.
+    // Loading defaults is considered valid if the file is absent.
+    // Execution proceeds with an empty stream.
     std::stringstream ss;
     return load(ss, backend);
   }
@@ -286,6 +285,14 @@ void Configuration::parse_ini_into_self(
   proximity_sensor_id = get("Hardware.proximity_sensor_id", "ITE8353");
   proximity_enforce = (get("Hardware.proximity_enforce", "false") == "true");
 
+  // Proximity Wake/Lock
+  wake_enabled = (get("Proximity.wake_enabled", "true") == "true");
+  if (auto val = parse_int(get("Proximity.wake_confidence_threshold", "50"))) wake_confidence_threshold = *val;
+  lock_enabled = (get("Proximity.lock_enabled", "false") == "true");
+  if (auto val = parse_int(get("Proximity.lock_confidence_threshold", "5"))) lock_confidence_threshold = *val;
+  if (auto val = parse_int(get("Proximity.lock_timeout_seconds", "10"))) lock_timeout_seconds = *val;
+  lock_command = get("Proximity.lock_command", "loginctl lock-sessions");
+
   // Other settings
   save_success = (get("Storage.save_success_images") == "true");
   save_fail = (get("Storage.save_fail_images") == "true");
@@ -297,10 +304,9 @@ void Configuration::parse_ini_into_self(
   // Int is used for parsing, then cast to uid_t
   int min_uid_int = linuxcampam::DEFAULT_MIN_UID;
   // Parse from [Security] section mostly
-  // Note: PAM module has specific fallback logic to [General], which should map
-  // similarly if needed or just trust [Security] as primary. Given PAM logic:
-  // [Security] > First Found > Default. Here it is explicitly looked for
-  // Security.min_uid first.
+  // Note: The PAM module implements specific fallback logic to [General], 
+  // mapping [Security] > First Found > Default. 
+  // Security.min_uid is explicitly prioritized here.
   std::string uid_str = get("Security.min_uid");
   if (uid_str.empty()) {
     uid_str = get("General.min_uid"); // Fallback check
@@ -340,6 +346,9 @@ std::string Configuration::toString() const {
   ss << "  Proximity Sensor: " << prox_mode_str << "\n";
   ss << "  Proximity Sensor ID: " << proximity_sensor_id << "\n";
   ss << "  Proximity Enforce: " << (proximity_enforce ? "true" : "false") << "\n";
+  ss << "  Wake Enabled: " << (wake_enabled ? "true" : "false") << " (Threshold: " << wake_confidence_threshold << "%)\n";
+  ss << "  Lock Enabled: " << (lock_enabled ? "true" : "false") << " (Threshold: " << lock_confidence_threshold << "%, Timeout: " << lock_timeout_seconds << "s)\n";
+  ss << "  Lock Command: " << lock_command << "\n";
   ss << "  Auth Policy: ";
   switch (policy) {
   case AuthPolicy::ADAPTIVE:

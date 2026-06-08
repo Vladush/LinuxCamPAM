@@ -74,6 +74,17 @@ We use the STRIDE framework to analyze potential threats to the authentication p
 * **Mitigation:** The daemon enforces `SO_PEERCRED` verification at the Unix socket layer, ensuring that administrative commands are only executed if the caller is `root` or matches the target user's UID. The CLI client also verifies privileges locally.
 * **Residual Risk:** Low. Protected by kernel-level socket credentials.
 
+* **Threat 3 (Virtual Hardware Injection):** The daemon uses `/dev/uinput` to emit virtual keystrokes (`KEY_WAKEUP`) for proximity waking. If the daemon is compromised, an attacker could attempt to leverage this file descriptor to inject arbitrary keystrokes (e.g., typing commands) into the host OS.
+* **Mitigation:** The daemon strictly drops capabilities during `VirtualKeyboard` initialization, registering only the `KEY_WAKEUP` bit. The kernel drops any attempts to inject unregistered keys, containing the blast radius.
+
+* **Threat 4 (Command Injection via Configuration):** The proximity lock feature executes the user-defined `lock_command` via `system()`. If an unprivileged attacker can modify `/etc/linuxcampam/config.ini`, they can append malicious shell commands that will be executed as `root`.
+* **Mitigation:** The configuration file must be strictly owned by `root:root` with `0644` or `0600` permissions. Host filesystem permissions are the primary defense barrier.
+
+### 3.7 Authorization Bypass (Physical Proximity)
+
+* **Threat:** The proximity lock/wake logic could trigger unintentionally due to environmental noise, or an attacker could physically access the machine during the `lock_timeout_seconds` window immediately after the legitimate user walks away.
+* **Mitigation:** Adjustable lock and wake confidence thresholds decouple the logic, preventing rapid toggling. Administrators in high-security environments should set `lock_timeout_seconds` to `0` or `1` to minimize the physical vulnerability window.
+
 ## 4. Risk Assessment Matrix
 
 ### 4.1 Methodology
@@ -99,6 +110,9 @@ Overall Risk is calculated by combining **Likelihood** (Low, Medium, High) and *
 | **DoS** | Auth Request Spamming | Low | Medium | **Low** | Partially | Per-user lockout after N failed auth attempts. |
 | **Elevation** | Buffer Overflow in Daemon | Low | Critical | **Medium** | Yes | Modern C++, sanitizers, strict socket parsing. |
 | **Elevation** | Unauthorized IPC Commands | Medium | High | **Low** | Yes | Implemented socket peer credential verification (`SO_PEERCRED`) in daemon to prevent unauthorized administration. |
+| **Elevation** | Virtual Hardware Injection (`uinput`) | Low | High | **Medium** | Yes | Kernel-level capability dropping restricts injection to `KEY_WAKEUP`. |
+| **Elevation** | Config Command Injection (`system()`) | Low | Critical | **Medium** | Yes | Relies on strict OS file permissions (`root:root`) for `config.ini`. |
+| **Bypass** | Physical Access during Lock Timeout | Medium | High | **High** | Partially | Mitigated by tuning `lock_timeout_seconds` and confidence thresholds. |
 
 ## 5. Future Security Enhancements (Roadmap)
 

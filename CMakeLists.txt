@@ -128,6 +128,7 @@ add_library(service_core STATIC
     src/service/config.cpp
     src/service/utils.cpp
     src/PresenceTripwire.cpp
+    src/VirtualKeyboard.cpp
 )
 target_include_directories(service_core PUBLIC include src src/common ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(service_core PUBLIC 
@@ -211,6 +212,7 @@ endif()
 if(TARGET gtest)
     add_executable(linuxcampam_tests
         tests/main.cpp
+        tests/test_virtual_keyboard.cpp
         tests/test_auth_config.cpp
         tests/test_model_version.cpp
         tests/test_embeddings.cpp
