@@ -107,6 +107,9 @@ proximity_enforce = false
 - **proximity_sensor_id**: The ACPI/I2C identifier for the sensor (default: `ITE8353`).
 - **proximity_enforce**: If `true`, authentication will instantly fail if the proximity sensor reports no human is present. If `false` (default), the sensor provides observational presence data without blocking authentication.
 
+> [!NOTE]
+> **Proximity Sensor Data Interpretation:** The ITE8353 is a proprietary hardware sensor. LinuxCamPAM parses its undocumented 12-byte HID protocol based on observed behavior. The 8th byte is interpreted as a **confidence score or timeout counter** (0-100%), not physical distance, because it counts down uniformly from 100 to 0 before triggering an "Away" state.
+
 ### Smart Defaults & Backward Compatibility
 
 ### Smart Setup Tool

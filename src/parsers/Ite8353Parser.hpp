@@ -15,7 +15,7 @@ private:
     struct PayloadFormat {
         uint8_t magic;
         std::array<uint8_t, RESERVED_1_SIZE> reserved1;
-        uint8_t confidence;
+        uint8_t confidence; // Note: Interpreted empirically as a confidence score or timeout (0-100), not a physical distance.
         std::array<uint8_t, RESERVED_2_SIZE> reserved2;
         uint8_t presence;
     };
