@@ -34,7 +34,7 @@ inline constexpr int CAMERA_RGB_WEIGHT = 40;
 inline constexpr int DEFAULT_MIN_BRIGHTNESS = 40;
 inline constexpr int CAPTURE_RETRY_ATTEMPTS = 3;
 
-inline constexpr float MIRROR_THRESHOLD_DEFAULT = 0.6f; // detection confidence
+inline constexpr float MIRROR_THRESHOLD_DEFAULT = 0.6f;
 inline constexpr int MIRROR_SIZE = 640;
-inline constexpr int MIRROR_NMS = 5000; // keep top K bboxes before NMS .
-} // namespace linuxcampam
+inline constexpr int MIRROR_NMS = 5000;
+}
