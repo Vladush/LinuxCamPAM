@@ -377,10 +377,16 @@ int main(int argc, char *argv[]) {
       hw_manager.emplace(i2c_addr);
       if (hw_manager->seize_sensor()) {
         if (std::optional<std::string> hidraw_node = hw_manager->get_hidraw_node(); hidraw_node) {
-          if (!tripwire.start(*hidraw_node, HardwareId(hw_id), [](bool present, int distance) {
+          if (!tripwire.start(*hidraw_node, HardwareId(hw_id), [](bool present, [[maybe_unused]] int distance) {
+            static bool last_state = false;
             g_proximity_present.store(present);
-            if (present) {
-              log_debug("Target present at " + std::to_string(distance) + "cm. Waking camera loop.");
+            if (present != last_state) {
+              if (present) {
+                log_info("Presence detected start");
+              } else {
+                log_info("Presence detected stop");
+              }
+              last_state = present;
             }
           })) {
             log_warn("Failed to start PresenceTripwire.");
