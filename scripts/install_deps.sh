@@ -12,6 +12,6 @@ sudo apt-get install -y \
     wget \
     clang \
     ninja-build \
-    v4l-utils libudev-dev
+    v4l-utils libudev-dev libgmock-dev pkg-config
 
 echo "Dependencies installed."

@@ -84,14 +84,25 @@ if(NOT PAM_LIBRARY OR NOT PAM_INCLUDE_DIR)
     message(FATAL_ERROR "PAM library or headers not found. Install libpam0g-dev.")
 endif()
 
-include(FetchContent)
-set(HIDAPI_WITH_LIBUSB OFF CACHE BOOL "" FORCE)
-FetchContent_Declare(
-  hidapi
-  URL https://github.com/libusb/hidapi/archive/refs/tags/hidapi-0.14.0.tar.gz
-  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-)
-FetchContent_MakeAvailable(hidapi)
+find_package(PkgConfig QUIET)
+if(PKG_CONFIG_FOUND)
+    pkg_check_modules(HIDAPI IMPORTED_TARGET hidapi-hidraw)
+endif()
+
+if(TARGET PkgConfig::HIDAPI)
+    message(STATUS "Found system HIDAPI (hidraw)")
+    add_library(hidapi_hidraw ALIAS PkgConfig::HIDAPI)
+else()
+    message(STATUS "System HIDAPI not found, fetching from GitHub...")
+    include(FetchContent)
+    set(HIDAPI_WITH_LIBUSB OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+      hidapi
+      URL https://github.com/libusb/hidapi/archive/refs/tags/hidapi-0.14.0.tar.gz
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    FetchContent_MakeAvailable(hidapi)
+endif()
 
 # ONNX Runtime finding removed in favor of OpenCV DNN
 

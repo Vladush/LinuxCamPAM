@@ -2,7 +2,7 @@ Source: linuxcampam
 Section: admin
 Priority: optional
 Maintainer: Vladimir Orlinski <contact.github.submerge594@slmails.com>
-Build-Depends: debhelper-compat (= 13), cmake, libpam0g-dev, nlohmann-json3-dev
+Build-Depends: debhelper-compat (= 13), cmake, libpam0g-dev, nlohmann-json3-dev, libhidapi-dev, libgtest-dev, libgmock-dev, pkg-config
 Standards-Version: 4.6.2
 Homepage: https://github.com/Vladush/LinuxCamPAM
 

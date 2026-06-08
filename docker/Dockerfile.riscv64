@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libjsoncpp-dev \
     nlohmann-json3-dev \
     libgtest-dev \
-    v4l-utils libudev-dev \
+    v4l-utils libudev-dev libgmock-dev pkg-config \
     pandoc \
     git \
     wget \
@@ -83,7 +83,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpam0g \
     libpam-runtime \
-    v4l-utils libudev-dev \
+    v4l-utils libudev-dev libgmock-dev pkg-config \
     libgfortran5 \
     libgomp1 \
     libatomic1 \
