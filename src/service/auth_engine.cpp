@@ -35,7 +35,7 @@ static std::optional<json> loadUserJsonSafe(const fs::path& user_file) {
     f >> j;
     return j;
   } catch (const json::parse_error& e) {
-    Logger::log(LogLevel::ERROR, "JSON parse error in " + user_file.string() + ": " + e.what());
+    log_error("JSON parse error in " + user_file.string() + ": " + e.what());
     return std::nullopt;
   }
 }
@@ -66,7 +66,7 @@ inline std::string getModelVersion(const fs::path &model_path) {
 
 // Check for explicit legacy behavior, otherwise skip
 
-// We set up a default factory here that creates real Camera objects.
+// A default factory is set up here to create real Camera objects.
 // Tests can override this later using setCameraFactory().
 AuthEngine::AuthEngine() {
   camera_factory_ = [this](const Configuration::CameraDefinition &def) {
@@ -200,7 +200,7 @@ bool AuthEngine::loadModels() {
 
 void AuthEngine::unloadModels() {
   if (detector) {
-    Logger::log(LogLevel::INFO, "Unloading AI models to save RAM.");
+    log_info("Unloading AI models to save RAM.");
     detector.release();
     recognizer.release();
   }
@@ -209,7 +209,7 @@ void AuthEngine::unloadModels() {
 
 bool AuthEngine::ensureModelsLoaded() {
   if (!detector) {
-    Logger::log(LogLevel::INFO, "Wake up! Reloading models...");
+    log_info("Wake up! Reloading models...");
     return loadModels();
   }
   // Refresh activity
@@ -234,7 +234,7 @@ bool AuthEngine::performMaintenance() {
 }
 
 void AuthEngine::fallbackToCPU() {
-  Logger::log(LogLevel::WARN, "Attempting fallback to CPU backend...");
+  log_warn("Attempting fallback to CPU backend...");
   try {
     detector = cv::FaceDetectorYN::create(
         detection_model_path, "",
@@ -245,10 +245,9 @@ void AuthEngine::fallbackToCPU() {
     recognizer = cv::FaceRecognizerSF::create(recognition_model_path, "",
                                               cv::dnn::DNN_BACKEND_OPENCV,
                                               cv::dnn::DNN_TARGET_CPU);
-    Logger::log(LogLevel::INFO, "Successfully switched to CPU backend.");
+    log_info("Successfully switched to CPU backend.");
   } catch (const cv::Exception &e) {
-    Logger::log(LogLevel::ERROR,
-                "Failed to switch to CPU backend: " + std::string(e.what()));
+    log_error("Failed to switch to CPU backend: " + std::string(e.what()));
   }
 }
 
@@ -267,15 +266,13 @@ int AuthEngine::generateEmbedding(const cv::Mat &frame,
 
     int num_faces = faces.rows;
     if (num_faces == 0) {
-      Logger::log(LogLevel::WARN,
-                  "Profiling: Detection complete. 0 faces found above threshold (" +
+      log_warn("Profiling: Detection complete. 0 faces found above threshold (" +
                   std::to_string(config.detection_threshold) +
                   "). If using IR camera, try lowering detection_threshold to 0.5 in config.ini.");
     } else {
       constexpr int FACE_SCORE_INDEX = 14;
       float best_score = faces.at<float>(0, FACE_SCORE_INDEX);
-      Logger::log(LogLevel::INFO,
-                  "Profiling: Detection complete. Faces: " + std::to_string(num_faces) +
+      log_info("Profiling: Detection complete. Faces: " + std::to_string(num_faces) +
                   " | Best score: " + std::to_string(best_score) +
                   " | Threshold: " + std::to_string(config.detection_threshold));
     }
@@ -305,7 +302,7 @@ int AuthEngine::generateEmbedding(const cv::Mat &frame,
     return run_inference();
   } catch (const cv::Exception &e) {
     if (cv::ocl::useOpenCL()) {
-      Logger::log(LogLevel::WARN, "OpenCL failure, switching to CPU: " + std::string(e.what()));
+      log_warn("OpenCL failure, switching to CPU: " + std::string(e.what()));
       cv::ocl::setUseOpenCL(false);
       fallbackToCPU();
       return run_inference();
@@ -379,8 +376,7 @@ AuthResult AuthEngine::verifyUserCore(std::string_view username,
       }
       if (config.policy == Configuration::AuthPolicy::ADAPTIVE &&
           ac.config.mandatory) {
-        Logger::log(LogLevel::WARN,
-                    "Critical Mandatory Camera " + id + " failed. Abort.");
+        log_warn("Critical Mandatory Camera " + id + " failed. Abort.");
         result.reason = "Mandatory Camera " + id + " failed";
         return result;
       }
@@ -398,8 +394,7 @@ AuthResult AuthEngine::verifyUserCore(std::string_view username,
 
         if (config.policy == Configuration::AuthPolicy::ADAPTIVE &&
             ac.config.mandatory) {
-          Logger::log(LogLevel::WARN,
-                      "Mandatory Camera " + id + " is too dark. Failing.");
+          log_warn("Mandatory Camera " + id + " is too dark. Failing.");
           result.reason = "Mandatory Camera " + id + " too dark";
           return result;
         }
@@ -450,9 +445,10 @@ AuthResult AuthEngine::verifyUserCore(std::string_view username,
 
       // Match against all embeddings
       // Using direct match logic for efficiency
-      for (const auto &emb_vec : all_embeddings) {
-        cv::Mat emb_ref(1, static_cast<int>(emb_vec.size()), CV_32F);
-        std::copy(emb_vec.begin(), emb_vec.end(), emb_ref.ptr<float>());
+      for (auto &emb_vec : all_embeddings) {
+        // A non-const reference is used to avoid const_cast since cv::Mat constructor requires a non-const pointer.
+        // cv::FaceRecognizerSF::match treats inputs as read-only. Avoids allocations per embedding.
+        cv::Mat emb_ref(1, static_cast<int>(emb_vec.size()), CV_32F, emb_vec.data());
         float score = static_cast<float>(recognizer->match(
             curr_emb, emb_ref, cv::FaceRecognizerSF::FR_COSINE));
         if (score > best_camera_score)
@@ -484,7 +480,7 @@ AuthResult AuthEngine::verifyUserCore(std::string_view username,
   result.best_score = overall_best_score;
 
   if (participants == 0) {
-    Logger::log(LogLevel::WARN, "No cameras verified (all failed or skipped).");
+    log_warn("No cameras verified (all failed or skipped).");
     result.reason = "No cameras participated";
     return result;
   }
@@ -533,7 +529,7 @@ bool AuthEngine::verifyUser(std::string_view username) {
           full_msg += " (Score: " + std::to_string(score) + ")";
 
         if (success) {
-          Logger::log(LogLevel::INFO, full_msg);
+          log_info(full_msg);
           if (config.save_success) {
             std::string fn =
                 (config.log_dir / ("success_" + id + "_" + std::string(username) + ".jpg")).string();
@@ -541,7 +537,7 @@ bool AuthEngine::verifyUser(std::string_view username) {
               cv::imwrite(fn, frame);
           }
         } else {
-          Logger::log(LogLevel::WARN, full_msg);
+          log_warn(full_msg);
           if (config.save_fail) {
             std::string prefix = (msg == "NO_FACE_DETECTED") ? "fail_"
                                  : (msg == "No embeddings found")
@@ -574,7 +570,7 @@ AuthResult AuthEngine::verifyUserWithDetails(std::string_view username) {
       full_msg += " (Score: " + std::to_string(score) + ")";
 
     if (success) {
-      Logger::log(LogLevel::INFO, full_msg);
+      log_info(full_msg);
       if (config.save_success) {
         std::string fn =
             (config.log_dir / ("success_test_" + id + "_" + std::string(username) + ".jpg")).string();
@@ -582,7 +578,7 @@ AuthResult AuthEngine::verifyUserWithDetails(std::string_view username) {
           cv::imwrite(fn, frame);
       }
     } else {
-      Logger::log(LogLevel::WARN, full_msg);
+      log_warn(full_msg);
       // Save fail images based on configuration
       if (config.save_fail) {
         std::string prefix = (msg == "NO_FACE_DETECTED") ? "fail_"
@@ -593,7 +589,7 @@ AuthResult AuthEngine::verifyUserWithDetails(std::string_view username) {
             (config.log_dir / (prefix + "test_" + id + "_" + std::string(username) + ".jpg")).string();
         if (!frame.empty()) {
           cv::imwrite(fn, frame);
-          Logger::log(LogLevel::DEBUG, "Saved test fail image to: " + fn);
+          log_debug("Saved test fail image to: " + fn);
         }
       }
     }
@@ -620,13 +616,13 @@ AuthEngine::enrollUser(std::string_view username) {
     j["created"] = std::time(nullptr);
   }
 
-  Logger::log(LogLevel::INFO, "Enrolling user " + std::string(username) + " across " +
+  log_info("Enrolling user " + std::string(username) + " across " +
                                   std::to_string(active_cameras.size()) +
                                   " cameras.");
 
   for (auto &ac : active_cameras) {
     std::string id = ac.config.id;
-    Logger::log(LogLevel::DEBUG, "Capturing from " + id + "...");
+    log_debug("Capturing from " + id + "...");
 
     // Use enhanced capture for enrollment
     // Per-camera settings override global if set
@@ -650,7 +646,7 @@ AuthEngine::enrollUser(std::string_view username) {
     }
 
     if (frame.empty()) {
-      Logger::log(LogLevel::ERROR, "Camera " + id + " failed. Enroll aborted.");
+      log_error("Camera " + id + " failed. Enroll aborted.");
       return {false, "Camera " + id + " failed (empty frame)."};
     }
 
@@ -670,7 +666,7 @@ AuthEngine::enrollUser(std::string_view username) {
       err += ". Expecting exactly 1.";
 
       double brightness = calculateBrightness(frame);
-      Logger::log(LogLevel::WARN, "Enroll failed: " + err +
+      log_warn("Enroll failed: " + err +
                                       " | Frame: " +
                                       std::to_string(frame.cols) + "x" +
                                       std::to_string(frame.rows) +
@@ -686,11 +682,10 @@ AuthEngine::enrollUser(std::string_view username) {
       fail_filename += std::string(username);
       fail_filename += ".jpg";
       if (cv::imwrite(fail_filename, frame)) {
-        Logger::log(LogLevel::INFO,
-                    "Debug frame saved: " + fail_filename +
+        log_info("Debug frame saved: " + fail_filename +
                         " - inspect to verify camera output.");
       } else {
-        Logger::log(LogLevel::WARN, "Could not save debug frame: " + fail_filename);
+        log_warn("Could not save debug frame: " + fail_filename);
       }
 
       return {false, err};
@@ -701,13 +696,20 @@ AuthEngine::enrollUser(std::string_view username) {
     j[pending_key] = vec;
   }
 
-  Logger::log(LogLevel::INFO, "Saving pending enrollment...");
+  log_info("Saving pending enrollment...");
   fs::create_directories(config.users_dir);
-  std::ofstream out(user_file);
+  std::string tmp_file = std::string(user_file) + ".tmp";
+  std::ofstream out(tmp_file);
   out << j.dump(4);
   out.close();
-  chmod(user_file.c_str(),
+  if (out.fail()) {
+    log_error("Failed to write user file");
+    fs::remove(tmp_file);
+    return {false, "Write failed"};
+  }
+  chmod(tmp_file.c_str(),
         linuxcampam::SECURE_FILE_MODE); // Restrict to root-only
+  fs::rename(tmp_file, user_file);
   return {true, "Success"};
 }
 
@@ -762,8 +764,7 @@ bool AuthEngine::setLabel(std::string_view username,
           (*it)["created"] = std::time(nullptr);
           (*it)["model_version"] = getModelVersion(recognition_model_path);
         } else {
-          Logger::log(LogLevel::WARN,
-                      "Max embeddings (" +
+          log_warn("Max embeddings (" +
                           std::to_string(config.max_embeddings) +
                           ") reached for " + std::string(username));
           return false;
@@ -796,12 +797,19 @@ bool AuthEngine::setLabel(std::string_view username,
   }
 
   if (updated) {
-    std::ofstream out(user_file);
+    std::string tmp_file = std::string(user_file) + ".tmp";
+    std::ofstream out(tmp_file);
     out << j.dump(4);
     out.close();
-    chmod(user_file.c_str(),
+    if (out.fail()) {
+      log_error("Failed to write user file");
+      fs::remove(tmp_file);
+      return false;
+    }
+    chmod(tmp_file.c_str(),
           linuxcampam::SECURE_FILE_MODE); // Restrict to root-only
-    Logger::log(LogLevel::INFO, "Set label '" + std::string(label) + "' for " + std::string(username));
+    fs::rename(tmp_file, user_file);
+    log_info("Set label '" + std::string(label) + "' for " + std::string(username));
   }
   return updated;
 }
@@ -862,7 +870,7 @@ bool AuthEngine::trainUser(std::string_view username,
       if (config.max_embeddings > 0 &&
           j[emb_array_key].size() >=
               static_cast<size_t>(config.max_embeddings)) {
-        Logger::log(LogLevel::WARN, "Max embeddings reached for " + std::string(username));
+        log_warn("Max embeddings reached for " + std::string(username));
         return false;
       }
       json entry;
@@ -872,7 +880,7 @@ bool AuthEngine::trainUser(std::string_view username,
       entry["data"] = new_vec;
       entry["created"] = std::time(nullptr);
       j[emb_array_key].push_back(entry);
-      Logger::log(LogLevel::INFO, "Train: Added new embedding '" +
+      log_info("Train: Added new embedding '" +
                                       entry["label"].get<std::string>() + "'");
       updated_any = true;
     } else {
@@ -894,8 +902,7 @@ bool AuthEngine::trainUser(std::string_view username,
           entry["data"] = avg_vec;
           entry["created"] = std::time(nullptr);
           found = true;
-          Logger::log(LogLevel::INFO,
-                      "Train: Refined embedding '" + std::string(label) + "'");
+          log_info("Train: Refined embedding '" + std::string(label) + "'");
           updated_any = true;
           break;
         }
@@ -907,19 +914,25 @@ bool AuthEngine::trainUser(std::string_view username,
         entry["data"] = new_vec;
         entry["created"] = std::time(nullptr);
         j[emb_array_key].push_back(entry);
-        Logger::log(LogLevel::INFO,
-                    "Train: Created new embedding '" + std::string(label) + "'");
+        log_info("Train: Created new embedding '" + std::string(label) + "'");
         updated_any = true;
       }
     }
   }
 
   if (updated_any) {
-    std::ofstream out(user_file);
+    std::string tmp_file = std::string(user_file) + ".tmp";
+    std::ofstream out(tmp_file);
     out << j.dump(4);
     out.close();
-    chmod(user_file.c_str(),
+    if (out.fail()) {
+      log_error("Failed to write user file");
+      fs::remove(tmp_file);
+      return false;
+    }
+    chmod(tmp_file.c_str(),
           linuxcampam::SECURE_FILE_MODE); // Restrict to root-only
+    fs::rename(tmp_file, user_file);
   }
   return updated_any;
 }
@@ -983,13 +996,19 @@ bool AuthEngine::removeEmbedding(std::string_view username,
   }
 
   if (removed) {
-    std::ofstream out(user_file);
+    std::string tmp_file = std::string(user_file) + ".tmp";
+    std::ofstream out(tmp_file);
     out << j.dump(4);
     out.close();
-    chmod(user_file.c_str(),
+    if (out.fail()) {
+      log_error("Failed to write user file");
+      fs::remove(tmp_file);
+      return false;
+    }
+    chmod(tmp_file.c_str(),
           linuxcampam::SECURE_FILE_MODE); // Restrict to root-only
-    Logger::log(LogLevel::INFO,
-                "Removed embedding '" + std::string(label) + "' for " + std::string(username));
+    fs::rename(tmp_file, user_file);
+    log_info("Removed embedding '" + std::string(label) + "' for " + std::string(username));
   }
   return removed;
 }
@@ -998,54 +1017,51 @@ bool AuthEngine::testCameraAndAuth() {
   if (!ensureModelsLoaded())
     return false;
   bool any_ok = false;
-  Logger::log(LogLevel::INFO,
-              "Testing " + std::to_string(active_cameras.size()) + " cameras.");
+  log_info("Testing " + std::to_string(active_cameras.size()) + " cameras.");
 
   for (auto &ac : active_cameras) {
     std::string id = ac.config.id;
-    Logger::log(LogLevel::INFO, "Testing Camera " + id + "...");
+    log_info("Testing Camera " + id + "...");
     cv::Mat frame = captureFrame(ac.cam.get());
     if (!frame.empty()) {
       cv::Mat processed = frame;
 
-      Logger::log(LogLevel::INFO,
-                  "Frame Props: " + std::to_string(processed.cols) + "x" +
+      log_info("Frame Props: " + std::to_string(processed.cols) + "x" +
                       std::to_string(processed.rows) +
                       " Type=" + std::to_string(processed.type()) +
                       " Channels=" + std::to_string(processed.channels()));
 
       if (processed.channels() == 1) {
-        Logger::log(LogLevel::INFO, "Converting GRAY to BGR for detection");
+        log_info("Converting GRAY to BGR for detection");
         cv::cvtColor(processed, processed, cv::COLOR_GRAY2BGR);
       } else if (processed.channels() == 4) {
-        Logger::log(LogLevel::INFO, "Converting BGRA to BGR for detection");
+        log_info("Converting BGRA to BGR for detection");
         cv::cvtColor(processed, processed, cv::COLOR_BGRA2BGR);
       }
 
       try {
-        Logger::log(LogLevel::INFO, "Running detector on frame...");
+        log_info("Running detector on frame...");
         cv::Mat faces;
         detector->detect(processed, faces);
         any_ok = true;
 
         // Visualize result
         if (faces.rows > 0) {
-          Logger::log(LogLevel::INFO, "Detected " + std::to_string(faces.rows) +
+          log_info("Detected " + std::to_string(faces.rows) +
                                           " faces on Camera " + id);
         } else {
-          Logger::log(LogLevel::INFO, "No faces detected on Camera " + id);
+          log_info("No faces detected on Camera " + id);
         }
       } catch (const cv::Exception &e) {
-        Logger::log(LogLevel::ERROR, "OpenCV Exception handling TEST_AUTH: " +
+        log_error("OpenCV Exception handling TEST_AUTH: " +
                                          std::string(e.what()));
       } catch (const std::exception &e) {
-        Logger::log(LogLevel::ERROR,
-                    "Exception handling TEST_AUTH: " + std::string(e.what()));
+        log_error("Exception handling TEST_AUTH: " + std::string(e.what()));
       } catch (...) {
-        Logger::log(LogLevel::ERROR, "Unknown Exception handling TEST_AUTH");
+        log_error("Unknown Exception handling TEST_AUTH");
       }
     } else {
-      Logger::log(LogLevel::ERROR, "  -> Capture Failed.");
+      log_error("  -> Capture Failed.");
     }
   }
 
@@ -1078,7 +1094,7 @@ void AuthEngine::recordAuthAttempt(std::string_view username, bool success) {
     if (state.failed_attempts >= config.lockout_attempts) {
       state.lockout_until = std::chrono::steady_clock::now() +
                             std::chrono::seconds(config.lockout_duration_sec);
-      Logger::log(LogLevel::WARN, std::string(username) + " locked out");
+      log_warn(std::string(username) + " locked out");
     }
   }
 }
