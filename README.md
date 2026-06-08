@@ -139,6 +139,7 @@ These are required to **compile** the project from source (Options B & C).
 | :--------------------------- | :------------------------------------------ |
 | `cmake`, `build-essential`   | Build system                                |
 | `libpam0g-dev`               | PAM module development headers              |
+| `libudev-dev`                | Required for HIDAPI proximity sensor support|
 | `v4l-utils`                  | Camera detection tools (also a runtime dep) |
 | `curl` / `wget`              | Downloading models and dependencies         |
 | `ninja-build` *(optional)*   | Faster builds (recommended)                 |

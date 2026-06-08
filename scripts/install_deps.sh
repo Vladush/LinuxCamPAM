@@ -12,6 +12,6 @@ sudo apt-get install -y \
     wget \
     clang \
     ninja-build \
-    v4l-utils
+    v4l-utils libudev-dev
 
 echo "Dependencies installed."

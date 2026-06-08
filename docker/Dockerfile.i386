@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y \
     libjsoncpp-dev \
     nlohmann-json3-dev \
     libgtest-dev \
-    v4l-utils \
+    v4l-utils libudev-dev \
     pandoc \
     git \
     wget \
@@ -85,7 +85,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     libpam0g \
     libpam-runtime \
-    v4l-utils \
+    v4l-utils libudev-dev \
     systemd \
     libgfortran5 \
     libatlas3-base \
