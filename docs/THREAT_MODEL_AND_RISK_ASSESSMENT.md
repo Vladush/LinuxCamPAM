@@ -71,8 +71,8 @@ We use the STRIDE framework to analyze potential threats to the authentication p
   * Compiler hardening (PIE, Stack Canaries).
 
 * **Threat 2 (Unauthorized IPC Command Execution):** The IPC socket (`/run/linuxcampam/socket`) is world-writable (`0666`) to allow unprivileged local users to request authentication. An attacker can connect directly to the socket and issue administrative commands (e.g., `REMOVE_EMBEDDING`, `TRAIN_USER`, `SET_LOG_LEVEL`) to tamper with or disable authentication for other users.
-* **Mitigation:** The CLI client verifies privileges locally (e.g., requiring root/sudo for multi-user operations), but the daemon does not currently enforce peer credential ownership at the Unix socket layer.
-* **Residual Risk:** High risk of local denial of service (deletion of face embeddings) or unauthorized enrollment if an attacker has shell access to the machine.
+* **Mitigation:** The daemon enforces `SO_PEERCRED` verification at the Unix socket layer, ensuring that administrative commands are only executed if the caller is `root` or matches the target user's UID. The CLI client also verifies privileges locally.
+* **Residual Risk:** Low. Protected by kernel-level socket credentials.
 
 ## 4. Risk Assessment Matrix
 
@@ -98,7 +98,7 @@ Overall Risk is calculated by combining **Likelihood** (Low, Medium, High) and *
 | **Info Disclosure** | Biometric Embedding Theft | Low | High | **Medium** | Partially | Secured by root-only filesystem permissions. (Encryption planned, see [Roadmap #8](#5-future-security-enhancements-roadmap)) |
 | **DoS** | Auth Request Spamming | Low | Medium | **Low** | Partially | Per-user lockout after N failed auth attempts. |
 | **Elevation** | Buffer Overflow in Daemon | Low | Critical | **Medium** | Yes | Modern C++, sanitizers, strict socket parsing. |
-| **Elevation** | Unauthorized IPC Commands | Medium | High | **High** | No | Lacks socket peer credential verification (`SO_PEERCRED`) in daemon to prevent socket DoS. (Verification planned, see [Roadmap #7](#5-future-security-enhancements-roadmap)) |
+| **Elevation** | Unauthorized IPC Commands | Medium | High | **Low** | Yes | Implemented socket peer credential verification (`SO_PEERCRED`) in daemon to prevent unauthorized administration. |
 
 ## 5. Future Security Enhancements (Roadmap)
 
@@ -110,6 +110,5 @@ To further harden the LinuxCamPAM architecture, the following enhancements are p
 4. **Configurable Logging Restrictions:** Allow administrators to disable the logging of usernames in production to prevent identity leakage via syslog.
 5. **Hardware ID Verification:** Validate USB Vendor ID (VID), Product ID (PID), and unique Serial Number (where supported by UVC descriptors) to detect and block unauthorized camera hardware swaps.
 6. **Active Liveness Detection (Challenge-Response):** Implement randomized user prompts (e.g., "blink", "turn head") to thwart video replay injection attacks by forcing unpredictable live interaction.
-7. **IPC Socket Peer Verification:** Implement `SO_PEERCRED` checks in the daemon to verify that only root or the corresponding target user can issue administrative commands.
-8. **Embedding Encryption & Hardware Binding:** Encrypt user embedding files locally using a host key or hardware-backed key (via TPM) to protect them from offline extraction and relocation.
-9. **Privilege Separation:** Transition the daemon from running as `root` to a dedicated `linuxcampam` service user, with hardware access restricted via standard Linux groups (`video`, `render`).
+7. **Embedding Encryption & Hardware Binding:** Encrypt user embedding files locally using a host key or hardware-backed key (via TPM) to protect them from offline extraction and relocation.
+8. **Privilege Separation:** Transition the daemon from running as `root` to a dedicated `linuxcampam` service user, with hardware access restricted via standard Linux groups (`video`, `render`).

@@ -84,7 +84,27 @@ if(NOT PAM_LIBRARY OR NOT PAM_INCLUDE_DIR)
     message(FATAL_ERROR "PAM library or headers not found. Install libpam0g-dev.")
 endif()
 
-# ONNX Runtime finding removed as we use OpenCV DNN
+find_package(PkgConfig QUIET)
+if(PKG_CONFIG_FOUND)
+    pkg_check_modules(HIDAPI IMPORTED_TARGET hidapi-hidraw)
+endif()
+
+if(TARGET PkgConfig::HIDAPI)
+    message(STATUS "Found system HIDAPI (hidraw)")
+    add_library(hidapi_hidraw ALIAS PkgConfig::HIDAPI)
+else()
+    message(STATUS "System HIDAPI not found, fetching from GitHub...")
+    include(FetchContent)
+    set(HIDAPI_WITH_LIBUSB OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+      hidapi
+      URL https://github.com/libusb/hidapi/archive/refs/tags/hidapi-0.14.0.tar.gz
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    FetchContent_MakeAvailable(hidapi)
+endif()
+
+# ONNX Runtime finding removed in favor of OpenCV DNN
 
 
 # JSON (nlohmann/json) - use system if available, else vendored
@@ -107,12 +127,14 @@ add_library(service_core STATIC
     src/service/camera.cpp
     src/service/config.cpp
     src/service/utils.cpp
+    src/PresenceTripwire.cpp
 )
 target_include_directories(service_core PUBLIC include src src/common ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(service_core PUBLIC 
     ${OpenCV_LIBS} 
     Threads::Threads
     stdc++fs
+    hidapi_hidraw
 )
 
 if(nlohmann_json_FOUND)
@@ -120,7 +142,7 @@ if(nlohmann_json_FOUND)
 endif()
 
 # Auth Service
-add_executable(linuxcampamd src/service/main.cpp)
+add_executable(linuxcampamd src/service/main.cpp src/HardwareManager.cpp)
 target_link_libraries(linuxcampamd PRIVATE service_core)
 
 # CLI Tool
@@ -153,7 +175,7 @@ endif()
 # Try to find system-installed GTest and GMock first
 find_package(GTest QUIET)
 
-# We require both GTest and GMock targets to use the system version
+# Both GTest and GMock targets are required to use the system version
 if(TARGET GTest::gtest AND TARGET GTest::gmock)
     message(STATUS "Found system GTest and GMock: ${GTest_VERSION}")
     
@@ -172,7 +194,7 @@ if(TARGET GTest::gtest AND TARGET GTest::gmock)
 else()
     message(STATUS "System GTest/GMock incomplete or missing, fetching from GitHub (archive)...")
     
-    # Prevent GTest from installing its files when we run `cpack` or `make install`
+    # Prevent GTest from installing its files during `cpack` or `make install`
     set(INSTALL_GTEST OFF CACHE BOOL "Disable installation of googletest" FORCE)
     set(INSTALL_GMOCK OFF CACHE BOOL "Disable installation of gmock" FORCE)
     
@@ -201,7 +223,7 @@ if(TARGET gtest)
         tests/test_pam_logic.cpp
     )
     
-    # We link against the service_core library to test internal logic without 
+    # The tests link against the service_core library to test internal logic without 
     # duplicating compilation units or pulling in the main service entry point.
     target_link_libraries(linuxcampam_tests PRIVATE 
         gtest gtest_main gmock
@@ -270,8 +292,8 @@ set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 
 set(CPACK_GENERATOR "DEB")
 # Runtime dependencies (not -dev packages) for Ubuntu 24.04
-# OpenCV is statically linked, so we don't need libopencv-* packages
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libpam0g, libpam-runtime, v4l-utils, libgfortran5, libatlas3-base, libatomic1")
+# OpenCV is statically linked, avoiding the need for libopencv-* packages
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libpam0g, libpam-runtime, v4l-utils, libgfortran5, libatlas3-base, libatomic1, libhidapi-hidraw0")
 set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "rocm-opencl-runtime | intel-opencl-icd | nvidia-opencl-icd-340 | nvidia-opencl-icd")
 
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_SOURCE_DIR}/debian/postinst")
@@ -287,7 +309,7 @@ if(PANDOC_EXECUTABLE)
         COMMENT "Generating man pages..."
     )
 
-    # Note: installation is evaluated at CMake configure time, so we must
+    # Note: installation is evaluated at CMake configure time, thus it must
     # specify the expected generated files explicitly since globs might be empty
     set(MAN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/docs/man/generated")
     install(FILES

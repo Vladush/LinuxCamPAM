@@ -86,7 +86,7 @@ bool Configuration::load(const fs::path &config_path,
   if (!file.is_open()) {
     // It's valid to load nothing/defaults if file missing?
     // Existing code just returned empty map.
-    // We'll proceed with empty stream or just call parse with empty.
+    // Execution proceeds with an empty stream or just parsing empty.
     std::stringstream ss;
     return load(ss, backend);
   }
@@ -255,7 +255,7 @@ void Configuration::parse_ini_into_self(
   // Hardware/Provider
   provider_priority.clear();
   std::string priority_str = get("Hardware.provider_priority", "");
-  Logger::log(LogLevel::DEBUG, "Raw provider_priority: '" + priority_str + "'");
+  log_debug("Raw provider_priority: '" + priority_str + "'");
 
   if (!priority_str.empty()) {
     std::stringstream ss(priority_str);
@@ -267,13 +267,24 @@ void Configuration::parse_ini_into_self(
     }
   }
   if (provider_priority.empty()) {
-    Logger::log(LogLevel::DEBUG, "Using defaults for provider_priority");
+    log_debug("Using defaults for provider_priority");
     provider_priority = {"OpenCL", "CPU"};
   }
 
   for (const auto &p : provider_priority) {
-    Logger::log(LogLevel::DEBUG, "Provider: " + p);
+    log_debug("Provider: " + p);
   }
+
+  std::string prox_str = get("Hardware.proximity_sensor", "auto");
+  if (prox_str == "true" || prox_str == "on" || prox_str == "enabled") {
+    proximity_sensor = ProximitySensorMode::ENABLED;
+  } else if (prox_str == "false" || prox_str == "off" || prox_str == "disabled") {
+    proximity_sensor = ProximitySensorMode::DISABLED;
+  } else {
+    proximity_sensor = ProximitySensorMode::AUTO;
+  }
+  proximity_sensor_id = get("Hardware.proximity_sensor_id", "ITE8353");
+  proximity_enforce = (get("Hardware.proximity_enforce", "false") == "true");
 
   // Other settings
   save_success = (get("Storage.save_success_images") == "true");
@@ -283,12 +294,12 @@ void Configuration::parse_ini_into_self(
   if (auto val = parse_int(get("Security.lockout_duration_sec", "300"))) lockout_duration_sec = *val;
 
   // Minimal UID (shared with PAM module)
-  // We use int for parsing, then cast to uid_t
+  // Int is used for parsing, then cast to uid_t
   int min_uid_int = linuxcampam::DEFAULT_MIN_UID;
   // Parse from [Security] section mostly
-  // Note: PAM module has specific fallback logic to [General], we should map
+  // Note: PAM module has specific fallback logic to [General], which should map
   // similarly if needed or just trust [Security] as primary. Given PAM logic:
-  // [Security] > First Found > Default. Here we explicitly look for
+  // [Security] > First Found > Default. Here it is explicitly looked for
   // Security.min_uid first.
   std::string uid_str = get("Security.min_uid");
   if (uid_str.empty()) {
@@ -323,6 +334,12 @@ std::string Configuration::toString() const {
   ss << "  Threshold: " << threshold << "\n";
   ss << "  Detection Threshold: " << detection_threshold << "\n";
   ss << "  Timeout: " << timeout_ms << " ms\n";
+  std::string prox_mode_str = "auto";
+  if (proximity_sensor == ProximitySensorMode::ENABLED) prox_mode_str = "enabled";
+  if (proximity_sensor == ProximitySensorMode::DISABLED) prox_mode_str = "disabled";
+  ss << "  Proximity Sensor: " << prox_mode_str << "\n";
+  ss << "  Proximity Sensor ID: " << proximity_sensor_id << "\n";
+  ss << "  Proximity Enforce: " << (proximity_enforce ? "true" : "false") << "\n";
   ss << "  Auth Policy: ";
   switch (policy) {
   case AuthPolicy::ADAPTIVE:
@@ -335,7 +352,7 @@ std::string Configuration::toString() const {
     ss << "Lenient (Any Camera Match)\n";
     break;
   default:
-    ss << "Unknown (" << (int)policy << ")\n";
+    ss << "Unknown (" << static_cast<int>(policy) << ")\n";
     break;
   }
   ss << "  Max Embeddings: " << max_embeddings << "\n\n";

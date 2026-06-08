@@ -6,6 +6,8 @@
 #include <unistd.h>
 #include <utility>
 #include <vector>
+#include <filesystem>
+#include <optional>
 namespace linuxcampam {
 
 struct FileDescriptor {
@@ -93,5 +95,7 @@ enumerateCameras();
 
 // Security Utils
 [[nodiscard]] bool isValidUsername(std::string_view username);
+[[nodiscard]] std::optional<std::filesystem::path> getHomeDir(uid_t uid);
+[[nodiscard]] std::optional<uid_t> getUidForUsername(std::string_view username);
 
 } // namespace linuxcampam

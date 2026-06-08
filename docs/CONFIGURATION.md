@@ -92,6 +92,24 @@ verify_average_frames = 3
 - **enroll_hdr**: Improves profiles in difficult lighting (backlit scenes).
 - **enroll_averaging**: recommended for IR cameras to reduce sensor noise.
 
+#### 5. Proximity Sensor (Optional)
+
+Configure native support for human presence sensors (like the ITE8353) to detect human presence and optimize authentication.
+
+```ini
+[Hardware]
+proximity_sensor = auto
+proximity_sensor_id = ITE8353
+proximity_enforce = false
+```
+
+- **proximity_sensor**: `auto` (use if found), `enabled` (fail if not found), or `disabled`.
+- **proximity_sensor_id**: The ACPI/I2C identifier for the sensor (default: `ITE8353`).
+- **proximity_enforce**: If `true`, authentication will instantly fail if the proximity sensor reports no human is present. If `false` (default), the sensor provides observational presence data without blocking authentication.
+
+> [!NOTE]
+> **Proximity Sensor Data Interpretation:** The ITE8353 is a proprietary hardware sensor. LinuxCamPAM parses its undocumented 12-byte HID protocol based on observed behavior. The 8th byte is interpreted as a **confidence score or timeout counter** (0-100%), not physical distance, because it counts down uniformly from 100 to 0 before triggering an "Away" state.
+
 ### Smart Defaults & Backward Compatibility
 
 ### Smart Setup Tool

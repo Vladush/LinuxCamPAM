@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y \
     nlohmann-json3-dev \
     libgtest-dev \
     v4l-utils \
+    libudev-dev libhidapi-dev libgmock-dev pkg-config \
     git \
     wget \
     unzip \

@@ -13,6 +13,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
+#include <pwd.h>
 
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 extern char **environ;
@@ -190,6 +191,30 @@ bool isValidUsername(std::string_view username) {
            (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-' ||
            c == '$';
   });
+}
+
+std::optional<std::filesystem::path> getHomeDir(uid_t uid) {
+  struct passwd pwd{};
+  struct passwd *result = nullptr;
+  constexpr size_t GETPWUID_BUFFER_SIZE = 16384;
+  std::vector<char> buf(GETPWUID_BUFFER_SIZE);
+  if (getpwuid_r(uid, &pwd, buf.data(), buf.size(), &result) == 0 && result) {
+    return std::filesystem::path(result->pw_dir);
+  }
+  return std::nullopt;
+}
+
+std::optional<uid_t> getUidForUsername(std::string_view username) {
+  struct passwd pwd{};
+  struct passwd *result = nullptr;
+  constexpr size_t GETPWNAM_BUFFER_SIZE = 16384;
+  std::vector<char> buf(GETPWNAM_BUFFER_SIZE);
+  // pw_name is null-terminated, so we must make a safe string first
+  std::string uname(username);
+  if (getpwnam_r(uname.c_str(), &pwd, buf.data(), buf.size(), &result) == 0 && result) {
+    return result->pw_uid;
+  }
+  return std::nullopt;
 }
 
 } // namespace linuxcampam
