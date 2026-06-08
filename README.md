@@ -25,13 +25,14 @@ Since open-sourcing, I've put effort into making it hardware-agnostic and well-d
 - **Any Webcam Works**: Standard USB or integrated cameras (720p+ recommended). No special hardware required.
 - **Enhanced IR Support**: Detects IR cameras and controls emitters for better low-light and anti-spoofing.
 - **Hardware Acceleration**:
-  - **Strategy**: We prioritize **OpenCL** as the universal accelerator. It enables GPU acceleration on Intel (iGPU), NVIDIA (proprietary driver), AMD (ROCm/Rusticl), and ARM (Mali/Adreno) with a single lightweight package.
+  - **Strategy**: **OpenCL** is prioritized as the universal accelerator. It enables GPU acceleration on Intel (iGPU), NVIDIA (proprietary driver), AMD (ROCm/Rusticl), and ARM (Mali/Adreno) with a single lightweight package.
   - **Native Backends**: Native CUDA and OpenVINO are not enabled in the default static build to maintain a small package size (~15MB vs ~300MB+). OpenCL provides near-native performance for this use case without the bloat.
   - **Smart GPU Detection**: Auto-detects available acceleration; falls back to optimized CPU instructions (AVX/SSE) if no GPU is available.
 - **Smart Camera Support**:
   - **Dual-Camera Security**: Uses IR for liveness/security and RGB for validation.
   - **Auto-Configuration**: Detects your hardware (IR vs RGB) and selects the best policy.
   - **Enhanced Enrollment**: HDR capture when supported, frame averaging for all cameras.
+- **Proximity Sensor Integration**: Native support for I2C HID human presence sensors (e.g., ITE8353) to detect human presence, optimize authentication, and reduce idle processing.
 - **Multi-Embedding Support**: Store multiple face embeddings per user for different lighting (`linuxcampam list`, `train --new`).
 - **PAM Integration**: Standard PAM module for Debian/Ubuntu.
 - **Security First**: [Threat Model & Risk Assessment](docs/THREAT_MODEL_AND_RISK_ASSESSMENT.md) included.
@@ -153,7 +154,7 @@ These are required to **compile** the project from source (Options B & C).
 
 #### Compiler Compatibility
 
-The project is C++17 compliant. While we strictly verify on **Ubuntu 24.04**, the codebase includes polyfills (e.g., `<charconv>` fallbacks) to support older compilers found in **Ubuntu 20.04 LTS (GCC 9)** and Debian 11.
+The project is C++17 compliant. While strictly verified on **Ubuntu 24.04**, the codebase includes polyfills (e.g., `<charconv>` fallbacks) to support older compilers found in **Ubuntu 20.04 LTS (GCC 9)** and Debian 11.
 
 | Architecture | Compiler    | Status        | Notes                        |
 | :----------- | :---------- | :------------ | :--------------------------- |
@@ -163,7 +164,7 @@ The project is C++17 compliant. While we strictly verify on **Ubuntu 24.04**, th
 | **AARCH64**  | GCC (Cross) | ✅ Verified   | via Docker/QEMU              |
 | **RISC-V**   | GCC (Cross) | ✅ Verified   | via Docker/QEMU              |
 
-> **Note**: We now compile a **static version of OpenCV 4.12.0** automatically. You do **not** need to install `libopencv-dev` or generic system libraries anymore. This ensures the authentication service runs reliably regardless of your OS version.
+> **Note**: A **static version of OpenCV 4.12.0** is now compiled automatically. You do **not** need to install `libopencv-dev` or generic system libraries anymore. This ensures the authentication service runs reliably regardless of your OS version.
 
 ## Configuration
 
@@ -177,7 +178,7 @@ The installer runs a smart detection script (`linuxcampam-setup-config`) to auto
 sudo linuxcampam-setup-config
 ```
 
-> **IR Camera Note:** If your IR camera implies it's working but doesn't light up, you likely need to configure the emitter. We rely on the excellent **[linux-enable-ir-emitter](https://github.com/EmixamPP/linux-enable-ir-emitter)** tool for this. Run `scripts/install_ir_emitter.sh` to install it (it will use a patched version from <https://github.com/Vladush/linux-enable-ir-emitter> by default).
+> **IR Camera Note:** If your IR camera implies it's working but doesn't light up, you likely need to configure the emitter. This project relies on the excellent **[linux-enable-ir-emitter](https://github.com/EmixamPP/linux-enable-ir-emitter)** tool for this. Run `scripts/install_ir_emitter.sh` to install it (it will use a patched version from <https://github.com/Vladush/linux-enable-ir-emitter> by default).
 
 For advanced policies (e.g., Mandatory IR + Optional RGB), see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 

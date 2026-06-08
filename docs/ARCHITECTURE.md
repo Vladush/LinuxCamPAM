@@ -84,12 +84,16 @@ C4Component
     Component(auth_engine, "Auth Engine", "src/service/auth_engine.cpp", "Orchestrates face detection, alignment, recognition, and matching logic.")
     Component(camera_mgr, "Camera Manager", "src/service/camera.cpp", "Interfaces with V4L2 to control hardware, read frames, and manage exposure.")
     Component(config_mgr, "Config Manager", "src/service/config.cpp", "Parses and provides configuration state.")
+    Component(hardware_mgr, "Hardware Manager", "src/HardwareManager.cpp", "Resolves ACPI devices, manages I2C sensor power states.")
+    Component(tripwire, "Presence Tripwire", "src/PresenceTripwire.cpp", "Polls /dev/hidraw for proximity sensor events via hidapi.")
   }
 
   Rel(pam_module, ipc_server, "Sends commands")
   Rel(cli, ipc_server, "Sends commands")
   
   Rel(main, ipc_server, "Initializes")
+  Rel(main, hardware_mgr, "Initializes sensor")
+  Rel(main, tripwire, "Starts presence polling")
   Rel(ipc_server, auth_engine, "Dispatches tasks to")
   
   Rel(auth_engine, camera_mgr, "Requests frames")
@@ -185,7 +189,7 @@ LinuxCamPAM relies heavily on Linux filesystem and process boundaries for securi
 
 * **Process Isolation**: The PAM module runs in the user-space context of the calling application (e.g., `sudo`). It possesses zero biometric processing capabilities and relies entirely on the IPC socket.
 * **Root Daemon**: `linuxcampamd` runs as root. This is strictly required to read from `/dev/video*` and write to the restricted root-owned JSON databases (`0700` and `0600`). A future architectural enhancement plans to isolate this via a dedicated `linuxcampam` service user.
-* **IPC Socket**: Located at `/run/linuxcampam/socket` with `0666` permissions. While world-writable, the daemon meticulously sanitizes input strings (usernames) and returns rich text responses (`AUTH_SUCCESS`, `AUTH_FAIL`, `ENROLL_SUCCESS`, etc.) and config data, while ensuring no raw biometric data is ever transmitted over the socket.
+* **IPC Socket**: Located at `/run/linuxcampam/socket` with `0666` permissions. While world-writable, the daemon meticulously sanitizes input strings (usernames) and enforces `SO_PEERCRED` checks to ensure that administrative commands are only executed if the caller is `root` or matches the target user's UID. The socket returns rich text responses (`AUTH_SUCCESS`, `AUTH_FAIL`, `ENROLL_SUCCESS`, etc.) and config data, while ensuring no raw biometric data is ever transmitted over the socket.
 
 ---
 
@@ -193,10 +197,20 @@ LinuxCamPAM relies heavily on Linux filesystem and process boundaries for securi
 
 ### Hardware Acceleration (OpenCL)
 
-We prioritize **OpenCL** via OpenCV's Transparent API (T-API) rather than proprietary CUDA or bloated OpenVINO static libraries. This allows a single ~15MB binary to leverage GPU acceleration on Intel, AMD, NVIDIA, and ARM devices identically.
+**OpenCL** via OpenCV's Transparent API (T-API) is prioritized rather than proprietary CUDA or bloated OpenVINO static libraries. This allows a single ~15MB binary to leverage GPU acceleration on Intel, AMD, NVIDIA, and ARM devices identically.
 
 * *Fallback*: If OpenCL is unavailable (or the driver hangs), the system falls back to optimized CPU instructions (AVX2/NEON).
 
 ### Rate Limiting (Brute-Force Protection)
 
 Statefulness is maintained in-memory within the `auth_engine.cpp`. If a user fails authentication `lockout_attempts` times (default 5), they are denied service for `lockout_duration_sec` (default 300s). This state is cleared on daemon restart.
+
+---
+
+## 8. Future Architectural Plans
+
+### Dynamic Hardware Hot-Plugging (Inotify / Udev)
+
+Currently, LinuxCamPAM probes for the hardware proximity sensor exactly once during daemon startup. If the device is disconnected and reconnected, or if the I2C bus resets, the daemon requires a restart to re-initialize the `hidapi` sensor handle.
+
+A planned architectural enhancement is to implement an asynchronous watch (via `inotify` on `/dev/` or `libudev` monitoring) to dynamically detect when the sensor node (e.g., `/dev/hidrawX`) appears or disappears. This will allow the daemon to seamlessly hot-reload the sensor connection during runtime without interrupting the main authentication UNIX socket event loop.

@@ -92,6 +92,21 @@ verify_average_frames = 3
 - **enroll_hdr**: Improves profiles in difficult lighting (backlit scenes).
 - **enroll_averaging**: recommended for IR cameras to reduce sensor noise.
 
+#### 5. Proximity Sensor (Optional)
+
+Configure native support for human presence sensors (like the ITE8353) to detect human presence and optimize authentication.
+
+```ini
+[Hardware]
+proximity_sensor = auto
+proximity_sensor_id = ITE8353
+proximity_enforce = false
+```
+
+- **proximity_sensor**: `auto` (use if found), `enabled` (fail if not found), or `disabled`.
+- **proximity_sensor_id**: The ACPI/I2C identifier for the sensor (default: `ITE8353`).
+- **proximity_enforce**: If `true`, authentication will instantly fail if the proximity sensor reports no human is present. If `false` (default), the sensor provides observational presence data without blocking authentication.
+
 ### Smart Defaults & Backward Compatibility
 
 ### Smart Setup Tool
