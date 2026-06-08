@@ -3,6 +3,7 @@
 #include <array>
 
 #include <hidapi.h>
+#include "service/logger.hpp"
 
 PresenceTripwire::PresenceTripwire(const ISensorFactory& factory) : factory_(factory) {}
 
@@ -68,13 +69,16 @@ void PresenceTripwire::poll_loop() noexcept {
         int bytes = hid_read_timeout(handle_.get(), buffer.data(), buffer.size(), POLL_TIMEOUT_MS);
         
         if (bytes > 0) {
+            // log_debug("HID read " + std::to_string(bytes) + " bytes");
             if (auto state = parser_->parse_payload(buffer.data(), static_cast<size_t>(bytes))) {
                 if (callback_) {
                     callback_(state->human_present, state->distance_cm);
                 }
+            } else {
+                log_debug("HID payload failed to parse.");
             }
         } else if (bytes < 0) {
-            // A negative return from hid_read_timeout indicates a fatal device error (e.g. disconnect)
+            log_error("HID read failed, terminating polling thread.");
             running_ = false; // Cleanly abort the polling thread
             break;
         }

@@ -26,11 +26,12 @@ public:
   static constexpr int DEFAULT_GPU_THROTTLE_MS = 20;
 
   enum class AuthPolicy : std::uint8_t { STRICT_ALL, LENIENT_ANY, ADAPTIVE };
+  enum class ProximitySensorMode : std::uint8_t { AUTO, ENABLED, DISABLED };
 
   struct CameraDefinition {
     std::string id{};
     std::string path{};
-    std::string type{}; // "ir", "rgb"
+    std::string type{};
     int min_brightness = 0;
     bool mandatory = false;
     std::string enroll_hdr = "";
@@ -60,6 +61,10 @@ public:
   int enroll_average_frames = DEFAULT_ENROLL_AVG_FRAMES;
   bool verify_averaging = false;
   int verify_average_frames = DEFAULT_VERIFY_AVG_FRAMES;
+
+  ProximitySensorMode proximity_sensor = ProximitySensorMode::AUTO;
+  std::string proximity_sensor_id = "ITE8353";
+  bool proximity_enforce = false;
 
   fs::path users_dir = linuxcampam::USERS_DIR;
   fs::path models_dir = linuxcampam::MODELS_DIR;

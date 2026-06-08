@@ -4,14 +4,20 @@
 #include "ipc_protocol.hpp"
 #include "json.hpp"
 #include "logger.hpp"
+#include "HardwareManager.hpp"
+#include "SensorFactory.hpp"
+#include "PresenceTripwire.hpp"
 
 #include <array>
 #include <atomic>
 #include <csignal>
 #include <filesystem>
+#include <optional>
 #include <string>
+#include <pwd.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <sys/un.h>
 #include <unistd.h>
 
@@ -21,14 +27,15 @@ namespace fs = std::filesystem;
 namespace {
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 std::atomic<bool> g_running(true);
-constexpr size_t BUFFER_SIZE = 1024;
-constexpr int SOCKET_PERMS = 0666;
-constexpr int BACKLOG = 5;
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+std::atomic<bool> g_proximity_present(true); // Default to true so auth works if sensor is disabled
+constexpr size_t BUFFER_SIZE = 1024; // Buffer size for incoming UNIX socket messages
+constexpr int SOCKET_PERMS = 0666; // File permissions for the UNIX socket (world-readable/writable)
+constexpr int BACKLOG = 5; // Maximum length of the pending connections queue for the socket
 } // namespace
 
 void signal_handler(int signum) {
-  Logger::log(LogLevel::INFO,
-              "Received signal " + std::to_string(signum) + ", stopping...");
+  log_info("Received signal " + std::to_string(signum) + ", stopping...");
   g_running = false;
 }
 
@@ -48,6 +55,13 @@ void handle_client(int fd, AuthEngine &engine) {
   std::string_view request(buffer.data(), static_cast<size_t>(valread));
   log_debug("Received Request: " + std::string(request));
 
+  struct ucred cred{};
+  socklen_t len = sizeof(struct ucred);
+  if (getsockopt(client_fd.get(), SOL_SOCKET, SO_PEERCRED, &cred, &len) == -1) {
+    log_error("Failed to retrieve peer credentials.");
+    return;
+  }
+
   // Protocol: COMMAND argument via ipc_protocol.hpp
   // e.g. AUTH_REQUEST john | ADD_USER john | TRAIN_USER john default |
   // TEST_AUTH
@@ -61,11 +75,25 @@ void handle_client(int fd, AuthEngine &engine) {
     cmd = commandToString(req.cmd);
     log_debug("Command: " + commandToString(req.cmd));
 
+    auto check_permission = [&](const std::string& target_user) -> bool {
+      if (cred.uid == 0) return true; // root always allowed
+      auto target_uid = linuxcampam::getUidForUsername(target_user);
+      if (!target_uid) return false; // invalid user
+      return cred.uid == *target_uid;
+    };
+
     // Command Dispatch
     switch (req.cmd) {
     case Command::AUTH_REQUEST: {
       if (req.args.empty())
         break;
+      
+      if (engine.getConfig().proximity_enforce && !g_proximity_present.load()) {
+        response = "AUTH_FAIL: Proximity sensor reports no human present";
+        log_warn("Authentication rejected by proximity sensor enforcement.");
+        break;
+      }
+
       bool success = engine.verifyUser(req.args[0]);
       response = success ? "AUTH_SUCCESS" : "AUTH_FAIL";
       break;
@@ -73,6 +101,10 @@ void handle_client(int fd, AuthEngine &engine) {
     case Command::ADD_USER: {
       if (req.args.empty())
         break;
+      if (!check_permission(req.args[0])) {
+        response = "ERROR Permission Denied";
+        break;
+      }
       auto Result = engine.enrollUser(req.args[0]);
       response =
           Result.first ? "ENROLL_SUCCESS" : ("ENROLL_FAIL " + Result.second);
@@ -81,6 +113,10 @@ void handle_client(int fd, AuthEngine &engine) {
     case Command::TRAIN_USER: {
       if (req.args.empty())
         break;
+      if (!check_permission(req.args[0])) {
+        response = "ERROR Permission Denied";
+        break;
+      }
       std::string label = (req.args.size() > 1) ? req.args[1] : "default";
       bool success = engine.trainUser(req.args[0], label, false);
       response = success ? "TRAIN_SUCCESS" : "TRAIN_FAIL";
@@ -101,7 +137,11 @@ void handle_client(int fd, AuthEngine &engine) {
     case Command::TEST_AUTH: {
       std::string user = req.args.empty() ? "" : req.args[0];
       if (!user.empty()) {
-        Logger::log(LogLevel::INFO, "Testing Auth for user: " + user);
+        if (!check_permission(user)) {
+          response = "ERROR Permission Denied";
+          break;
+        }
+        log_info("Testing Auth for user: " + user);
         AuthResult result = engine.verifyUserWithDetails(user);
         std::string hw_status = "HW_OK";
         std::string auth_status =
@@ -117,6 +157,10 @@ void handle_client(int fd, AuthEngine &engine) {
       if (req.args.size() < 2) {
         response = "ERROR Missing user or label";
       } else {
+        if (!check_permission(req.args[0])) {
+          response = "ERROR Permission Denied";
+          break;
+        }
         bool success = engine.setLabel(req.args[0], req.args[1]);
         response = success ? "LABEL_SET" : "LABEL_FAIL";
       }
@@ -126,6 +170,10 @@ void handle_client(int fd, AuthEngine &engine) {
       if (req.args.empty()) {
         response = "ERROR Missing user";
       } else {
+        if (!check_permission(req.args[0])) {
+          response = "ERROR Permission Denied";
+          break;
+        }
         std::string label = (req.args.size() > 1) ? req.args[1] : "default";
         bool success = engine.trainUser(req.args[0], label, true);
         response = success ? "TRAIN_SUCCESS" : "TRAIN_FAIL";
@@ -137,6 +185,10 @@ void handle_client(int fd, AuthEngine &engine) {
       if (req.args.empty()) {
         response = "ERROR Missing user";
       } else {
+        if (!check_permission(req.args[0])) {
+          response = "ERROR Permission Denied";
+          break;
+        }
         auto labels = engine.listEmbeddings(req.args[0]);
         if (labels.empty()) {
           response = "No embeddings found";
@@ -153,6 +205,10 @@ void handle_client(int fd, AuthEngine &engine) {
       if (req.args.size() < 2) {
         response = "ERROR Missing user or label";
       } else {
+        if (!check_permission(req.args[0])) {
+          response = "ERROR Permission Denied";
+          break;
+        }
         bool success = engine.removeEmbedding(req.args[0], req.args[1]);
         response = success ? "REMOVED" : "REMOVE_FAIL";
       }
@@ -165,6 +221,10 @@ void handle_client(int fd, AuthEngine &engine) {
     case Command::SET_LOG_LEVEL: {
       if (req.args.empty())
         break;
+      if (cred.uid != 0) {
+        response = "ERROR Permission Denied";
+        break;
+      }
       std::string levelStr = req.args[0];
       if (levelStr == "DEBUG") {
         Logger::setLevel(LogLevel::DEBUG);
@@ -197,10 +257,10 @@ void handle_client(int fd, AuthEngine &engine) {
     }
     }
   } catch (const std::exception &e) {
-    Logger::log(LogLevel::ERROR, "Exception handling " + cmd + ": " + e.what());
+    log_error("Exception handling " + cmd + ": " + e.what());
     response = "ERROR Exception";
   } catch (...) {
-    Logger::log(LogLevel::ERROR, "Unknown exception handling " + cmd);
+    log_error("Unknown exception handling " + cmd);
     response = "ERROR Unknown Exception";
   }
 
@@ -237,27 +297,28 @@ int main(int argc, char *argv[]) {
     config_path = "config.ini";
   }
 
-  Logger::log(LogLevel::INFO, "Starting LinuxCamPAM Service...");
-  Logger::log(LogLevel::INFO, "Loading Config: " + config_path);
+  log_info("Starting LinuxCamPAM Service...");
+  log_info("Loading Config: " + config_path);
 
   // Wipe OpenCL cache - stale kernels cause hangs after Mesa updates
-  const char *home = getenv("HOME");
-  if (!home)
-    home = "/root";
-  fs::path opencv_cache = fs::path(home) / ".cache" / "opencv";
+  std::filesystem::path home = "/root";
+  if (auto user_home = linuxcampam::getHomeDir(getuid())) {
+    home = *user_home;
+  }
+  fs::path opencv_cache = home / ".cache" / "opencv";
   if (fs::exists(opencv_cache)) {
     try {
       fs::remove_all(opencv_cache);
-      Logger::log(LogLevel::DEBUG, "Cleared OpenCL cache");
+      log_debug("Cleared OpenCL cache");
     } catch (const std::exception &e) {
-      Logger::log(LogLevel::DEBUG, "OpenCL cache cleanup failed: " + std::string(e.what()));
+      log_debug("OpenCL cache cleanup failed: " + std::string(e.what()));
     }
   }
 
   AuthEngine engine;
   // Initialize Engine
   if (!engine.init(config_path)) {
-    Logger::log(LogLevel::ERROR, "AuthEngine init failed, shutting down.");
+    log_error("AuthEngine init failed, shutting down.");
     return 1;
   }
 
@@ -275,6 +336,70 @@ int main(int argc, char *argv[]) {
 
   if (!cfg.log_file.empty()) {
     Logger::setLogFile(cfg.log_file);
+  }
+
+  // Enable syslog early so we capture hardware init logs
+  Logger::enableSyslog("linuxcampamd");
+
+  // Proximity Sensor Integration Lifecycle
+  std::optional<HardwareManager> hw_manager;
+  SensorFactory sensor_factory;
+  PresenceTripwire tripwire(sensor_factory);
+
+  if (cfg.proximity_sensor == Configuration::ProximitySensorMode::AUTO || cfg.proximity_sensor == Configuration::ProximitySensorMode::ENABLED) {
+    std::string hw_id = cfg.proximity_sensor_id;
+    std::string i2c_addr;
+    std::error_code ec;
+
+    std::string expected_path = "/sys/bus/acpi/devices/" + hw_id + ":00/physical_node";
+    if (fs::exists(expected_path, ec)) {
+      auto target = fs::read_symlink(expected_path, ec);
+      if (!ec) {
+        i2c_addr = target.filename().string();
+      }
+    }
+
+    if (i2c_addr.empty()) {
+      for (const auto& entry : fs::directory_iterator("/sys/bus/acpi/devices/", ec)) {
+        if (entry.path().filename().string().find(hw_id) != std::string::npos) {
+          if (auto phys = entry.path() / "physical_node"; fs::exists(phys, ec)) {
+            auto target = fs::read_symlink(phys, ec);
+            if (!ec) {
+              i2c_addr = target.filename().string();
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (!i2c_addr.empty()) {
+      hw_manager.emplace(i2c_addr);
+      if (hw_manager->seize_sensor()) {
+        if (std::optional<std::string> hidraw_node = hw_manager->get_hidraw_node(); hidraw_node) {
+          if (!tripwire.start(*hidraw_node, HardwareId(hw_id), [](bool present, int distance) {
+            g_proximity_present.store(present);
+            if (present) {
+              log_debug("Target present at " + std::to_string(distance) + "cm. Waking camera loop.");
+            }
+          })) {
+            log_warn("Failed to start PresenceTripwire.");
+          } else {
+            log_info("Proximity sensor started successfully on " + *hidraw_node);
+            // If successfully started and enforcing, initialize state
+            if (cfg.proximity_enforce) {
+              g_proximity_present.store(false); 
+            }
+          }
+        } else if (cfg.proximity_sensor == Configuration::ProximitySensorMode::ENABLED) {
+          log_warn("Proximity sensor set to enabled, but hidraw node could not be resolved.");
+        }
+      } else {
+        log_warn("Failed to seize hardware sensor.");
+      }
+    } else if (cfg.proximity_sensor == Configuration::ProximitySensorMode::ENABLED) {
+      log_warn("Proximity sensor set to enabled, but hardware node was not found.");
+    }
   }
 
   // Socket Setup
@@ -300,8 +425,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  // Enable syslog for daemon logging
-  Logger::enableSyslog("linuxcampamd");
+  // Syslog was enabled earlier
 
   // World-readable socket allows console users to trigger authentication
   chmod(socket_path.c_str(), SOCKET_PERMS);
@@ -311,7 +435,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  Logger::log(LogLevel::INFO, "Listening on " + socket_path);
+  log_info("Listening on " + socket_path);
 
   while (g_running) {
     fd_set readfds;
@@ -348,7 +472,10 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  tripwire.stop();
+  // hw_manager will automatically release the sensor upon destruction
+
   (void)unlink(socket_path.c_str());
-  Logger::log(LogLevel::INFO, "Stopped.");
+  log_info("Stopped.");
   return 0;
 }
