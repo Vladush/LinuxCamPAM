@@ -425,8 +425,7 @@ int main(int argc, char *argv[]) {
                     auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - absence_start).count();
                     if (duration >= cfg.lock_timeout_seconds) {
                       log_info("Lock timeout reached (" + std::to_string(duration) + "s), locking screen...");
-                      // NOLINTNEXTLINE(cert-env33-c, concurrency-mt-unsafe)
-                      int ret = system(cfg.lock_command.c_str());
+                      int ret = linuxcampam::execute_command_spawn(cfg.lock_command);
                       if (ret != 0) {
                         log_warn("Lock command returned non-zero exit code: " + std::to_string(ret));
                       }

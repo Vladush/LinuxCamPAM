@@ -170,6 +170,71 @@ std::string getIREmitterVersion(std::string_view path) {
   return version;
 }
 
+int execute_command_spawn(const std::string& command_line) {
+  if (command_line.empty()) return -1;
+
+  // Simple string tokenizer respecting single and double quotes
+  std::vector<std::string> args;
+  std::string current_arg;
+  bool in_single_quote = false;
+  bool in_double_quote = false;
+  bool escape_next = false;
+
+  for (char c : command_line) {
+    if (escape_next) {
+      current_arg += c;
+      escape_next = false;
+      continue;
+    }
+    if (c == '\\') {
+      escape_next = true;
+      continue;
+    }
+    if (c == '\'' && !in_double_quote) {
+      in_single_quote = !in_single_quote;
+      continue;
+    }
+    if (c == '"' && !in_single_quote) {
+      in_double_quote = !in_double_quote;
+      continue;
+    }
+    if (std::isspace(c) && !in_single_quote && !in_double_quote) {
+      if (!current_arg.empty()) {
+        args.push_back(current_arg);
+        current_arg.clear();
+      }
+      continue;
+    }
+    current_arg += c;
+  }
+  if (!current_arg.empty()) {
+    args.push_back(current_arg);
+  }
+
+  if (args.empty()) return -1;
+
+  std::vector<char*> argv;
+  argv.reserve(args.size() + 1);
+  for (auto& arg : args) {
+    argv.push_back(arg.data());
+  }
+  argv.push_back(nullptr);
+
+  pid_t pid;
+  int status = posix_spawnp(&pid, argv[0], nullptr, nullptr, argv.data(), environ);
+  if (status != 0) {
+    return status;
+  }
+
+  int wait_status = 0;
+  if (waitpid(pid, &wait_status, 0) != -1) {
+    if (WIFEXITED(wait_status)) {
+      return WEXITSTATUS(wait_status);
+    }
+  }
+  return -1;
+}
+
 bool isValidUsername(std::string_view username) {
   if (username.empty() || username.length() > linuxcampam::MAX_USERNAME_LENGTH)
     return false;

@@ -34,9 +34,17 @@ We use the STRIDE framework to analyze potential threats to the authentication p
 
 ### 3.2 Tampering
 
-* **Threat 1 (Data):** An attacker with local access modifies the face embeddings (`/etc/linuxcampam/users/*.json`) or the ONNX AI models to inject their own face or backdoor the recognition.
+* **Threat 1 (Data Modification):** An attacker with local access modifies the face embeddings (`/etc/linuxcampam/users/*.json`) or the ONNX AI models to inject their own face or backdoor the recognition.
 * **Mitigation:** The `/etc/linuxcampam/users/` directory is secured with `0700` permissions (root-only).
 * **Residual Risk:** If an attacker already has `root` access, they can modify these files. The system lacks hardware-backed cryptographic binding (like a TPM) which would tightly couple biometric data to specific hardware. (Future roadmap: HMAC integrity checks).
+
+* **Threat 2 (Evil Maid / Camera Swap):** An attacker with physical access replaces the trusted IR camera with a malicious USB device that streams pre-recorded face videos.
+* **Mitigation:** Rely on physical security. Hardware trust issue. Device ID verification (VID/PID/Serial) provides partial mitigation (see [Roadmap #5](#5-future-security-enhancements-roadmap)).
+
+* **Threat 3 (USB Bus Frame Injection):** An attacker with physical access uses a hardware tap to intercept or inject raw video frames over the USB bus.
+* **Mitigation:** The software inherently trusts the `V4L2` video stream. Unlike some enterprise biometric setups, generic webcams do not provide encrypted sensor links to the OS.
+  * **Active Liveness Check**: Active liveness detection (challenge-response) provides a strong defense against frame injection by requiring unpredictable real-time user reactions, preventing the replay of static or looped video frames (see [Roadmap #6](#5-future-security-enhancements-roadmap)).
+  * **System-Level Recommendation**: For highly sensitive environments, administrators are strongly advised to deploy `usbguard` to block unauthorized USB devices from enumerating, preventing hot-plug camera swap attacks.
 
 ### 3.3 Repudiation
 
@@ -50,10 +58,6 @@ We use the STRIDE framework to analyze potential threats to the authentication p
 * **Residual Risk:** If an attacker achieves root access, they can copy the embedding files and use them on another machine running LinuxCamPAM. (Future roadmap: Cryptographic binding/encryption of embeddings).
 * **Threat 2 (Socket Snooping):** The IPC socket (`/run/linuxcampam/socket`) has `0666` permissions.
 * **Mitigation:** The socket only transmits usernames and boolean results (`AUTH_SUCCESS`/`AUTH_FAIL`). No biometric data or video frames traverse the socket.
-* **Threat 3 (USB/V4L2 Bus Interception):** An attacker with physical access uses a hardware tap to intercept or inject raw video frames over the USB bus.
-* **Mitigation:** Physical security of the hardware. The software inherently trusts the `V4L2` video stream. Unlike some enterprise biometric setups, generic webcams do not provide encrypted sensor links to the OS.
-  * **Active Liveness Check**: Active liveness detection (challenge-response) provides a strong defense against frame injection by requiring unpredictable real-time user reactions, preventing the replay of static or looped video frames (see [Roadmap #6](#5-future-security-enhancements-roadmap)).
-  * **System-Level Recommendation**: For highly sensitive environments, administrators are strongly advised to deploy `usbguard` to block unauthorized USB devices from enumerating, preventing hot-plug camera swap attacks.
 
 ### 3.5 Denial of Service (DoS)
 
@@ -77,8 +81,10 @@ We use the STRIDE framework to analyze potential threats to the authentication p
 * **Threat 3 (Virtual Hardware Injection):** The daemon uses `/dev/uinput` to emit virtual keystrokes (`KEY_WAKEUP`) for proximity waking. If the daemon is compromised, an attacker could attempt to leverage this file descriptor to inject arbitrary keystrokes (e.g., typing commands) into the host OS.
 * **Mitigation:** The daemon strictly drops capabilities during `VirtualKeyboard` initialization, registering only the `KEY_WAKEUP` bit. The kernel drops any attempts to inject unregistered keys, containing the blast radius.
 
-* **Threat 4 (Command Injection via Configuration):** The proximity lock feature executes the user-defined `lock_command` via `system()`. If an unprivileged attacker can modify `/etc/linuxcampam/config.ini`, they can append malicious shell commands that will be executed as `root`.
-* **Mitigation:** The configuration file must be strictly owned by `root:root` with `0644` or `0600` permissions. Host filesystem permissions are the primary defense barrier.
+* **Threat 4 (Command Execution Injection):** The proximity lock feature executes the user-defined `lock_command`. If an unprivileged attacker can modify `/etc/linuxcampam/config.ini`, they could attempt to inject shell commands.
+* **Mitigation:** The daemon bypasses the system shell entirely by securely tokenizing the command and executing it via `posix_spawnp()`. Shell metacharacters (`|`, `;`, `&&`) are treated as literal strings, completely eliminating shell command injection. Furthermore, the configuration file must be strictly owned by `root:root` with `0644` or `0600` permissions.
+  * **Advanced Mitigation (Immutable Flag)**: Setting the immutable flag (`chattr +i /etc/linuxcampam/config.ini`) is highly recommended to block even compromised `root` processes from modifying the file.
+  * **Advanced Mitigation (MAC / Read-Only)**: AppArmor/SELinux profiles and read-only mounts can further restrict modification to authorized utilities and administrators.
 
 ### 3.7 Authorization Bypass (Physical Proximity)
 
@@ -105,13 +111,14 @@ Overall Risk is calculated by combining **Likelihood** (Low, Medium, High) and *
 | **Tampering** | Root User Modifies Embeddings | Low | High | **Medium** | WiP | Relies on OS boundaries; attacker already has root. (HMAC/encryption planned, see [Roadmap #1](#5-future-security-enhancements-roadmap), [#8](#5-future-security-enhancements-roadmap)) |
 | **Tampering** | Evil Maid (USB Camera Swap) | Low | High | **Medium** | Partially | Hardware trust issue. Mitigate via BIOS passwords. Device ID verification (VID/PID/Serial) provides partial mitigation (see [Roadmap #5](#5-future-security-enhancements-roadmap)). |
 | **Tampering** | USB Bus Frame Injection | Low | High | **Medium** | No | No encrypted sensor links. Device ID checks do not mitigate bus taps. Challenge-response mitigates pre-recorded frame loops (see [Roadmap #6](#5-future-security-enhancements-roadmap)). Recommend `usbguard` for physical port control. |
+| **Repudiation** | Sudo Authentication Denial | Low | Low | **Low** | Yes | Daemon logs authentication successes and failures via syslog. |
 | **Info Disclosure** | Read Socket Traffic | Medium | Low | **Low** | Yes | Socket only sends booleans and usernames. |
 | **Info Disclosure** | Biometric Embedding Theft | Low | High | **Medium** | Partially | Secured by root-only filesystem permissions. (Encryption planned, see [Roadmap #8](#5-future-security-enhancements-roadmap)) |
 | **DoS** | Auth Request Spamming | Low | Medium | **Low** | Partially | Per-user lockout after N failed auth attempts. |
 | **Elevation** | Buffer Overflow in Daemon | Low | Critical | **Medium** | Yes | Modern C++, sanitizers, strict socket parsing. |
 | **Elevation** | Unauthorized IPC Commands | Medium | High | **Low** | Yes | Implemented socket peer credential verification (`SO_PEERCRED`) in daemon to prevent unauthorized administration. |
 | **Elevation** | Virtual Hardware Injection (`uinput`) | Low | High | **Medium** | Yes | Kernel-level capability dropping restricts injection to `KEY_WAKEUP`. |
-| **Elevation** | Config Command Injection (`system()`) | Low | Critical | **Medium** | Yes | Relies on strict OS file permissions (`root:root`) for `config.ini`. |
+| **Elevation** | Config Command Injection | Low | Low | **Low** | Yes | Defeated architecturally by `posix_spawnp()` tokenization, bypassing `/bin/sh`. |
 | **Bypass** | Physical Access during OS Idle Timeout | High | High | **Critical** | Yes | LinuxCamPAM proximity lock reduces the typical native 5-15 minute vulnerability window down to seconds (`lock_timeout_seconds`). Disabling it reverts to typical OS behavior. |
 
 ## 5. Future Security Enhancements (Roadmap)
