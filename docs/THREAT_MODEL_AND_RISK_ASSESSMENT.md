@@ -97,6 +97,21 @@ We use the STRIDE framework to analyze potential threats to the authentication p
 * **Threat:** A user leaves their machine unattended. Under standard Desktop Environment conditions, the machine remains unlocked until the screensaver timeout triggers (often 5 to 15 minutes), leaving a massive vulnerability window for an opportunistic attacker with physical access.
 * **Mitigation:** LinuxCamPAM's proximity lock feature *drastically reduces* this vulnerability window. By aggressively polling for physical absence, it locks the machine within a configurable `lock_timeout_seconds` (default: 10s). While an attacker could theoretically access the machine during this short 10-second window, it represents a massive security improvement over relying on standard OS idle timers. Disabling the proximity lock feature simply reverts the system to the typical native OS behavior.
 
+### 3.8 Automated Wake & Unlock Vulnerabilities (Zero-Interaction)
+
+* **Threat 1 (Physical Coercion / "Rubber Hose" Attack):** An attacker physically forces the authorized user into the camera's field of view. Because the facial authentication PAM module runs passively, the machine unlocks without conscious cooperation or active intent from the victim (even if automatic waking is disabled, the attacker simply needs to wiggle the mouse to wake the screen before forcing the victim's face into view).
+* **Mitigation:**
+  * **Fallback / Kill Switch:** Future roadmap feature to disable PAM facial recognition temporarily via hotkey.
+  * **Current Recommendation:** This is an inherent risk of passive biometric authentication. For environments with high physical coercion risks, users should disable LinuxCamPAM for login/sudo entirely and rely on passwords or physical security keys (YubiKey).
+
+* **Threat 2 (Unintended Unlocks / "Walk-By"):** The user explicitly locks the workstation (e.g., `Super + L`) because an untrusted individual is nearby, but the user remains in the room within the camera's FOV. The proximity sensor instantly wakes the screen and unlocks it again, inadvertently granting the bystander access.
+* **Mitigation:**
+  * **Intent to Unlock:** Disable `always_wake_on_presence_detected` so presence merely wakes the screen, but authentication waits for a keystroke.
+  * **Lock Cooldowns (Roadmap):** Implementing a strict lock cooldown period where facial authentication is paused immediately following an explicit manual lock event.
+
+* **Threat 3 (Amplified Spoofing Window):** Automated wake and unlock constantly polls when presence is detected. An attacker can repeatedly present high-resolution masks or photos at their leisure while the user is away, increasing the window for brute-forcing the neural network.
+* **Mitigation:** This is actively mitigated by the daemon's existing brute-force protection (per-user lockout mechanism). After a configurable number of failed recognition attempts, the system enforces a strict cooldown period, neutralizing rapid spoofing attempts. Furthermore, IR liveness checks severely degrade the success rate of presentation attacks.
+
 ## 4. Risk Assessment Matrix
 
 ### 4.1 Methodology
@@ -127,6 +142,9 @@ Overall Risk is calculated by combining **Likelihood** (Low, Medium, High) and *
 | **Elevation** | Virtual Hardware Injection (`uinput`) | Low | High | **Medium** | Yes | Kernel-level capability dropping restricts injection to `KEY_WAKEUP`. |
 | **Elevation** | Config Command Injection | Low | Low | **Low** | Yes | Defeated architecturally by `posix_spawnp()` tokenization, bypassing `/bin/sh`. |
 | **Bypass** | Physical Access during OS Idle Timeout | High | High | **Critical** | Yes | LinuxCamPAM proximity lock reduces the typical native 5-15 minute vulnerability window down to seconds (`lock_timeout_seconds`). Disabling it reverts to typical OS behavior. |
+| **Zero-Interaction** | Physical Coercion (Forced Unlock) | Low | Critical | **Medium** | No | Inherent to passive biometrics. Disable LinuxCamPAM entirely if at high risk. |
+| **Zero-Interaction** | Unintended Unlock (Walk-By after Lock) | Medium | High | **High** | No | User explicitly locks but remains in FOV. Disable zero-interaction unlock if at risk. |
+| **Zero-Interaction** | Amplified Spoofing Window | Medium | High | **Medium** | Yes | Polling increases attack window, but is effectively neutralized by existing auth lockouts and IR liveness checks. |
 
 ## 5. Future Security Enhancements (Roadmap)
 
