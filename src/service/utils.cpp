@@ -171,7 +171,10 @@ std::string getIREmitterVersion(std::string_view path) {
 }
 
 int execute_command_spawn(const std::string& command_line) {
-  if (command_line.empty()) return -1;
+  constexpr size_t MAX_COMMAND_LENGTH = 4096;
+  if (command_line.empty() || command_line.length() > MAX_COMMAND_LENGTH) {
+    return -1;
+  }
 
   // Simple string tokenizer respecting single and double quotes
   std::vector<std::string> args;
@@ -181,6 +184,11 @@ int execute_command_spawn(const std::string& command_line) {
   bool escape_next = false;
 
   for (char c : command_line) {
+    // Basic sanitization: reject unprintable control characters (except whitespace)
+    if (std::iscntrl(static_cast<unsigned char>(c)) && !std::isspace(static_cast<unsigned char>(c))) {
+      return -1;
+    }
+
     if (escape_next) {
       current_arg += c;
       escape_next = false;
