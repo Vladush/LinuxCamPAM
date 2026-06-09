@@ -14,6 +14,7 @@
 #include <chrono>
 #include <csignal>
 #include <filesystem>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <pwd.h>
@@ -31,6 +32,16 @@ namespace {
 std::atomic<bool> g_running(true);
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 std::atomic<bool> g_proximity_present(true); // Default to true so auth works if sensor is disabled
+
+struct LockState {
+  std::mutex mtx;
+  bool was_away = true;
+  bool absence_timer_active = false;
+  std::chrono::steady_clock::time_point absence_start;
+};
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+LockState g_lock_state;
+
 constexpr size_t BUFFER_SIZE = 1024; // Buffer size for incoming UNIX socket messages
 constexpr int SOCKET_PERMS = 0666; // File permissions for the UNIX socket (world-readable/writable)
 constexpr int BACKLOG = 5; // Maximum length of the pending connections queue for the socket
@@ -385,9 +396,6 @@ int main(int argc, char *argv[]) {
           if (!tripwire.start(*hidraw_node, HardwareId(hw_id), [&cfg](bool present, int confidence) {
             static bool last_state = false;
             static int last_confidence = 0;
-            static bool was_away = true;
-            static std::chrono::steady_clock::time_point absence_start;
-            static bool absence_timer_active = false;
 
             g_proximity_present.store(present);
             if (present != last_state) {
@@ -402,47 +410,32 @@ int main(int argc, char *argv[]) {
               last_confidence = confidence;
             }
 
+            std::lock_guard<std::mutex> lock(g_lock_state.mtx);
+
             // Wake Logic
             if (cfg.wake_enabled && confidence >= cfg.wake_confidence_threshold) {
-              if (was_away) {
+              if (g_lock_state.was_away) {
                 log_info("Wake threshold reached, waking screen...");
                 if (!vkb.emit_wakeup()) {
                   log_warn("Failed to emit wake event via VirtualKeyboard");
                 }
-                was_away = false;
+                g_lock_state.was_away = false;
               }
             }
 
             // Lock Logic
             if (cfg.lock_enabled) {
               if (confidence < cfg.lock_confidence_threshold || !present) {
-                if (!was_away) {
-                  if (!absence_timer_active) {
-                    absence_start = std::chrono::steady_clock::now();
-                    absence_timer_active = true;
-                  } else {
-                    auto now = std::chrono::steady_clock::now();
-                    auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - absence_start).count();
-                    if (duration >= cfg.lock_timeout_seconds) {
-                      log_info("Lock timeout reached (" + std::to_string(duration) + "s), locking screen...");
-                      int ret = linuxcampam::execute_command_spawn(cfg.lock_command);
-                      if (ret != 0) {
-                        log_warn("Lock command returned non-zero exit code: " + std::to_string(ret));
-                      }
-                      was_away = true;
-                      absence_timer_active = false;
-                    }
-                  }
+                if (!g_lock_state.was_away && !g_lock_state.absence_timer_active) {
+                  g_lock_state.absence_start = std::chrono::steady_clock::now();
+                  g_lock_state.absence_timer_active = true;
                 }
               } else {
-                // Reset lock timer if confidence goes back up
-                absence_timer_active = false;
+                g_lock_state.absence_timer_active = false;
               }
             } else {
-              // If locking is disabled, the was_away state must still be maintained based on confidence drops 
-              // to ensure wake events can be triggered appropriately upon return.
               if (confidence < cfg.lock_confidence_threshold || !present) {
-                was_away = true;
+                g_lock_state.was_away = true;
               }
             }
 
@@ -518,6 +511,24 @@ int main(int argc, char *argv[]) {
     } else if (activity == 0) {
       // Timeout: perform maintenance
       (void)engine.performMaintenance();
+
+      // Check Lock Timeout
+      if (engine.getConfig().lock_enabled) {
+        std::lock_guard<std::mutex> lock(g_lock_state.mtx);
+        if (g_lock_state.absence_timer_active && !g_lock_state.was_away) {
+          auto now = std::chrono::steady_clock::now();
+          auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - g_lock_state.absence_start).count();
+          if (duration >= engine.getConfig().lock_timeout_seconds) {
+            log_info("Lock timeout reached (" + std::to_string(duration) + "s), locking screen...");
+            int ret = linuxcampam::execute_command_spawn(engine.getConfig().lock_command);
+            if (ret != 0) {
+              log_warn("Lock command returned non-zero exit code: " + std::to_string(ret));
+            }
+            g_lock_state.was_away = true;
+            g_lock_state.absence_timer_active = false;
+          }
+        }
+      }
     }
 
     if (g_running && activity > 0 && FD_ISSET(server_fd.get(), &readfds)) {
