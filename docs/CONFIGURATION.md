@@ -1,5 +1,8 @@
 # LinuxCamPAM Configuration Guide
 
+> [!IMPORTANT]
+> If you opted to enable the **Immutable Flag** when prompted by the setup script during installation, your text editor will refuse to save changes (even with `sudo`). You must run `sudo chattr -i /etc/linuxcampam/config.ini` before manually editing it. You can lock it again afterward with `sudo chattr +i`.
+
 ## Multi-Camera Support
 
 LinuxCamPAM now supports an arbitrary number of cameras with configurable authentication policies. This allows for dual-camera setups (IR + RGB), single-camera setups, or custom multi-view configurations.
@@ -162,7 +165,7 @@ lockout_duration_sec = 300
 While standard OS permissions (`0600` / `0644` with `root:root` ownership) prevent unprivileged modification of `/etc/linuxcampam/config.ini`, advanced threats (e.g., rogue root scripts) can be mitigated using the following OS-level hardening techniques:
 
 #### 1. The Immutable Flag (`chattr`) - *Highly Recommended*
-The simplest and most effective defense is making the configuration file immutable. Once set, not even the `root` user can modify, delete, or rename the file.
+The simplest and most effective defense is making the configuration file immutable. Once set, not even the `root` user can modify, delete, or rename the file. *(Note: The interactive setup script provides a prompt to enable this easily).*
 ```bash
 sudo chattr +i /etc/linuxcampam/config.ini
 ```

@@ -3,6 +3,23 @@ set -e
 
 CONFIG_FILE="/etc/linuxcampam/config.ini"
 
+FORCE_LOCK=false
+for arg in "$@"; do
+    if [ "$arg" == "--lock" ]; then
+        FORCE_LOCK=true
+    fi
+done
+
+# Handle Immutable Flag: Check if file is locked and temporarily unlock it
+WAS_IMMUTABLE=false
+if [ -f "$CONFIG_FILE" ] && command -v lsattr &> /dev/null; then
+    if lsattr "$CONFIG_FILE" 2>/dev/null | cut -c 5 | grep -q "i"; then
+        WAS_IMMUTABLE=true
+        echo "[Setup] Configuration file is currently locked (immutable). Temporarily unlocking for setup..."
+        sudo chattr -i "$CONFIG_FILE" || true
+    fi
+fi
+
 # Default values if nothing detected
 IR_CAM=""
 RGB_CAM=""
@@ -221,3 +238,42 @@ else
 fi
 
 echo "[Setup] Config updated."
+
+if [ "$FORCE_LOCK" = true ]; then
+    echo ""
+    echo "====================================================================="
+    echo "[Setup] --lock flag detected. Locking configuration file..."
+    if command -v chattr &> /dev/null; then
+        sudo chattr +i "$CONFIG_FILE"
+        echo "[Setup] Configuration LOCKED."
+        echo "[Setup] Important: Run 'sudo chattr -i $CONFIG_FILE' before manual editing."
+    else
+        echo "[Setup] 'chattr' command not found. Skipping lock."
+    fi
+    echo "====================================================================="
+elif [ -t 0 ] && [ "$DEBIAN_FRONTEND" != "noninteractive" ]; then
+    echo ""
+    echo "====================================================================="
+    echo "[Setup] For maximum security against malicious background scripts,"
+    echo "        it is highly recommended to lock the configuration file."
+    read -p "[Setup] Would you like to lock the configuration file now? [Y/n] " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        if command -v chattr &> /dev/null; then
+            sudo chattr +i "$CONFIG_FILE"
+            echo "[Setup] Configuration LOCKED."
+            echo "[Setup] Important: Run 'sudo chattr -i $CONFIG_FILE' before manual editing."
+        else
+            echo "[Setup] 'chattr' command not found. Skipping lock."
+        fi
+    else
+        echo "[Setup] Configuration left unlocked."
+    fi
+    echo "====================================================================="
+else
+    # Non-interactive mode (e.g., automated apt upgrade)
+    if [ "$WAS_IMMUTABLE" = true ] && command -v chattr &> /dev/null; then
+        echo "[Setup] Restoring immutable lock on configuration file..."
+        sudo chattr +i "$CONFIG_FILE" || true
+    fi
+fi

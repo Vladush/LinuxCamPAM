@@ -50,7 +50,7 @@ We use the STRIDE framework to analyze potential threats to the authentication p
 
 * **Threat 4 (Configuration Tampering):** An attacker with local access modifies `/etc/linuxcampam/config.ini` to bypass security policies. For example, they could lower the similarity `threshold` to `0.01` to accept any image, switch the policy to `lenient` to bypass IR liveness checks, or point `camera_path_ir` to a virtual webcam device looping a pre-recorded spoof video.
 * **Mitigation:** The configuration file must be strictly owned by `root:root` with `0644` or `0600` permissions.
-  * **Advanced Mitigation (Immutable Flag):** Administrators are highly encouraged to apply the immutable flag (`chattr +i /etc/linuxcampam/config.ini`) to prevent even a compromised root daemon or rogue script from modifying these critical security parameters.
+  * **Advanced Mitigation (Immutable Flag):** Administrators are highly encouraged to apply the immutable flag (`chattr +i /etc/linuxcampam/config.ini`) to prevent even a compromised root daemon or rogue script from modifying these critical security parameters (see [Roadmap #9](#5-future-security-enhancements-roadmap)). The setup script provides an interactive prompt to enable this easily.
 
 ### 3.3 Repudiation
 
@@ -89,7 +89,7 @@ We use the STRIDE framework to analyze potential threats to the authentication p
 
 * **Threat 4 (Command Execution Injection):** The proximity lock feature executes the user-defined `lock_command`. If an unprivileged attacker can modify `/etc/linuxcampam/config.ini`, they could attempt to inject shell commands.
 * **Mitigation:** The daemon bypasses the system shell entirely by securely tokenizing the command and executing it via `posix_spawnp()`. Shell metacharacters (`|`, `;`, `&&`) are treated as literal strings, completely eliminating shell command injection. Furthermore, the configuration file must be strictly owned by `root:root` with `0644` or `0600` permissions.
-  * **Advanced Mitigation (Immutable Flag)**: Setting the immutable flag (`chattr +i /etc/linuxcampam/config.ini`) is highly recommended to block even compromised `root` processes from modifying the file.
+  * **Advanced Mitigation (Immutable Flag)**: Setting the immutable flag (`chattr +i /etc/linuxcampam/config.ini`) is highly recommended to block even compromised `root` processes from modifying the file (see [Roadmap #9](#5-future-security-enhancements-roadmap)). The setup script provides an interactive prompt to enable this easily.
   * **Advanced Mitigation (MAC / Read-Only)**: AppArmor/SELinux profiles and read-only mounts can further restrict modification to authorized utilities and administrators.
 
 ### 3.7 Authorization Bypass (Physical Proximity)
@@ -117,7 +117,7 @@ Overall Risk is calculated by combining **Likelihood** (Low, Medium, High) and *
 | **Tampering** | Root User Modifies Embeddings | Low | High | **Medium** | WiP | Relies on OS boundaries; attacker already has root. (HMAC/encryption planned, see [Roadmap #1](#5-future-security-enhancements-roadmap), [#8](#5-future-security-enhancements-roadmap)) |
 | **Tampering** | Evil Maid (USB Camera Swap) | Low | High | **Medium** | Partially | Hardware trust issue. Mitigate via BIOS passwords. Device ID verification (VID/PID/Serial) provides partial mitigation (see [Roadmap #5](#5-future-security-enhancements-roadmap)). |
 | **Tampering** | USB Bus Frame Injection | Low | High | **Medium** | No | No encrypted sensor links. Device ID checks do not mitigate bus taps. Challenge-response mitigates pre-recorded frame loops (see [Roadmap #6](#5-future-security-enhancements-roadmap)). Recommend `usbguard` for physical port control. |
-| **Tampering** | Configuration Tampering (Bypass) | Low | Critical | **Medium** | Yes | Defended by root OS permissions. Immutable flag (`chattr +i`) highly recommended. |
+| **Tampering** | Configuration Tampering (Bypass) | Low | Critical | **Medium** | Yes | Defended by root OS permissions. Immutable flag (`chattr +i`) highly recommended (prompt available via setup script). |
 | **Repudiation** | Sudo Authentication Denial | Low | Low | **Low** | Yes | Daemon logs authentication successes and failures via syslog. |
 | **Info Disclosure** | Read Socket Traffic | Medium | Low | **Low** | Yes | Socket only sends booleans and usernames. |
 | **Info Disclosure** | Biometric Embedding Theft | Low | High | **Medium** | Partially | Secured by root-only filesystem permissions. (Encryption planned, see [Roadmap #8](#5-future-security-enhancements-roadmap)) |
@@ -140,3 +140,4 @@ To further harden the LinuxCamPAM architecture, the following enhancements are p
 6. **Active Liveness Detection (Challenge-Response):** Implement randomized user prompts (e.g., "blink", "turn head") to thwart video replay injection attacks by forcing unpredictable live interaction.
 7. **Embedding Encryption & Hardware Binding:** Encrypt user embedding files locally using a host key or hardware-backed key (via TPM) to protect them from offline extraction and relocation.
 8. **Privilege Separation:** Transition the daemon from running as `root` to a dedicated `linuxcampam` service user, with hardware access restricted via standard Linux groups (`video`, `render`).
+9. **Default Immutable Configuration:** Future major releases will lock `/etc/linuxcampam/config.ini` by default (`chattr +i`) upon installation completion to aggressively block unauthorized modifications. *(Note: The installation script already supports an interactive opt-in prompt for this feature).*
