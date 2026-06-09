@@ -61,7 +61,7 @@ We use the STRIDE framework to analyze potential threats to the authentication p
 
 * **Threat 1 (Biometric Theft & Replay):** Stealing face embeddings to clone an identity or replay authentication on another system.
 * **Mitigation:** Embeddings are 128-dimensional mathematical abstractions, not raw photos. Stored in root-owned directories (`0700` parent, `0600` files). Raw images are *never* saved unless explicitly enabled for debugging by an administrator.
-* **Residual Risk:** If an attacker achieves root access, they can copy the embedding files and use them on another machine running LinuxCamPAM. (Future roadmap: Cryptographic binding/encryption of embeddings).
+* **Residual Risk:** While filesystem permissions protect the data at rest, biometric data is inherently exposed. While RGB faces are widely public (e.g., social media), IR faces are not. However, an attacker can still perform a hidden capture using an IR-capable camera near the victim. Because the underlying ONNX models and OpenCV tools are open-source, the attacker can independently recreate the exact same embedding matrix offline. Unlike passwords, biometric identifiers cannot be revoked or changed if compromised; they are physical identifiers, not cryptographic secrets.
 * **Threat 2 (Socket Snooping):** The IPC socket (`/run/linuxcampam/socket`) has `0666` permissions.
 * **Mitigation:** The socket only transmits usernames and boolean results (`AUTH_SUCCESS`/`AUTH_FAIL`). No biometric data or video frames traverse the socket.
 
@@ -102,7 +102,7 @@ We use the STRIDE framework to analyze potential threats to the authentication p
 * **Threat 1 (Physical Coercion / "Rubber Hose" Attack):** An attacker physically forces the authorized user into the camera's field of view. Because the facial authentication PAM module runs passively, the machine unlocks without conscious cooperation or active intent from the victim (even if automatic waking is disabled, the attacker simply needs to wiggle the mouse to wake the screen before forcing the victim's face into view).
 * **Mitigation:**
   * **Fallback / Kill Switch:** Future roadmap feature to disable PAM facial recognition temporarily via hotkey.
-  * **Current Recommendation:** This is an inherent risk of passive biometric authentication. For environments with high physical coercion risks, users should disable LinuxCamPAM for login/sudo entirely and rely on passwords or physical security keys (YubiKey).
+  * **Current Recommendation:** This is an inherent risk of all biometric authentication (including fingerprints and iris scans). For environments with high physical coercion risks, users should disable LinuxCamPAM for login/sudo entirely and rely on passwords or hardware tokens with PINs.
 
 * **Threat 2 (Unintended Unlocks / "Walk-By"):** The user explicitly locks the workstation (e.g., `Super + L`) because an untrusted individual is nearby, but the user remains in the room within the camera's FOV. The proximity sensor instantly wakes the screen and unlocks it again, inadvertently granting the bystander access.
 * **Mitigation:**
@@ -127,22 +127,22 @@ Overall Risk is calculated by combining **Likelihood** (Low, Medium, High) and *
 
 | Threat Category | Specific Threat | Likelihood | Impact | Overall Risk | Current Mitigation Status | Mitigation Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Spoofing** | RGB Photo/Video Replay | High (if RGB used) | High | **Critical** | Partially | Warn users against RGB-only setups. Defaults to IR if exists. (See [Roadmap #6](#5-future-security-enhancements-roadmap)) |
-| **Spoofing** | Advanced 3D/Heated Mask | Low | High | **Medium** | Partially | IR Liveness detection provides baseline defense. |
+| **Spoofing** | RGB Photo/Video Replay | High (if RGB used) | High | **Critical** | Partially | Warn users against RGB-only. Active Liveness Detection (see [Roadmap #6](#5-future-security-enhancements-roadmap)) mitigates this via randomized physical challenges, defeating static photos and pre-recorded videos. |
+| **Spoofing** | Advanced 3D/Heated Mask | Low | High | **Medium** | Partially | IR Liveness detection provides baseline defense. Active Liveness Detection (see [Roadmap #6](#5-future-security-enhancements-roadmap)) mitigates this by requiring dynamic facial movements. |
 | **Tampering** | Root User Modifies Embeddings | Low | High | **Medium** | WiP | Relies on OS boundaries; attacker already has root. (HMAC/encryption planned, see [Roadmap #1](#5-future-security-enhancements-roadmap), [#8](#5-future-security-enhancements-roadmap)) |
 | **Tampering** | Evil Maid (USB Camera Swap) | Low | High | **Medium** | Partially | Hardware trust issue. Mitigate via BIOS passwords. Device ID verification (VID/PID/Serial) provides partial mitigation (see [Roadmap #5](#5-future-security-enhancements-roadmap)). |
 | **Tampering** | USB Bus Frame Injection | Low | High | **Medium** | No | No encrypted sensor links. Device ID checks do not mitigate bus taps. Challenge-response mitigates pre-recorded frame loops (see [Roadmap #6](#5-future-security-enhancements-roadmap)). Recommend `usbguard` for physical port control. |
 | **Tampering** | Configuration Tampering (Bypass) | Low | Critical | **Medium** | Yes | Defended by root OS permissions. Immutable flag (`chattr +i`) highly recommended (prompt available via setup script). |
 | **Repudiation** | Sudo Authentication Denial | Low | Low | **Low** | Yes | Daemon logs authentication successes and failures via syslog. |
 | **Info Disclosure** | Read Socket Traffic | Medium | Low | **Low** | Yes | Socket only sends booleans and usernames. |
-| **Info Disclosure** | Biometric Embedding Theft | Low | High | **Medium** | Partially | Secured by root-only filesystem permissions. (Encryption planned, see [Roadmap #8](#5-future-security-enhancements-roadmap)) |
-| **DoS** | Auth Request Spamming | Low | Medium | **Low** | Partially | Per-user lockout after N failed auth attempts. |
+| **Info Disclosure** | Biometric Embedding Theft | Low | High | **Medium** | Partially | Secured by root permissions. Encryption planned (see [Roadmap #8](#5-future-security-enhancements-roadmap)). Note: Attackers can still recreate embeddings offline from public RGB photos or hidden IR captures. |
+| **DoS** | Auth Request Spamming | Low | Medium | **Low** | Yes | Per-user lockout prevents resource exhaustion. An attacker triggering the lockout forces a fallback to password (safe failure), preserving system security. |
 | **Elevation** | Buffer Overflow in Daemon | Low | Critical | **Medium** | Yes | Modern C++, sanitizers, strict socket parsing. |
 | **Elevation** | Unauthorized IPC Commands | Medium | High | **Low** | Yes | Implemented socket peer credential verification (`SO_PEERCRED`) in daemon to prevent unauthorized administration. |
 | **Elevation** | Virtual Hardware Injection (`uinput`) | Low | High | **Medium** | Yes | Kernel-level capability dropping restricts injection to `KEY_WAKEUP`. |
 | **Elevation** | Config Command Injection | Low | Low | **Low** | Yes | Defeated architecturally by `posix_spawnp()` tokenization, bypassing `/bin/sh`. |
 | **Bypass** | Physical Access during OS Idle Timeout | High | High | **Critical** | Yes | LinuxCamPAM proximity lock reduces the typical native 5-15 minute vulnerability window down to seconds (`lock_timeout_seconds`). Disabling it reverts to typical OS behavior. |
-| **Zero-Interaction** | Physical Coercion (Forced Unlock) | Low | Critical | **Medium** | No | Inherent to passive biometrics. Disable LinuxCamPAM entirely if at high risk. |
+| **Zero-Interaction** | Physical Coercion (Forced Unlock) | Low | Critical | **Medium** | Accepted Risk | Inherent to all biometrics (including fingerprints). Falls under organizational Risk Appetite; if unacceptable, disable LinuxCamPAM entirely. |
 | **Zero-Interaction** | Unintended Unlock (Walk-By after Lock) | Medium | High | **High** | No | User explicitly locks but remains in FOV. Disable zero-interaction unlock if at risk. |
 | **Zero-Interaction** | Amplified Spoofing Window | Medium | High | **Medium** | Yes | Polling increases attack window, but is effectively neutralized by existing auth lockouts and IR liveness checks. |
 

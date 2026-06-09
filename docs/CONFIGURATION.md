@@ -119,7 +119,7 @@ lock_command = loginctl lock-sessions
 - **proximity_sensor_id**: The ACPI/I2C identifier for the sensor (default: `ITE8353`).
 - **proximity_enforce**: If `true`, authentication will instantly fail if the proximity sensor reports no human is present. If `false` (default), the sensor provides observational presence data without blocking authentication.
 - **wake_enabled / lock_enabled**: Toggles native OS waking and locking based on presence.
-- **always_wake_on_presence_detected**: If `true` (default), automatically emits a wake event whenever the user's presence is newly detected, preventing state synchronization issues if the OS is locked manually.
+- **always_wake_on_presence_detected**: If `true` (default), automatically emits a wake event whenever the user's presence is newly detected. **Security Warning:** Enabling this allows "zero-interaction" unlocking, which is vulnerable to unintended walk-by unlocks. Note that physical coercion is an inherent risk to all biometrics regardless of this setting. See the [Threat Model](THREAT_MODEL_AND_RISK_ASSESSMENT.md) for details.
 - **wake_confidence_threshold / lock_confidence_threshold**: Confidence thresholds (0-100) to trigger wake or lock. Decoupling these prevents rapid toggling.
 - **lock_timeout_seconds**: Time in seconds the user must be absent before the `lock_command` is executed.
 - **lock_command**: The executable to run when locking.
