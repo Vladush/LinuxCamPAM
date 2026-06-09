@@ -80,7 +80,7 @@ That's it! `apt` handles all dependencies for you.
 3. **Build & Install Project**:
 
    ```bash
-   ./scripts/install.sh
+   ./scripts/install.sh [--lock]
    ```
 
 This compiles the code and installs binaries to `/usr/local/bin`. It also:

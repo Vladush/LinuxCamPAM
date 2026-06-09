@@ -62,7 +62,7 @@ sudo cp ../config/config.ini /etc/linuxcampam/
 
 # Run Smart Config Setup
 echo "Detecting cameras and updating config..."
-sudo ../scripts/setup_config.sh
+sudo ../scripts/setup_config.sh "$@"
 
 # Download Models (from Hugging Face)
 MODEL_DIR="/usr/share/linuxcampam/models"
