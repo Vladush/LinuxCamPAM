@@ -358,105 +358,108 @@ int main(int argc, char *argv[]) {
   std::optional<HardwareManager> hw_manager;
   SensorFactory sensor_factory;
   PresenceTripwire tripwire(sensor_factory);
+  ScopedWorker proximity_init_worker;
 
   if (cfg.proximity_sensor == Configuration::ProximitySensorMode::AUTO || cfg.proximity_sensor == Configuration::ProximitySensorMode::ENABLED) {
-    std::string hw_id = cfg.proximity_sensor_id;
-    std::string i2c_addr;
-    std::error_code ec;
+    proximity_init_worker = ScopedWorker([&cfg, &hw_manager, &tripwire]() {
+      std::string hw_id = cfg.proximity_sensor_id;
+      std::string i2c_addr;
+      std::error_code ec;
 
-    std::string expected_path = "/sys/bus/acpi/devices/" + hw_id + ":00/physical_node";
-    if (fs::exists(expected_path, ec)) {
-      auto target = fs::read_symlink(expected_path, ec);
-      if (!ec) {
-        i2c_addr = target.filename().string();
+      std::string expected_path = "/sys/bus/acpi/devices/" + hw_id + ":00/physical_node";
+      if (fs::exists(expected_path, ec)) {
+        auto target = fs::read_symlink(expected_path, ec);
+        if (!ec) {
+          i2c_addr = target.filename().string();
+        }
       }
-    }
 
-    if (i2c_addr.empty()) {
-      for (const auto& entry : fs::directory_iterator("/sys/bus/acpi/devices/", ec)) {
-        if (entry.path().filename().string().find(hw_id) != std::string::npos) {
-          if (auto phys = entry.path() / "physical_node"; fs::exists(phys, ec)) {
-            auto target = fs::read_symlink(phys, ec);
-            if (!ec) {
-              i2c_addr = target.filename().string();
-              break;
+      if (i2c_addr.empty()) {
+        for (const auto& entry : fs::directory_iterator("/sys/bus/acpi/devices/", ec)) {
+          if (entry.path().filename().string().find(hw_id) != std::string::npos) {
+            if (auto phys = entry.path() / "physical_node"; fs::exists(phys, ec)) {
+              auto target = fs::read_symlink(phys, ec);
+              if (!ec) {
+                i2c_addr = target.filename().string();
+                break;
+              }
             }
           }
         }
       }
-    }
 
-    if (!i2c_addr.empty()) {
-      hw_manager.emplace(i2c_addr);
-      if (hw_manager->seize_sensor()) {
-        if (std::optional<std::string> hidraw_node = hw_manager->get_hidraw_node(); hidraw_node) {
-          // Initialize VirtualKeyboard for wake functionality
-          static VirtualKeyboard vkb;
+      if (!i2c_addr.empty()) {
+        hw_manager.emplace(i2c_addr);
+        if (hw_manager->seize_sensor()) {
+          if (std::optional<std::string> hidraw_node = hw_manager->get_hidraw_node(); hidraw_node) {
+            // Initialize VirtualKeyboard for wake functionality
+            static VirtualKeyboard vkb;
 
-          if (!tripwire.start(*hidraw_node, HardwareId(hw_id), [&cfg](bool present, int confidence) {
-            static bool last_state = false;
-            static int last_confidence = 0;
+            if (!tripwire.start(*hidraw_node, HardwareId(hw_id), [&cfg](bool present, int confidence) {
+              static bool last_state = false;
+              static int last_confidence = 0;
 
-            g_proximity_present.store(present);
-            if (present != last_state) {
+              g_proximity_present.store(present);
+              if (present != last_state) {
+                if (present) {
+                  log_info("Presence detected start at " + std::to_string(confidence) + "% confidence");
+                } else {
+                  log_info("Presence detected stop (last seen at " + std::to_string(last_confidence) + "% confidence)");
+                }
+                last_state = present;
+              }
               if (present) {
-                log_info("Presence detected start at " + std::to_string(confidence) + "% confidence");
-              } else {
-                log_info("Presence detected stop (last seen at " + std::to_string(last_confidence) + "% confidence)");
+                last_confidence = confidence;
               }
-              last_state = present;
-            }
-            if (present) {
-              last_confidence = confidence;
-            }
 
-            std::lock_guard<std::mutex> lock(g_lock_state.mtx);
+              std::lock_guard<std::mutex> lock(g_lock_state.mtx);
 
-            // Wake Logic
-            if (cfg.wake_enabled && confidence >= cfg.wake_confidence_threshold) {
-              if (g_lock_state.was_away) {
-                log_info("Wake threshold reached, waking screen...");
-                if (!vkb.emit_wakeup()) {
-                  log_warn("Failed to emit wake event via VirtualKeyboard");
+              // Wake Logic
+              if (cfg.wake_enabled && confidence >= cfg.wake_confidence_threshold) {
+                if (g_lock_state.was_away) {
+                  log_info("Wake threshold reached, waking screen...");
+                  if (!vkb.emit_wakeup()) {
+                    log_warn("Failed to emit wake event via VirtualKeyboard");
+                  }
+                  g_lock_state.was_away = false;
                 }
-                g_lock_state.was_away = false;
               }
-            }
 
-            // Lock Logic
-            if (cfg.lock_enabled) {
-              if (confidence < cfg.lock_confidence_threshold || !present) {
-                if (!g_lock_state.was_away && !g_lock_state.absence_timer_active) {
-                  g_lock_state.absence_start = std::chrono::steady_clock::now();
-                  g_lock_state.absence_timer_active = true;
+              // Lock Logic
+              if (cfg.lock_enabled) {
+                if (confidence < cfg.lock_confidence_threshold || !present) {
+                  if (!g_lock_state.was_away && !g_lock_state.absence_timer_active) {
+                    g_lock_state.absence_start = std::chrono::steady_clock::now();
+                    g_lock_state.absence_timer_active = true;
+                  }
+                } else {
+                  g_lock_state.absence_timer_active = false;
                 }
               } else {
-                g_lock_state.absence_timer_active = false;
+                if (confidence < cfg.lock_confidence_threshold || !present) {
+                  g_lock_state.was_away = true;
+                }
               }
+
+            })) {
+              log_warn("Failed to start PresenceTripwire.");
             } else {
-              if (confidence < cfg.lock_confidence_threshold || !present) {
-                g_lock_state.was_away = true;
+              log_info("Proximity sensor started successfully on " + *hidraw_node);
+              // If successfully started and enforcing, initialize state
+              if (cfg.proximity_enforce) {
+                g_proximity_present.store(false); 
               }
             }
-
-          })) {
-            log_warn("Failed to start PresenceTripwire.");
-          } else {
-            log_info("Proximity sensor started successfully on " + *hidraw_node);
-            // If successfully started and enforcing, initialize state
-            if (cfg.proximity_enforce) {
-              g_proximity_present.store(false); 
-            }
+          } else if (cfg.proximity_sensor == Configuration::ProximitySensorMode::ENABLED) {
+            log_warn("Proximity sensor set to enabled, but hidraw node could not be resolved.");
           }
-        } else if (cfg.proximity_sensor == Configuration::ProximitySensorMode::ENABLED) {
-          log_warn("Proximity sensor set to enabled, but hidraw node could not be resolved.");
+        } else {
+          log_warn("Failed to seize hardware sensor.");
         }
-      } else {
-        log_warn("Failed to seize hardware sensor.");
+      } else if (cfg.proximity_sensor == Configuration::ProximitySensorMode::ENABLED) {
+        log_warn("Proximity sensor set to enabled, but hardware node was not found.");
       }
-    } else if (cfg.proximity_sensor == Configuration::ProximitySensorMode::ENABLED) {
-      log_warn("Proximity sensor set to enabled, but hardware node was not found.");
-    }
+    });
   }
 
   // Socket Setup
