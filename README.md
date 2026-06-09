@@ -127,7 +127,7 @@ sudo apt install ./linuxcampam_*.deb
 The package installation will automatically backup your PAM config, configure the cameras, and enable the module.
 
 > [!TIP]
-> **Visual Guide**: detailed flowcharts for installation and enrollment are available in [docs/USER_FLOWS.md](docs/USER_FLOWS.md).
+> **Visual Guide**: detailed flowcharts for installation and enrollment are available in the [User Flows Guide](docs/USER_FLOWS.md).
 
 ### Build Dependencies & Compatibility
 
@@ -185,7 +185,7 @@ sudo linuxcampam-setup-config
 
 > **IR Camera Note:** If your IR camera implies it's working but doesn't light up, you likely need to configure the emitter. This project relies on the excellent **[linux-enable-ir-emitter](https://github.com/EmixamPP/linux-enable-ir-emitter)** tool for this. Run `scripts/install_ir_emitter.sh` to install it (it will use a patched version from <https://github.com/Vladush/linux-enable-ir-emitter> by default).
 
-For advanced policies (e.g., Mandatory IR + Optional RGB), see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+For advanced policies (e.g., Mandatory IR + Optional RGB), see the [Configuration Guide](docs/CONFIGURATION.md).
 
 ## Usage
 
@@ -319,7 +319,7 @@ If you use the YuNet model included in this project for research, please cite th
 
 I am excited to see this project grow beyond the hardware I currently possess! **I am actively accepting Pull Requests, Feature Requests, and Bug Reports.**
 
-New contributors should read **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for a technical overview of the system.
+New contributors should read the **[Architecture Documentation](docs/ARCHITECTURE.md)** for a technical overview of the system.
 
 - **Porting:** If you are on a Linux distribution such as [Gentoo](https://www.gentoo.org/), [Calculate](https://www.calculate-linux.org/), [Arch](https://archlinux.org/), [Fedora](https://fedoraproject.org/), or another, and want help adapting the packaging, open an issue! I am happy to help guide the process as my time permits.
 - **Hardware Support:** I am open to supporting different camera configurations and hardware quirks. If you have unique hardware, feel free to report issues or suggest improvements.

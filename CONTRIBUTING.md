@@ -25,7 +25,7 @@ Thanks for your interest in contributing! This started as a personal project for
 
 ## Development Setup
 
-See the [README.md](README.md) for full installation instructions.
+See the [Main README](README.md) for full installation instructions.
 
 ### Quick Build for Devs
 
@@ -43,7 +43,7 @@ make
 
 ### System Architecture
 
-Before diving into the code, we recommend reading **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**. It contains diagrams showing how the PAM module, Daemon, and AI Engine interact, along with a "Source Code Map" to help you navigate the files.
+Before diving into the code, we recommend reading the **[Architecture Documentation](docs/ARCHITECTURE.md)**. It contains diagrams showing how the PAM module, Daemon, and AI Engine interact, along with a "Source Code Map" to help you navigate the files.
 
 ## Security
 
