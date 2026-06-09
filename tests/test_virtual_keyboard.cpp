@@ -24,3 +24,10 @@ TEST_F(VirtualKeyboardTest, HandlesInitializationFailureGracefully) {
     EXPECT_TRUE(vkb.emit_wakeup());
   }
 }
+
+TEST_F(VirtualKeyboardTest, MultipleInitCallsAreSafe) {
+  VirtualKeyboard vkb;
+  bool res1 = vkb.init();
+  bool res2 = vkb.init();
+  EXPECT_EQ(res1, res2); // Should not crash and should return same status
+}

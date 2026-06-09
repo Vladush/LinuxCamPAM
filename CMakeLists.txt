@@ -223,6 +223,8 @@ if(TARGET gtest)
         tests/test_auth_logic.cpp
         tests/test_protocol.cpp
         tests/test_pam_logic.cpp
+        tests/test_config_parsing.cpp
+        tests/test_camera.cpp
     )
     
     # The tests link against the service_core library to test internal logic without 
