@@ -1,5 +1,7 @@
 # Threat Modelling & Risk Assessment
 
+* **Quick Links:** [README](../README.md) | [Security Policy](../SECURITY.md) | [Configuration Guide](CONFIGURATION.md)
+
 ## 1. Executive Summary
 
 This document details the security posture, threat model, and risk assessment for **LinuxCamPAM**. It breaks down what the system protects against, where its vulnerabilities lie, and the trade-offs made in its design.
@@ -45,6 +47,10 @@ We use the STRIDE framework to analyze potential threats to the authentication p
 * **Mitigation:** The software inherently trusts the `V4L2` video stream. Unlike some enterprise biometric setups, generic webcams do not provide encrypted sensor links to the OS.
   * **Active Liveness Check**: Active liveness detection (challenge-response) provides a strong defense against frame injection by requiring unpredictable real-time user reactions, preventing the replay of static or looped video frames (see [Roadmap #6](#5-future-security-enhancements-roadmap)).
   * **System-Level Recommendation**: For highly sensitive environments, administrators are strongly advised to deploy `usbguard` to block unauthorized USB devices from enumerating, preventing hot-plug camera swap attacks.
+
+* **Threat 4 (Configuration Tampering):** An attacker with local access modifies `/etc/linuxcampam/config.ini` to bypass security policies. For example, they could lower the similarity `threshold` to `0.01` to accept any image, switch the policy to `lenient` to bypass IR liveness checks, or point `camera_path_ir` to a virtual webcam device looping a pre-recorded spoof video.
+* **Mitigation:** The configuration file must be strictly owned by `root:root` with `0644` or `0600` permissions.
+  * **Advanced Mitigation (Immutable Flag):** Administrators are highly encouraged to apply the immutable flag (`chattr +i /etc/linuxcampam/config.ini`) to prevent even a compromised root daemon or rogue script from modifying these critical security parameters.
 
 ### 3.3 Repudiation
 
@@ -111,6 +117,7 @@ Overall Risk is calculated by combining **Likelihood** (Low, Medium, High) and *
 | **Tampering** | Root User Modifies Embeddings | Low | High | **Medium** | WiP | Relies on OS boundaries; attacker already has root. (HMAC/encryption planned, see [Roadmap #1](#5-future-security-enhancements-roadmap), [#8](#5-future-security-enhancements-roadmap)) |
 | **Tampering** | Evil Maid (USB Camera Swap) | Low | High | **Medium** | Partially | Hardware trust issue. Mitigate via BIOS passwords. Device ID verification (VID/PID/Serial) provides partial mitigation (see [Roadmap #5](#5-future-security-enhancements-roadmap)). |
 | **Tampering** | USB Bus Frame Injection | Low | High | **Medium** | No | No encrypted sensor links. Device ID checks do not mitigate bus taps. Challenge-response mitigates pre-recorded frame loops (see [Roadmap #6](#5-future-security-enhancements-roadmap)). Recommend `usbguard` for physical port control. |
+| **Tampering** | Configuration Tampering (Bypass) | Low | Critical | **Medium** | Yes | Defended by root OS permissions. Immutable flag (`chattr +i`) highly recommended. |
 | **Repudiation** | Sudo Authentication Denial | Low | Low | **Low** | Yes | Daemon logs authentication successes and failures via syslog. |
 | **Info Disclosure** | Read Socket Traffic | Medium | Low | **Low** | Yes | Socket only sends booleans and usernames. |
 | **Info Disclosure** | Biometric Embedding Theft | Low | High | **Medium** | Partially | Secured by root-only filesystem permissions. (Encryption planned, see [Roadmap #8](#5-future-security-enhancements-roadmap)) |

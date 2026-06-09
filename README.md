@@ -322,7 +322,13 @@ New contributors should read **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** fo
 - **Discussion:** Ideas for new features (like the Liveness Detection above) are welcome.
 - **Time Commitment:** Please note this is a personal project. While I strive to be responsive, my availability for support depends on my free time.
 
-## Security & Permissions
+## Security & Threat Model
+
+LinuxCamPAM takes system security seriously. A comprehensive breakdown of the protected assets, trust boundaries, STRIDE threat modeling, and mitigation strategies (including hardware swaps, frame injection, and `config.ini` tampering) is available here:
+
+👉 **[Read the Threat Model & Risk Assessment](docs/THREAT_MODEL_AND_RISK_ASSESSMENT.md)** 👈
+
+For information on how to securely report vulnerabilities, please see our **[Security Policy](SECURITY.md)**.
 
 > [!IMPORTANT]
 > **Permissions & Sudo Usage**

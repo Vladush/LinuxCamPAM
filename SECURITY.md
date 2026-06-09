@@ -1,5 +1,7 @@
 # Security Policy
 
+* **Quick Links:** [README](README.md) | [Threat Model & Risk Assessment](docs/THREAT_MODEL_AND_RISK_ASSESSMENT.md)
+
 ## Supported Versions
 
 | Version | Supported                               |
