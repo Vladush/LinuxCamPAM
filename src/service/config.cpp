@@ -287,6 +287,7 @@ void Configuration::parse_ini_into_self(
 
   // Proximity Wake/Lock
   wake_enabled = (get("Proximity.wake_enabled", "true") == "true");
+  always_wake_on_presence_detected = (get("Proximity.always_wake_on_presence_detected", "true") == "true");
   if (auto val = parse_int(get("Proximity.wake_confidence_threshold", "50"))) wake_confidence_threshold = *val;
   lock_enabled = (get("Proximity.lock_enabled", "false") == "true");
   if (auto val = parse_int(get("Proximity.lock_confidence_threshold", "5"))) lock_confidence_threshold = *val;
@@ -346,7 +347,7 @@ std::string Configuration::toString() const {
   ss << "  Proximity Sensor: " << prox_mode_str << "\n";
   ss << "  Proximity Sensor ID: " << proximity_sensor_id << "\n";
   ss << "  Proximity Enforce: " << (proximity_enforce ? "true" : "false") << "\n";
-  ss << "  Wake Enabled: " << (wake_enabled ? "true" : "false") << " (Threshold: " << wake_confidence_threshold << "%)\n";
+  ss << "  Wake Enabled: " << (wake_enabled ? "true" : "false") << " (Always on return: " << (always_wake_on_presence_detected ? "true" : "false") << ", Threshold: " << wake_confidence_threshold << "%)\n";
   ss << "  Lock Enabled: " << (lock_enabled ? "true" : "false") << " (Threshold: " << lock_confidence_threshold << "%, Timeout: " << lock_timeout_seconds << "s)\n";
   ss << "  Lock Command: " << lock_command << "\n";
   ss << "  Auth Policy: ";

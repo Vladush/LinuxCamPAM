@@ -399,6 +399,8 @@ int main(int argc, char *argv[]) {
               static bool last_state = false;
               static int last_confidence = 0;
 
+              bool just_returned = (present && !last_state);
+
               g_proximity_present.store(present);
               if (present != last_state) {
                 if (present) {
@@ -416,7 +418,7 @@ int main(int argc, char *argv[]) {
 
               // Wake Logic
               if (cfg.wake_enabled && confidence >= cfg.wake_confidence_threshold) {
-                if (g_lock_state.was_away) {
+                if (g_lock_state.was_away || (cfg.always_wake_on_presence_detected && just_returned)) {
                   log_info("Wake threshold reached, waking screen...");
                   if (!vkb.emit_wakeup()) {
                     log_warn("Failed to emit wake event via VirtualKeyboard");

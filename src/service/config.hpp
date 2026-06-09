@@ -69,6 +69,7 @@ public:
   bool proximity_enforce = false;
 
   bool wake_enabled = true;
+  bool always_wake_on_presence_detected = true;
   int wake_confidence_threshold = DEFAULT_WAKE_CONFIDENCE_THRESHOLD;
   bool lock_enabled = false;
   int lock_confidence_threshold = DEFAULT_LOCK_CONFIDENCE_THRESHOLD;

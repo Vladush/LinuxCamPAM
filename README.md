@@ -312,6 +312,7 @@ If you use the YuNet model included in this project for research, please cite th
 - [ ] **Privilege Separation:** Transition the daemon from running as `root` to a dedicated `linuxcampam` service user.
 - [ ] **Adaptive Enrollment** *(needs investigation)*: Auto-update embeddings when face auth fails but password succeeds. Requires careful security analysis.
 - [ ] **GUI Config Tool:** A simple GTK/Qt app for managing users and cameras.
+- [ ] **D-Bus State Synchronization:** Native DBus listener for `org.freedesktop.login1.Session` to accurately synchronize the daemon's internal state with manual OS-level locks.
 - [ ] **Enterprise Features:**
   - Embedding export/import with model version validation for cross-machine portability.
   - Remote backend support (LDAP, REST API, RADIUS-style) for centralized user management.
