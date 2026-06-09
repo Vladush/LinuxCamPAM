@@ -228,7 +228,7 @@ int execute_command_spawn(const std::string& command_line) {
   }
   argv.push_back(nullptr);
 
-  pid_t pid;
+  pid_t pid = -1;
   int status = posix_spawnp(&pid, argv[0], nullptr, nullptr, argv.data(), environ);
   if (status != 0) {
     return status;
