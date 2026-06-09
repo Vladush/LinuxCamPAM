@@ -180,6 +180,7 @@ The installer runs a smart detection script (`linuxcampam-setup-config`) to auto
 ```bash
 sudo linuxcampam-setup-config
 ```
+
 *(Note: To lock the configuration non-interactively in automated deployments, append the `--lock` flag).*
 
 > **IR Camera Note:** If your IR camera implies it's working but doesn't light up, you likely need to configure the emitter. This project relies on the excellent **[linux-enable-ir-emitter](https://github.com/EmixamPP/linux-enable-ir-emitter)** tool for this. Run `scripts/install_ir_emitter.sh` to install it (it will use a patched version from <https://github.com/Vladush/linux-enable-ir-emitter> by default).
