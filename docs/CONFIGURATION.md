@@ -1,5 +1,8 @@
 # LinuxCamPAM Configuration Guide
 
+> [!IMPORTANT]
+> If you opted to enable the **Immutable Flag** when prompted by the setup script during installation, your text editor will refuse to save changes (even with `sudo`). You must run `sudo chattr -i /etc/linuxcampam/config.ini` before manually editing it. You can lock it again afterward with `sudo chattr +i`.
+
 ## Multi-Camera Support
 
 LinuxCamPAM now supports an arbitrary number of cameras with configurable authentication policies. This allows for dual-camera setups (IR + RGB), single-camera setups, or custom multi-view configurations.
@@ -101,11 +104,30 @@ Configure native support for human presence sensors (like the ITE8353) to detect
 proximity_sensor = auto
 proximity_sensor_id = ITE8353
 proximity_enforce = false
+
+[Proximity]
+wake_enabled = true
+always_wake_on_presence_detected = true
+wake_confidence_threshold = 50
+lock_enabled = false
+lock_confidence_threshold = 5
+lock_timeout_seconds = 10
+lock_command = loginctl lock-sessions
 ```
 
 - **proximity_sensor**: `auto` (use if found), `enabled` (fail if not found), or `disabled`.
 - **proximity_sensor_id**: The ACPI/I2C identifier for the sensor (default: `ITE8353`).
 - **proximity_enforce**: If `true`, authentication will instantly fail if the proximity sensor reports no human is present. If `false` (default), the sensor provides observational presence data without blocking authentication.
+- **wake_enabled / lock_enabled**: Toggles native OS waking and locking based on presence.
+- **always_wake_on_presence_detected**: If `true` (default), automatically emits a wake event whenever the user's presence is newly detected. **Security Warning:** Enabling this allows "zero-interaction" unlocking, which is vulnerable to unintended walk-by unlocks. Note that physical coercion is an inherent risk to all biometrics regardless of this setting. See the [Threat Model](THREAT_MODEL_AND_RISK_ASSESSMENT.md) for details.
+- **wake_confidence_threshold / lock_confidence_threshold**: Confidence thresholds (0-100) to trigger wake or lock. Decoupling these prevents rapid toggling.
+- **lock_timeout_seconds**: Time in seconds the user must be absent before the `lock_command` is executed.
+- **lock_command**: The executable to run when locking.
+
+> [!WARNING]
+> **Secure Execution:** For security reasons, the `lock_command` is executed directly via `posix_spawnp` (bypassing `/bin/sh`). Shell features such as pipes (`|`), redirects (`>`), `&&`, and variable expansion are **not supported**. Ensure your command is a simple binary path with standard arguments (e.g., `swaylock -f -c 000000`).
+
+<!-- break blockquotes -->
 
 > [!NOTE]
 > **Proximity Sensor Data Interpretation:** The ITE8353 is a proprietary hardware sensor. LinuxCamPAM parses its undocumented 12-byte HID protocol based on observed behavior. The 8th byte is interpreted as a **confidence score or timeout counter** (0-100%), not physical distance, because it counts down uniformly from 100 to 0 before triggering an "Away" state.
@@ -141,6 +163,28 @@ lockout_duration_sec = 300
 
 - **lockout_attempts**: Number of failed attempts before temporary lockout.
 - **lockout_duration_sec**: Duration of lockout in seconds (default 300s = 5 minutes).
+
+### Advanced Configuration Security
+
+While standard OS permissions (`0600` / `0644` with `root:root` ownership) prevent unprivileged modification of `/etc/linuxcampam/config.ini`, advanced threats (e.g., rogue root scripts) can be mitigated using the following OS-level hardening techniques:
+
+#### 1. The Immutable Flag (`chattr`) - *Highly Recommended*
+
+The simplest and most effective defense is making the configuration file immutable. Once set, not even the `root` user can modify, delete, or rename the file. *(Note: The interactive setup script provides a prompt to enable this easily).*
+
+```bash
+sudo chattr +i /etc/linuxcampam/config.ini
+```
+
+To update the configuration later, temporarily unlock it: `sudo chattr -i /etc/linuxcampam/config.ini`.
+
+#### 2. Mandatory Access Control (AppArmor / SELinux)
+
+If you use AppArmor or SELinux, you can write a strict profile that dictates exactly which binaries are allowed to write to `/etc/linuxcampam/config.ini` (e.g., only `/usr/bin/nano` or `/usr/bin/vim` when launched by your specific admin user). This prevents a compromised daemon or background script from altering it, even if they have root privileges. *(Note: We currently have AppArmor profiles on our Roadmap to implement natively).*
+
+#### 3. Read-Only Mounts
+
+For extremely high-security environments (like kiosks or corporate endpoints), the entire `/etc/linuxcampam` directory (or the whole root filesystem) can be mounted as read-only (`ro`). This enforces state at the filesystem level.
 
 ### System Integration (UID Filtering)
 

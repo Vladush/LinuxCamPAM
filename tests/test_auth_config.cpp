@@ -84,6 +84,32 @@ model_keep_alive_sec = 120
   EXPECT_EQ(config.model_keep_alive_sec, 120);
 }
 
+TEST_F(AuthConfigTest, ParsesProximityConfig) {
+  createConfig(R"(
+[Hardware]
+proximity_sensor_id = MY_SENSOR
+
+[Proximity]
+wake_enabled = true
+wake_confidence_threshold = 70
+lock_enabled = true
+lock_confidence_threshold = 10
+lock_timeout_seconds = 30
+lock_command = custom_lock_cmd
+)");
+
+  Configuration config;
+  ASSERT_TRUE(config.load("config_test.ini"));
+
+  EXPECT_EQ(config.proximity_sensor_id, "MY_SENSOR");
+  EXPECT_TRUE(config.wake_enabled);
+  EXPECT_EQ(config.wake_confidence_threshold, 70);
+  EXPECT_TRUE(config.lock_enabled);
+  EXPECT_EQ(config.lock_confidence_threshold, 10);
+  EXPECT_EQ(config.lock_timeout_seconds, 30);
+  EXPECT_EQ(config.lock_command, "custom_lock_cmd");
+}
+
 TEST_F(AuthConfigTest, HandlesPartialConfig) {
   createConfig(R"(
 [General]
@@ -128,14 +154,8 @@ lockout_attempts = bad_number
 // Security Helper Tests
 // ----------------------------------------------------
 
-// Since isValidUsername is private in AuthEngine, we cannot verify it easily
-// here without bypassing access controls or exposing it. However, the original
-// test file had a free function copy. We will test the "official" validation if
-// exposed, or keep the unit test logic if it was testing a utility function.
-// Inspecting the original file: It had a local implementations of
-// `isValidUsername` for testing logic. Ideally, this logic should be in
-// `utils.cpp` and exposed. For now, I will retain the local logic test as a
-// sanity check for the *algorithm* used.
+// isValidUsername is tested locally here as a sanity check for the algorithm.
+// The actual implementation resides in the security utilities.
 
 TEST(SecurityTest, UsernameSanitizationAlgorithm) {
   EXPECT_TRUE(linuxcampam::isValidUsername("vlad"));

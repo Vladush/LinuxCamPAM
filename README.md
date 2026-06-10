@@ -33,6 +33,7 @@ Since open-sourcing, I've put effort into making it hardware-agnostic and well-d
   - **Auto-Configuration**: Detects your hardware (IR vs RGB) and selects the best policy.
   - **Enhanced Enrollment**: HDR capture when supported, frame averaging for all cameras.
 - **Proximity Sensor Integration**: Native support for I2C HID human presence sensors (e.g., ITE8353) to detect human presence, optimize authentication, and reduce idle processing.
+- **Zero-Interaction Login**: Automatically wakes your displays and logs you in the moment you sit down, then automatically locks the OS when you walk away. (See [Threat Model](docs/THREAT_MODEL_AND_RISK_ASSESSMENT.md) for related security considerations, including walk-by unlocks and physical coercion).
 - **Multi-Embedding Support**: Store multiple face embeddings per user for different lighting (`linuxcampam list`, `train --new`).
 - **PAM Integration**: Standard PAM module for Debian/Ubuntu.
 - **Security First**: [Threat Model & Risk Assessment](docs/THREAT_MODEL_AND_RISK_ASSESSMENT.md) included.
@@ -80,7 +81,7 @@ That's it! `apt` handles all dependencies for you.
 3. **Build & Install Project**:
 
    ```bash
-   ./scripts/install.sh
+   ./scripts/install.sh [--lock]
    ```
 
 This compiles the code and installs binaries to `/usr/local/bin`. It also:
@@ -91,6 +92,8 @@ This compiles the code and installs binaries to `/usr/local/bin`. It also:
 
 > [!NOTE]
 > **Silent Installation:** This script is designed to be fully automated and **non-interactive**. It will not ask for confirmation before backing up files or enabling the module.
+>
+> **Configuration Lock:** The setup script provides an interactive prompt (or `--lock` flag) to lock your configuration (`chattr +i`) for enhanced security. If you opt into this, you must unlock it before editing it manually: `sudo chattr -i /etc/linuxcampam/config.ini`.
 
 ### Option C: Build Debian Package (.deb)
 
@@ -125,7 +128,7 @@ sudo apt install ./linuxcampam_*.deb
 The package installation will automatically backup your PAM config, configure the cameras, and enable the module.
 
 > [!TIP]
-> **Visual Guide**: detailed flowcharts for installation and enrollment are available in [docs/USER_FLOWS.md](docs/USER_FLOWS.md).
+> **Visual Guide**: detailed flowcharts for installation and enrollment are available in the [User Flows Guide](docs/USER_FLOWS.md).
 
 ### Build Dependencies & Compatibility
 
@@ -139,11 +142,13 @@ These are required to **compile** the project from source (Options B & C).
 | :--------------------------- | :------------------------------------------ |
 | `cmake`, `build-essential`   | Build system                                |
 | `libpam0g-dev`               | PAM module development headers              |
-| `libudev-dev`                | Required for HIDAPI proximity sensor support|
+| `libudev-dev`                | Required for HIDAPI proximity sensor [2]    |
 | `v4l-utils`                  | Camera detection tools (also a runtime dep) |
 | `curl` / `wget`              | Downloading models and dependencies         |
 | `ninja-build` *(optional)*   | Faster builds (recommended)                 |
 
+> [2] **libudev-dev Troubleshooting**: This is a hard dependency for `hidapi` (via `pkg-config`). On Ubuntu/Debian, the package is `libudev-dev`. On RedHat/Fedora/CentOS-based distributions, it is typically named `systemd-devel` or `libudev-devel`. If CMake fails on `PkgConfig::HIDAPI`, ensure these headers are installed.
+>
 > **Runtime Dependencies**: If you are installing a pre-built `.deb` package, the package manager (`apt`/`dpkg`) will automatically install the necessary runtime libraries (e.g., `libpam0g`, `libatlas3-base`). You do **not** need the `-dev` development headers for running the software.
 >
 > **Build System Note:** The install scripts use `make` by default. If you have `ninja-build` installed, you can use Ninja for faster incremental builds:
@@ -179,9 +184,11 @@ The installer runs a smart detection script (`linuxcampam-setup-config`) to auto
 sudo linuxcampam-setup-config
 ```
 
+*(Note: To lock the configuration non-interactively in automated deployments, append the `--lock` flag).*
+
 > **IR Camera Note:** If your IR camera implies it's working but doesn't light up, you likely need to configure the emitter. This project relies on the excellent **[linux-enable-ir-emitter](https://github.com/EmixamPP/linux-enable-ir-emitter)** tool for this. Run `scripts/install_ir_emitter.sh` to install it (it will use a patched version from <https://github.com/Vladush/linux-enable-ir-emitter> by default).
 
-For advanced policies (e.g., Mandatory IR + Optional RGB), see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+For advanced policies (e.g., Mandatory IR + Optional RGB), see the [Configuration Guide](docs/CONFIGURATION.md).
 
 ## Usage
 
@@ -306,6 +313,7 @@ If you use the YuNet model included in this project for research, please cite th
 - [ ] **Privilege Separation:** Transition the daemon from running as `root` to a dedicated `linuxcampam` service user.
 - [ ] **Adaptive Enrollment** *(needs investigation)*: Auto-update embeddings when face auth fails but password succeeds. Requires careful security analysis.
 - [ ] **GUI Config Tool:** A simple GTK/Qt app for managing users and cameras.
+- [ ] **D-Bus State Synchronization:** Native DBus listener for `org.freedesktop.login1.Session` to accurately synchronize the daemon's internal state with manual OS-level locks.
 - [ ] **Enterprise Features:**
   - Embedding export/import with model version validation for cross-machine portability.
   - Remote backend support (LDAP, REST API, RADIUS-style) for centralized user management.
@@ -315,14 +323,20 @@ If you use the YuNet model included in this project for research, please cite th
 
 I am excited to see this project grow beyond the hardware I currently possess! **I am actively accepting Pull Requests, Feature Requests, and Bug Reports.**
 
-New contributors should read **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for a technical overview of the system.
+New contributors should read the **[Architecture Documentation](docs/ARCHITECTURE.md)** for a technical overview of the system.
 
 - **Porting:** If you are on a Linux distribution such as [Gentoo](https://www.gentoo.org/), [Calculate](https://www.calculate-linux.org/), [Arch](https://archlinux.org/), [Fedora](https://fedoraproject.org/), or another, and want help adapting the packaging, open an issue! I am happy to help guide the process as my time permits.
 - **Hardware Support:** I am open to supporting different camera configurations and hardware quirks. If you have unique hardware, feel free to report issues or suggest improvements.
 - **Discussion:** Ideas for new features (like the Liveness Detection above) are welcome.
 - **Time Commitment:** Please note this is a personal project. While I strive to be responsive, my availability for support depends on my free time.
 
-## Security & Permissions
+## Security & Threat Model
+
+LinuxCamPAM takes system security seriously. A comprehensive breakdown of the protected assets, trust boundaries, STRIDE threat modeling, and mitigation strategies (including hardware swaps, frame injection, and `config.ini` tampering) is available here:
+
+👉 **[Read the Threat Model & Risk Assessment](docs/THREAT_MODEL_AND_RISK_ASSESSMENT.md)** 👈
+
+For information on how to securely report vulnerabilities, please see our **[Security Policy](SECURITY.md)**.
 
 > [!IMPORTANT]
 > **Permissions & Sudo Usage**

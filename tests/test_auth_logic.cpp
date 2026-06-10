@@ -278,3 +278,24 @@ TEST_F(AuthEngineTest, TrainUserRejectsInvalidUsername) {
   EXPECT_FALSE(auth_engine->trainUser("../evil", "label", true));
   EXPECT_FALSE(auth_engine->trainUser("", "label", false));
 }
+
+TEST_F(AuthEngineTest, ValidFrameTriggersFaceDetection) {
+  // Return a solid grey frame to trigger the detector without failing early on empty matrix
+  auth_engine->setCameraFactory([&](const Configuration::CameraDefinition &) {
+    auto mock = std::make_unique<NiceMock<MockCamera>>();
+    constexpr int GREY_PIXEL_VALUE = 128;
+    cv::Mat grey_frame(MOCK_FRAME_HEIGHT, MOCK_FRAME_WIDTH, CV_8UC3, 
+                       cv::Scalar(GREY_PIXEL_VALUE, GREY_PIXEL_VALUE, GREY_PIXEL_VALUE));
+    EXPECT_CALL(*mock, capture()).WillOnce(Return(grey_frame));
+    return mock;
+  });
+  EXPECT_TRUE(auth_engine->init("test_auth_config.ini"));
+
+  writeUserWithEmbedding("user_valid_frame", "default");
+
+  // Since it's just a grey frame, Yunet will detect 0 faces.
+  // But this executes the detection pipeline instead of exiting early.
+  AuthResult res = auth_engine->verifyUserWithDetails("user_valid_frame");
+  EXPECT_FALSE(res.success);
+  EXPECT_THAT(res.reason, ::testing::HasSubstr("No face detected"));
+}

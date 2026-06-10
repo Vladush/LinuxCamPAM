@@ -7,11 +7,14 @@
 #include "HardwareManager.hpp"
 #include "SensorFactory.hpp"
 #include "PresenceTripwire.hpp"
+#include "VirtualKeyboard.hpp"
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <csignal>
 #include <filesystem>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <pwd.h>
@@ -29,6 +32,16 @@ namespace {
 std::atomic<bool> g_running(true);
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 std::atomic<bool> g_proximity_present(true); // Default to true so auth works if sensor is disabled
+
+struct LockState {
+  std::mutex mtx;
+  bool was_away = true;
+  bool absence_timer_active = false;
+  std::chrono::steady_clock::time_point absence_start;
+};
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+LockState g_lock_state;
+
 constexpr size_t BUFFER_SIZE = 1024; // Buffer size for incoming UNIX socket messages
 constexpr int SOCKET_PERMS = 0666; // File permissions for the UNIX socket (world-readable/writable)
 constexpr int BACKLOG = 5; // Maximum length of the pending connections queue for the socket
@@ -280,11 +293,11 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  // Ensure run directory exists
+  // Ensure run directory exists.
   std::string socket_path = linuxcampam::SOCKET_PATH;
-  // In dev mode, maybe use local tmp if not root?
-  // For now assuming system service usage or sudo.
-  // Create directory for socket if needed
+  // Execution environments without root privileges might require a local temporary directory.
+  // System service usage with elevated privileges is assumed.
+  // Directory for socket is created if needed.
   fs::path p(socket_path);
   if (p.has_parent_path()) {
     fs::create_directories(p.parent_path());
@@ -300,7 +313,7 @@ int main(int argc, char *argv[]) {
   log_info("Starting LinuxCamPAM Service...");
   log_info("Loading Config: " + config_path);
 
-  // Wipe OpenCL cache - stale kernels cause hangs after Mesa updates
+  // OpenCL cache is wiped to prevent system hangs caused by stale kernels following Mesa updates.
   std::filesystem::path home = "/root";
   if (auto user_home = linuxcampam::getHomeDir(getuid())) {
     home = *user_home;
@@ -338,78 +351,117 @@ int main(int argc, char *argv[]) {
     Logger::setLogFile(cfg.log_file);
   }
 
-  // Enable syslog early so we capture hardware init logs
+  // Syslog is enabled early to capture hardware initialization logs
   Logger::enableSyslog("linuxcampamd");
 
   // Proximity Sensor Integration Lifecycle
   std::optional<HardwareManager> hw_manager;
   SensorFactory sensor_factory;
   PresenceTripwire tripwire(sensor_factory);
+  ScopedWorker proximity_init_worker;
 
   if (cfg.proximity_sensor == Configuration::ProximitySensorMode::AUTO || cfg.proximity_sensor == Configuration::ProximitySensorMode::ENABLED) {
-    std::string hw_id = cfg.proximity_sensor_id;
-    std::string i2c_addr;
-    std::error_code ec;
+    proximity_init_worker = ScopedWorker([&cfg, &hw_manager, &tripwire]() {
+      std::string hw_id = cfg.proximity_sensor_id;
+      std::string i2c_addr;
+      std::error_code ec;
 
-    std::string expected_path = "/sys/bus/acpi/devices/" + hw_id + ":00/physical_node";
-    if (fs::exists(expected_path, ec)) {
-      auto target = fs::read_symlink(expected_path, ec);
-      if (!ec) {
-        i2c_addr = target.filename().string();
-      }
-    }
-
-    if (i2c_addr.empty()) {
-      for (const auto& entry : fs::directory_iterator("/sys/bus/acpi/devices/", ec)) {
-        if (entry.path().filename().string().find(hw_id) != std::string::npos) {
-          if (auto phys = entry.path() / "physical_node"; fs::exists(phys, ec)) {
-            auto target = fs::read_symlink(phys, ec);
-            if (!ec) {
-              i2c_addr = target.filename().string();
-              break;
-            }
-          }
+      std::string expected_path = "/sys/bus/acpi/devices/" + hw_id + ":00/physical_node";
+      if (fs::exists(expected_path, ec)) {
+        auto target = fs::read_symlink(expected_path, ec);
+        if (!ec) {
+          i2c_addr = target.filename().string();
         }
       }
-    }
 
-    if (!i2c_addr.empty()) {
-      hw_manager.emplace(i2c_addr);
-      if (hw_manager->seize_sensor()) {
-        if (std::optional<std::string> hidraw_node = hw_manager->get_hidraw_node(); hidraw_node) {
-          if (!tripwire.start(*hidraw_node, HardwareId(hw_id), [](bool present, int confidence) {
-            static bool last_state = false;
-            static int last_confidence = 0;
-            g_proximity_present.store(present);
-            if (present != last_state) {
-              if (present) {
-                log_info("Presence detected start at " + std::to_string(confidence) + "% confidence");
-              } else {
-                log_info("Presence detected stop (last seen at " + std::to_string(last_confidence) + "% confidence)");
+      if (i2c_addr.empty()) {
+        for (const auto& entry : fs::directory_iterator("/sys/bus/acpi/devices/", ec)) {
+          if (entry.path().filename().string().find(hw_id) != std::string::npos) {
+            if (auto phys = entry.path() / "physical_node"; fs::exists(phys, ec)) {
+              auto target = fs::read_symlink(phys, ec);
+              if (!ec) {
+                i2c_addr = target.filename().string();
+                break;
               }
-              last_state = present;
-            }
-            if (present) {
-              last_confidence = confidence;
-            }
-          })) {
-            log_warn("Failed to start PresenceTripwire.");
-          } else {
-            log_info("Proximity sensor started successfully on " + *hidraw_node);
-            // If successfully started and enforcing, initialize state
-            if (cfg.proximity_enforce) {
-              g_proximity_present.store(false); 
             }
           }
-        } else if (cfg.proximity_sensor == Configuration::ProximitySensorMode::ENABLED) {
-          log_warn("Proximity sensor set to enabled, but hidraw node could not be resolved.");
         }
-      } else {
-        log_warn("Failed to seize hardware sensor.");
       }
-    } else if (cfg.proximity_sensor == Configuration::ProximitySensorMode::ENABLED) {
-      log_warn("Proximity sensor set to enabled, but hardware node was not found.");
-    }
+
+      if (!i2c_addr.empty()) {
+        hw_manager.emplace(i2c_addr);
+        if (hw_manager->seize_sensor()) {
+          if (std::optional<std::string> hidraw_node = hw_manager->get_hidraw_node(); hidraw_node) {
+            // Initialize VirtualKeyboard for wake functionality
+            static VirtualKeyboard vkb;
+
+            if (!tripwire.start(*hidraw_node, HardwareId(hw_id), [&cfg](bool present, int confidence) {
+              static bool last_state = false;
+              static int last_confidence = 0;
+
+              bool just_returned = (present && !last_state);
+
+              g_proximity_present.store(present);
+              if (present != last_state) {
+                if (present) {
+                  log_info("Presence detected start at " + std::to_string(confidence) + "% confidence");
+                } else {
+                  log_info("Presence detected stop (last seen at " + std::to_string(last_confidence) + "% confidence)");
+                }
+                last_state = present;
+              }
+              if (present) {
+                last_confidence = confidence;
+              }
+
+              std::lock_guard<std::mutex> lock(g_lock_state.mtx);
+
+              // Wake Logic
+              if (present && cfg.wake_enabled && confidence >= cfg.wake_confidence_threshold) {
+                if (g_lock_state.was_away || (cfg.always_wake_on_presence_detected && just_returned)) {
+                  log_info("Wake threshold reached, waking screen...");
+                  if (!vkb.emit_wakeup()) {
+                    log_warn("Failed to emit wake event via VirtualKeyboard");
+                  }
+                  g_lock_state.was_away = false;
+                }
+              }
+
+              // Lock Logic
+              if (cfg.lock_enabled) {
+                if (confidence < cfg.lock_confidence_threshold || !present) {
+                  if (!g_lock_state.was_away && !g_lock_state.absence_timer_active) {
+                    g_lock_state.absence_start = std::chrono::steady_clock::now();
+                    g_lock_state.absence_timer_active = true;
+                  }
+                } else {
+                  g_lock_state.absence_timer_active = false;
+                }
+              } else {
+                if (confidence < cfg.lock_confidence_threshold || !present) {
+                  g_lock_state.was_away = true;
+                }
+              }
+
+            })) {
+              log_warn("Failed to start PresenceTripwire.");
+            } else {
+              log_info("Proximity sensor started successfully on " + *hidraw_node);
+              // If successfully started and enforcing, initialize state
+              if (cfg.proximity_enforce) {
+                g_proximity_present.store(false); 
+              }
+            }
+          } else if (cfg.proximity_sensor == Configuration::ProximitySensorMode::ENABLED) {
+            log_warn("Proximity sensor set to enabled, but hidraw node could not be resolved.");
+          }
+        } else {
+          log_warn("Failed to seize hardware sensor.");
+        }
+      } else if (cfg.proximity_sensor == Configuration::ProximitySensorMode::ENABLED) {
+        log_warn("Proximity sensor set to enabled, but hardware node was not found.");
+      }
+    });
   }
 
   // Socket Setup
@@ -464,6 +516,24 @@ int main(int argc, char *argv[]) {
     } else if (activity == 0) {
       // Timeout: perform maintenance
       (void)engine.performMaintenance();
+
+      // Check Lock Timeout
+      if (engine.getConfig().lock_enabled) {
+        std::lock_guard<std::mutex> lock(g_lock_state.mtx);
+        if (g_lock_state.absence_timer_active && !g_lock_state.was_away) {
+          auto now = std::chrono::steady_clock::now();
+          auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - g_lock_state.absence_start).count();
+          if (duration >= engine.getConfig().lock_timeout_seconds) {
+            log_info("Lock timeout reached (" + std::to_string(duration) + "s), locking screen...");
+            int ret = linuxcampam::execute_command_spawn(engine.getConfig().lock_command);
+            if (ret != 0) {
+              log_warn("Lock command returned non-zero exit code: " + std::to_string(ret));
+            }
+            g_lock_state.was_away = true;
+            g_lock_state.absence_timer_active = false;
+          }
+        }
+      }
     }
 
     if (g_running && activity > 0 && FD_ISSET(server_fd.get(), &readfds)) {
@@ -475,8 +545,7 @@ int main(int argc, char *argv[]) {
                  reinterpret_cast<socklen_t *>(&addrlen));
       // NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
       if (new_socket >= 0) {
-        // Handle in thread or blocking? Blocking for now - camera is
-        // single-access anyway
+        // Blocking execution is utilized; the camera enforces single-access exclusively.
         handle_client(new_socket, engine);
       }
     }

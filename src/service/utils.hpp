@@ -93,6 +93,9 @@ enumerateCameras();
 // Helpers
 [[nodiscard]] std::string getIREmitterVersion(std::string_view path);
 
+// Execute a shell-free command using posix_spawnp
+[[nodiscard]] int execute_command_spawn(const std::string& command_line);
+
 // Security Utils
 [[nodiscard]] bool isValidUsername(std::string_view username);
 [[nodiscard]] std::optional<std::filesystem::path> getHomeDir(uid_t uid);

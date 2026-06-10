@@ -13,8 +13,7 @@ namespace fs = std::filesystem;
 class Configuration {
 public:
   // Defaults
-  // TODO: Move defaults to cpp or keep here? Keeping here for easy reference
-  // akin to previous struct
+  // Defaults are maintained here for immediate reference and structural compatibility.
   static constexpr float DEFAULT_THRESHOLD = 0.363f;
   static constexpr float DEFAULT_DETECTION_THRESHOLD = 0.9f;
   static constexpr int DEFAULT_TIMEOUT_MS = 3000;
@@ -24,6 +23,9 @@ public:
   static constexpr int DEFAULT_LOCKOUT_ATTEMPTS = 5;
   static constexpr int DEFAULT_LOCKOUT_DURATION_SEC = 300;
   static constexpr int DEFAULT_GPU_THROTTLE_MS = 20;
+  static constexpr int DEFAULT_WAKE_CONFIDENCE_THRESHOLD = 50;
+  static constexpr int DEFAULT_LOCK_CONFIDENCE_THRESHOLD = 5;
+  static constexpr int DEFAULT_LOCK_TIMEOUT_SECONDS = 10;
 
   enum class AuthPolicy : std::uint8_t { STRICT_ALL, LENIENT_ANY, ADAPTIVE };
   enum class ProximitySensorMode : std::uint8_t { AUTO, ENABLED, DISABLED };
@@ -65,6 +67,14 @@ public:
   ProximitySensorMode proximity_sensor = ProximitySensorMode::AUTO;
   std::string proximity_sensor_id = "ITE8353";
   bool proximity_enforce = false;
+
+  bool wake_enabled = true;
+  bool always_wake_on_presence_detected = true;
+  int wake_confidence_threshold = DEFAULT_WAKE_CONFIDENCE_THRESHOLD;
+  bool lock_enabled = false;
+  int lock_confidence_threshold = DEFAULT_LOCK_CONFIDENCE_THRESHOLD;
+  int lock_timeout_seconds = DEFAULT_LOCK_TIMEOUT_SECONDS;
+  std::string lock_command = "loginctl lock-sessions";
 
   fs::path users_dir = linuxcampam::USERS_DIR;
   fs::path models_dir = linuxcampam::MODELS_DIR;

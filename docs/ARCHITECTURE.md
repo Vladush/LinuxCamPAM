@@ -179,13 +179,13 @@ User biometric profiles are strictly isolated to the `/etc/linuxcampam/users/` d
 
 ### Configuration (`/etc/linuxcampam/config.ini`)
 
-The configuration dictates hardware usage, logging, and security policies (e.g., `lockout_attempts`). See [CONFIGURATION.md](CONFIGURATION.md) for detailed property descriptions.
+The configuration dictates hardware usage, logging, and security policies (e.g., `lockout_attempts`). See the [Configuration Guide](CONFIGURATION.md) for detailed property descriptions.
 
 ---
 
 ## 6. Security Boundaries
 
-LinuxCamPAM relies heavily on Linux filesystem and process boundaries for security. For an in-depth threat model, refer to [THREAT_MODEL_AND_RISK_ASSESSMENT.md](THREAT_MODEL_AND_RISK_ASSESSMENT.md).
+LinuxCamPAM relies heavily on Linux filesystem and process boundaries for security. For an in-depth threat model, refer to the [Threat Model & Risk Assessment](THREAT_MODEL_AND_RISK_ASSESSMENT.md).
 
 * **Process Isolation**: The PAM module runs in the user-space context of the calling application (e.g., `sudo`). It possesses zero biometric processing capabilities and relies entirely on the IPC socket.
 * **Root Daemon**: `linuxcampamd` runs as root. This is strictly required to read from `/dev/video*` and write to the restricted root-owned JSON databases (`0700` and `0600`). A future architectural enhancement plans to isolate this via a dedicated `linuxcampam` service user.

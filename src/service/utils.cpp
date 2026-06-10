@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
+#include <cstring>
 #include <fcntl.h>
 #include <filesystem>
 #include <linux/videodev2.h>
@@ -168,6 +170,83 @@ std::string getIREmitterVersion(std::string_view path) {
   }
   close(pipefd[0]);
   return version;
+}
+
+int execute_command_spawn(const std::string& command_line) {
+  constexpr size_t MAX_COMMAND_LENGTH = 4096;
+  if (command_line.empty() || command_line.length() > MAX_COMMAND_LENGTH) {
+    return -1;
+  }
+
+  // Simple string tokenizer respecting single and double quotes
+  std::vector<std::string> args;
+  std::string current_arg;
+  bool in_single_quote = false;
+  bool in_double_quote = false;
+  bool escape_next = false;
+
+  for (char c : command_line) {
+    // Basic sanitization: reject unprintable control characters (except whitespace)
+    if (std::iscntrl(static_cast<unsigned char>(c)) && !std::isspace(static_cast<unsigned char>(c))) {
+      return -1;
+    }
+
+    if (escape_next) {
+      current_arg += c;
+      escape_next = false;
+      continue;
+    }
+    if (c == '\\') {
+      escape_next = true;
+      continue;
+    }
+    if (c == '\'' && !in_double_quote) {
+      in_single_quote = !in_single_quote;
+      continue;
+    }
+    if (c == '"' && !in_single_quote) {
+      in_double_quote = !in_double_quote;
+      continue;
+    }
+    if (std::isspace(c) && !in_single_quote && !in_double_quote) {
+      if (!current_arg.empty()) {
+        args.push_back(current_arg);
+        current_arg.clear();
+      }
+      continue;
+    }
+    current_arg += c;
+  }
+  if (!current_arg.empty()) {
+    args.push_back(current_arg);
+  }
+
+  if (args.empty()) return -1;
+
+  struct ArgvGuard {
+    std::vector<char*> ptrs;
+    ~ArgvGuard() { std::for_each(ptrs.begin(), ptrs.end(), free); }
+  } argv;
+
+  argv.ptrs.reserve(args.size() + 1);
+  std::transform(args.begin(), args.end(), std::back_inserter(argv.ptrs),
+                 [](const std::string& arg) { return strdup(arg.c_str()); });
+  argv.ptrs.push_back(nullptr);
+
+  pid_t pid = -1;
+  int status = posix_spawnp(&pid, argv.ptrs[0], nullptr, nullptr, argv.ptrs.data(), environ);
+
+  if (status != 0) {
+    return status;
+  }
+
+  int wait_status = 0;
+  if (waitpid(pid, &wait_status, 0) != -1) {
+    if (WIFEXITED(wait_status)) {
+      return WEXITSTATUS(wait_status);
+    }
+  }
+  return -1;
 }
 
 bool isValidUsername(std::string_view username) {
