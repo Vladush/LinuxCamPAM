@@ -10,11 +10,10 @@ public:
 };
 
 class PresenceTripwireTest : public ::testing::Test {
-protected:
-  MockSensorFactory factory;
 };
 
 TEST_F(PresenceTripwireTest, StartFailsWithInvalidHidrawNode) {
+  MockSensorFactory factory;
   PresenceTripwire tripwire(factory);
   HardwareId hw_id("ValidId");
   bool result = tripwire.start("/dev/invalid_hidraw_node", hw_id, [](bool, int){});
@@ -22,12 +21,14 @@ TEST_F(PresenceTripwireTest, StartFailsWithInvalidHidrawNode) {
 }
 
 TEST_F(PresenceTripwireTest, StopWithoutStartIsSafe) {
+  MockSensorFactory factory;
   PresenceTripwire tripwire(factory);
   tripwire.stop();
 }
 
 TEST_F(PresenceTripwireTest, SafeDestruction) {
   {
+    MockSensorFactory factory;
     PresenceTripwire tripwire(factory);
   }
 }

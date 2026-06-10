@@ -43,7 +43,6 @@ TEST_F(HardwareManagerTest, SeizeSensorFailsIfPathMissing) {
 }
 
 TEST_F(HardwareManagerTest, SeizeSensorSucceedsWithMockDirs) {
-  std::error_code ec;
   fs::path device_dir = sys_i2c / "test_addr";
   fs::create_directories(device_dir / "power");
   
@@ -61,7 +60,6 @@ TEST_F(HardwareManagerTest, GetHidrawNodeReturnsNoneIfMissing) {
 }
 
 TEST_F(HardwareManagerTest, GetHidrawNodeSucceeds) {
-  std::error_code ec;
   fs::path device_dir = sys_i2c / "test_addr";
   fs::create_directories(device_dir / "power");
   std::ofstream(device_dir / "power" / "wakeup") << "enabled";
