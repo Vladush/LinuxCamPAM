@@ -34,6 +34,7 @@ Since open-sourcing, I've put effort into making it hardware-agnostic and well-d
   - **Enhanced Enrollment**: HDR capture when supported, frame averaging for all cameras.
 - **Proximity Sensor Integration**: Native support for I2C HID human presence sensors (e.g., ITE8353) to detect human presence, optimize authentication, and reduce idle processing.
 - **Zero-Interaction Login**: Automatically wakes your displays and logs you in the moment you sit down, then automatically locks the OS when you walk away. (See [Threat Model](docs/THREAT_MODEL_AND_RISK_ASSESSMENT.md) for related security considerations, including walk-by unlocks and physical coercion).
+- **Universal Confirmation & Password Fallback**: Prevent silent privilege escalation via active user intent confirmation (`<Enter>`) for sensitive PAM actions like `sudo` or `su`, with an instant bypass for legacy passwords.
 - **Multi-Embedding Support**: Store multiple face embeddings per user for different lighting (`linuxcampam list`, `train --new`).
 - **PAM Integration**: Standard PAM module for Debian/Ubuntu.
 - **Security First**: [Threat Model & Risk Assessment](docs/THREAT_MODEL_AND_RISK_ASSESSMENT.md) included.

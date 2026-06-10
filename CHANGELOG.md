@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Universal Confirmation & Password Fallback**: The PAM module now forces an interactive prompt (`<Enter>`) to neutralize silent privilege escalation for sensitive services (like `sudo`). Users can seamlessly bypass face authentication by typing their password at this prompt instead. Configurable via `require_confirmation` and `confirmation_exempt_services`.
+
 ## [0.9.7.4] - 2026-06-02
 
 ### Fixed

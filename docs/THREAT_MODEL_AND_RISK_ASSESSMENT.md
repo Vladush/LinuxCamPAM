@@ -112,6 +112,15 @@ We use the STRIDE framework to analyze potential threats to the authentication p
 * **Threat 3 (Amplified Spoofing Window):** Automated wake and unlock constantly polls when presence is detected. An attacker can repeatedly present high-resolution masks or photos at their leisure while the user is away, increasing the window for brute-forcing the neural network.
 * **Mitigation:** This is actively mitigated by the daemon's existing brute-force protection (per-user lockout mechanism). After a configurable number of failed recognition attempts, the system enforces a strict cooldown period, neutralizing rapid spoofing attempts. Furthermore, IR liveness checks severely degrade the success rate of presentation attacks.
 
+### 3.9 Silent Privilege Escalation (Confused Deputy)
+
+* **Threat:** A malicious background script attempts to silently escalate privileges via `pkexec` or `sudo`. If the authorized user happens to be sitting in front of the computer, the camera passively authenticates the request without the user's knowledge or active intent, inadvertently granting `root` access to the malware.
+* **Mitigation:**
+  * **Universal Confirmation:** The `require_confirmation` configuration (enabled by default) forces the PAM module to display an interactive prompt requiring the user to physically press `<Enter>` to confirm their intent *before* engaging the camera. This actively neutralizes silent escalation attacks for all non-exempt PAM services.
+  * **Seamless Password Bypass:** The confirmation prompt now captures keystrokes (`"Press <Enter> for face auth, or type password:"`). If a user inputs a password, the module immediately aborts face authentication and passes the password securely (`PAM_AUTHTOK`) to the next module in the PAM stack (e.g., `pam_unix.so`). This avoids double-prompting while providing an instant opt-out for environments where users temporarily prefer passwords.
+  * **Service Exemptions:** To prevent user fatigue, explicitly intentional authentication services (e.g., login managers like `gdm-password`, screen lockers like `swaylock`) are exempted from this confirmation prompt via the `confirmation_exempt_services` list.
+* **Residual Risk:** Fully mitigated by default. Administrators who manually add `sudo` or `polkit-1` to the exemption list actively assume this risk.
+
 ## 4. Risk Assessment Matrix
 
 ### 4.1 Methodology
@@ -145,6 +154,7 @@ Overall Risk is calculated by combining **Likelihood** (Low, Medium, High) and *
 | **Zero-Interaction** | Physical Coercion (Forced Unlock) | Low | Critical | **Medium** | Accepted Risk | Inherent to all biometrics (including fingerprints). Falls under organizational Risk Appetite; if unacceptable, disable LinuxCamPAM entirely. |
 | **Zero-Interaction** | Unintended Unlock (Walk-By after Lock) | Medium | High | **High** | No | User explicitly locks but remains in FOV. Disable zero-interaction unlock if at risk. |
 | **Zero-Interaction** | Amplified Spoofing Window | Medium | High | **Medium** | Yes | Polling increases attack window, but is effectively neutralized by existing auth lockouts and IR liveness checks. |
+| **Zero-Interaction** | Silent Privilege Escalation | Medium | Critical | **High** | Yes | `require_confirmation` blocks all unexpected services. Does not apply to exempt login managers. |
 
 ## 5. Future Security Enhancements (Roadmap)
 

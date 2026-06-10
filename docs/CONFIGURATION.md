@@ -159,10 +159,14 @@ Protect against brute-force attacks by limiting the number of consecutive failur
 [Security]
 lockout_attempts = 5
 lockout_duration_sec = 300
+require_confirmation = true
+confirmation_exempt_services = gdm-password, swaylock, login, kdm, lightdm, sddm
 ```
 
 - **lockout_attempts**: Number of failed attempts before temporary lockout.
 - **lockout_duration_sec**: Duration of lockout in seconds (default 300s = 5 minutes).
+- **require_confirmation**: If `true` (default), blocks silent privilege escalation by requiring you to press `<Enter>` to invoke the camera, or type a password to seamlessly bypass face authentication altogether.
+- **confirmation_exempt_services**: A comma-separated list of PAM services that bypass the confirmation prompt. These are typically explicit login events where the camera should activate instantly to avoid user fatigue.
 
 ### Advanced Configuration Security
 
