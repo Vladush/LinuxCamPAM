@@ -22,14 +22,14 @@ public:
     ScopedWorker(const ScopedWorker&) = delete;
     ScopedWorker& operator=(const ScopedWorker&) = delete;
 
-    ScopedWorker(ScopedWorker&& other) noexcept : thread_(std::move(other.thread_)) {}
+    ScopedWorker(ScopedWorker&& other) noexcept : thread_(std::exchange(other.thread_, {})) {}
 
     ScopedWorker& operator=(ScopedWorker&& other) noexcept {
         if (this != &other) {
             if (thread_.joinable()) {
                 thread_.join();
             }
-            thread_ = std::move(other.thread_);
+            thread_ = std::exchange(other.thread_, {});
         }
         return *this;
     }

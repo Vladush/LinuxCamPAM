@@ -129,6 +129,7 @@ add_library(service_core STATIC
     src/service/utils.cpp
     src/PresenceTripwire.cpp
     src/VirtualKeyboard.cpp
+    src/HardwareManager.cpp
 )
 target_include_directories(service_core PUBLIC include src src/common ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(service_core PUBLIC 
@@ -143,7 +144,7 @@ if(nlohmann_json_FOUND)
 endif()
 
 # Auth Service
-add_executable(linuxcampamd src/service/main.cpp src/HardwareManager.cpp)
+add_executable(linuxcampamd src/service/main.cpp)
 target_link_libraries(linuxcampamd PRIVATE service_core)
 
 # CLI Tool
@@ -225,6 +226,11 @@ if(TARGET gtest)
         tests/test_pam_logic.cpp
         tests/test_config_parsing.cpp
         tests/test_camera.cpp
+        tests/test_hardware_manager.cpp
+        tests/test_presence_tripwire.cpp
+        tests/test_ite8353_parser.cpp
+        tests/test_sensor_factory.cpp
+        tests/test_scoped_worker.cpp
     )
     
     # The tests link against the service_core library to test internal logic without 

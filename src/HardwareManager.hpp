@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 
 class HardwareId {
     static constexpr size_t MAX_HARDWARE_ID_LENGTH = 32;
@@ -35,9 +36,17 @@ private:
     [[nodiscard]] bool write_sysfs(const std::string& path, std::string_view value);
     [[nodiscard]] bool resolve_hid_device();
     void resolve_current_driver();
+    std::filesystem::path sys_i2c_path_;
+    std::filesystem::path sys_hid_path_;
+    std::filesystem::path dev_path_;
 
 public:
-    explicit HardwareManager(std::string addr);
+    explicit HardwareManager(
+        std::string addr,
+        std::filesystem::path sys_i2c_path = "/sys/bus/i2c/devices",
+        std::filesystem::path sys_hid_path = "/sys/bus/hid/devices",
+        std::filesystem::path dev_path = "/dev"
+    );
 
     HardwareManager(const HardwareManager&) = delete;
     HardwareManager& operator=(const HardwareManager&) = delete;
