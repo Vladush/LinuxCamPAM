@@ -417,7 +417,7 @@ int main(int argc, char *argv[]) {
               std::lock_guard<std::mutex> lock(g_lock_state.mtx);
 
               // Wake Logic
-              if (cfg.wake_enabled && confidence >= cfg.wake_confidence_threshold) {
+              if (present && cfg.wake_enabled && confidence >= cfg.wake_confidence_threshold) {
                 if (g_lock_state.was_away || (cfg.always_wake_on_presence_detected && just_returned)) {
                   log_info("Wake threshold reached, waking screen...");
                   if (!vkb.emit_wakeup()) {
