@@ -2,19 +2,19 @@
 #include "ipc_protocol.hpp"
 #include "pam_config.hpp"
 
-#ifndef DISABLE_WELCOME_MESSAGE
 #include <algorithm>
-#endif
 #include <array>
 #include <cstring>
 #include <pwd.h>
 #include <security/pam_ext.h>
 #include <security/pam_modules.h>
 #include <string>
+#include <vector>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <syslog.h>
 #include <unistd.h>
+#include <utility>
 
 namespace {
 constexpr size_t BUFFER_SIZE = 128;
@@ -30,16 +30,13 @@ struct SocketDescriptor {
   }
   SocketDescriptor(const SocketDescriptor &) = delete;
   SocketDescriptor &operator=(const SocketDescriptor &) = delete;
-  SocketDescriptor(SocketDescriptor &&other) noexcept : fd(other.fd) {
-    other.fd = -1;
-  }
+  SocketDescriptor(SocketDescriptor &&other) noexcept : fd(std::exchange(other.fd, -1)) {}
   SocketDescriptor &operator=(SocketDescriptor &&other) noexcept {
     if (this != &other) {
       if (fd >= 0) {
         close(fd);
       }
-      fd = other.fd;
-      other.fd = -1;
+      fd = std::exchange(other.fd, -1);
     }
     return *this;
   }
@@ -57,6 +54,25 @@ struct SyslogManager {
   SyslogManager(SyslogManager &&) = delete;
   SyslogManager &operator=(SyslogManager &&) = delete;
 };
+
+struct PamResponseDeleter {
+  void operator()(struct pam_response *resp) const {
+    if (resp) {
+      if (resp[0].resp) {
+        size_t len = std::strlen(resp[0].resp);
+        volatile char *p = resp[0].resp;
+        while (len--) {
+          *p++ = 0;
+        }
+        // NOLINTNEXTLINE(cppcoreguidelines-no-malloc,cppcoreguidelines-owning-memory)
+        free(resp[0].resp);
+      }
+      // NOLINTNEXTLINE(cppcoreguidelines-no-malloc,cppcoreguidelines-owning-memory)
+      free(resp);
+    }
+  }
+};
+using PamResponsePtr = std::unique_ptr<struct pam_response, PamResponseDeleter>;
 
 // RAII handles openlog/closelog automatically
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
@@ -90,7 +106,7 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
 {
   try {
     const char *user = nullptr;
-    int retval = pam_get_user(pamh, &user, NULL);
+    int retval = pam_get_user(pamh, &user, nullptr);
     if (retval != PAM_SUCCESS) {
       return retval;
     }
@@ -105,13 +121,19 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
     }
 #endif
 
-    struct passwd *pwd = getpwnam(user);
-    if (pwd) {
+    struct passwd pwd = {};
+    struct passwd *result = nullptr;
+    constexpr long DEFAULT_PW_BUF_SIZE = 16384;
+    long bufsize = sysconf(_SC_GETPW_R_SIZE_MAX);
+    if (bufsize == -1) bufsize = DEFAULT_PW_BUF_SIZE;
+    std::vector<char> buffer(bufsize);
+
+    if (getpwnam_r(user, &pwd, buffer.data(), buffer.size(), &result) == 0 && result != nullptr) {
       // If min_uid is 0, the check is disabled.
       // Otherwise, skip authentication for any user with UID < min_uid.
-      if (config.min_uid > 0 && pwd->pw_uid < config.min_uid) {
+      if (config.min_uid > 0 && result->pw_uid < config.min_uid) {
         syslog(LOG_INFO, "Skipping auth for system user: %s (UID %d < %d)",
-               user, pwd->pw_uid, config.min_uid);
+               user, result->pw_uid, config.min_uid);
         return PAM_IGNORE;
       }
     } else {
@@ -127,6 +149,46 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
     } else {
       // Otherwise, log the version.
       syslog(LOG_INFO, "pam_linuxcampam version %s", LINUXCAMPAM_VERSION);
+    }
+
+    if (config.require_confirmation) {
+      const void *service_ptr = nullptr;
+      if (pam_get_item(pamh, PAM_SERVICE, &service_ptr) == PAM_SUCCESS && service_ptr != nullptr) {
+        const char *service = static_cast<const char *>(service_ptr);
+        std::string_view sv_service{service};
+        auto it = std::find(config.confirmation_exempt_services.begin(),
+                            config.confirmation_exempt_services.end(),
+                            sv_service);
+        if (it == config.confirmation_exempt_services.end()) {
+          const char* msg_text = "Press <Enter> to authenticate with face, or type password:";
+          struct pam_message msg = {
+              .msg_style = PAM_PROMPT_ECHO_OFF,
+              .msg = msg_text
+          };
+          const struct pam_message *msgp = &msg;
+          struct pam_response *resp_pam = nullptr;
+
+          const void *conv_ptr = nullptr;
+          if (int ret = pam_get_item(pamh, PAM_CONV, &conv_ptr); 
+              ret == PAM_SUCCESS && conv_ptr != nullptr) {
+            const struct pam_conv *conv = static_cast<const struct pam_conv *>(conv_ptr);
+            int conv_ret = conv->conv(1, &msgp, &resp_pam, conv->appdata_ptr);
+            PamResponsePtr resp_ptr(resp_pam);
+            if (conv_ret != PAM_SUCCESS) {
+              syslog(LOG_ERR, "Authentication confirmation failed or canceled for service: %s", service);
+              return PAM_AUTH_ERR;
+            }
+            if (resp_pam && resp_pam[0].resp && std::strlen(resp_pam[0].resp) > 0) {
+              syslog(LOG_INFO, "User provided password input, skipping face auth to allow fallback.");
+              pam_set_item(pamh, PAM_AUTHTOK, resp_pam[0].resp);
+              return PAM_IGNORE;
+            }
+          } else {
+            syslog(LOG_ERR, "Failed to get PAM_CONV for confirmation");
+            return PAM_AUTHINFO_UNAVAIL;
+          }
+        }
+      }
     }
 
     SocketDescriptor sock(socket(AF_UNIX, SOCK_STREAM, 0));
@@ -172,14 +234,14 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
       return PAM_AUTHINFO_UNAVAIL;
     }
 
-    std::array<char, BUFFER_SIZE> buffer = {};
-    ssize_t valread = read(sock.get(), buffer.data(), buffer.size() - 1);
+    std::array<char, BUFFER_SIZE> response_buffer = {};
+    ssize_t valread = read(sock.get(), response_buffer.data(), response_buffer.size() - 1);
 
     if (valread > 0) {
-      std::string resp(buffer.data(), static_cast<size_t>(valread));
+      std::string resp(response_buffer.data(), static_cast<size_t>(valread));
       if (resp.find("AUTH_SUCCESS") != std::string::npos) {
 #ifndef DISABLE_WELCOME_MESSAGE
-        if (config.show_welcome) {
+        if (config.show_welcome && ((flags & PAM_SILENT) == 0)) {
           std::string welcome_msg = config.welcome_message;
           for (size_t pos = welcome_msg.find("%u");
                pos != std::string::npos;
@@ -188,29 +250,19 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
           }
 
           if (!welcome_msg.empty()) {
-            struct pam_message msg = {};
-            const struct pam_message *msgp = nullptr;
+            struct pam_message msg = {
+                .msg_style = PAM_TEXT_INFO,
+                .msg = welcome_msg.c_str()
+            };
+            const struct pam_message *msgp = &msg;
             struct pam_response *resp_pam = nullptr;
 
-            std::vector<char> msg_buf(welcome_msg.begin(), welcome_msg.end());
-            msg_buf.push_back('\0');
-            char *msg_cstr = msg_buf.data();
-
-            msg.msg_style = PAM_TEXT_INFO;
-            msg.msg = msg_cstr;
-            msgp = &msg;
-
-            const struct pam_conv *conv = nullptr;
-            // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
-            int ret = pam_get_item(pamh, PAM_CONV,
-                                   reinterpret_cast<const void **>(&conv));
-            // NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
-            if (ret == PAM_SUCCESS && conv != NULL) {
+            const void *conv_ptr = nullptr;
+            int ret = pam_get_item(pamh, PAM_CONV, &conv_ptr);
+            if (ret == PAM_SUCCESS && conv_ptr != nullptr) {
+              const struct pam_conv *conv = static_cast<const struct pam_conv *>(conv_ptr);
               conv->conv(1, &msgp, &resp_pam, conv->appdata_ptr);
-              if (resp_pam) {
-                std::unique_ptr<struct pam_response, decltype(&free)> resp_ptr(
-                    resp_pam, free);
-              }
+              PamResponsePtr resp_ptr(resp_pam);
             }
           }
         }

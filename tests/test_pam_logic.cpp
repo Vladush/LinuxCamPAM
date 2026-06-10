@@ -137,3 +137,37 @@ welcome_message = "Security"
   EXPECT_EQ(config.welcome_message, "Security");
 }
 #endif
+
+TEST_F(PamConfigTest, RequireConfirmationDefaults) {
+  auto config = loadConfig("");
+  EXPECT_TRUE(config.require_confirmation);
+  EXPECT_EQ(config.confirmation_exempt_services.size(), 10);
+  EXPECT_EQ(config.confirmation_exempt_services[0], "gdm-password");
+}
+
+TEST_F(PamConfigTest, RequireConfirmationParsing) {
+  auto config = loadConfig(R"(
+[Security]
+require_confirmation = false
+confirmation_exempt_services = sshd,su
+)");
+  EXPECT_FALSE(config.require_confirmation);
+  ASSERT_EQ(config.confirmation_exempt_services.size(), 2);
+  EXPECT_EQ(config.confirmation_exempt_services[0], "sshd");
+  EXPECT_EQ(config.confirmation_exempt_services[1], "su");
+}
+
+TEST_F(PamConfigTest, RequireConfirmationPrecedence) {
+  auto config = loadConfig(R"(
+require_confirmation = true
+confirmation_exempt_services = "none"
+
+[Security]
+require_confirmation = false
+confirmation_exempt_services = sudo,login
+)");
+  EXPECT_FALSE(config.require_confirmation);
+  ASSERT_EQ(config.confirmation_exempt_services.size(), 2);
+  EXPECT_EQ(config.confirmation_exempt_services[0], "sudo");
+  EXPECT_EQ(config.confirmation_exempt_services[1], "login");
+}
