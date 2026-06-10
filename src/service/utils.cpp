@@ -223,9 +223,8 @@ int execute_command_spawn(const std::string& command_line) {
 
   std::vector<char*> argv;
   argv.reserve(args.size() + 1);
-  for (auto& arg : args) {
-    argv.push_back(arg.data());
-  }
+  std::transform(args.begin(), args.end(), std::back_inserter(argv),
+                 [](const std::string& arg) { return const_cast<char*>(arg.data()); });
   argv.push_back(nullptr);
 
   pid_t pid = -1;
