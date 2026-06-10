@@ -148,7 +148,7 @@ These are required to **compile** the project from source (Options B & C).
 | `ninja-build` *(optional)*   | Faster builds (recommended)                 |
 
 > [2] **libudev-dev Troubleshooting**: This is a hard dependency for `hidapi` (via `pkg-config`). On Ubuntu/Debian, the package is `libudev-dev`. On RedHat/Fedora/CentOS-based distributions, it is typically named `systemd-devel` or `libudev-devel`. If CMake fails on `PkgConfig::HIDAPI`, ensure these headers are installed.
-
+>
 > **Runtime Dependencies**: If you are installing a pre-built `.deb` package, the package manager (`apt`/`dpkg`) will automatically install the necessary runtime libraries (e.g., `libpam0g`, `libatlas3-base`). You do **not** need the `-dev` development headers for running the software.
 >
 > **Build System Note:** The install scripts use `make` by default. If you have `ninja-build` installed, you can use Ninja for faster incremental builds:

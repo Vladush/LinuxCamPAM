@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
+#include <cstring>
 #include <fcntl.h>
 #include <filesystem>
 #include <linux/videodev2.h>
@@ -221,14 +223,19 @@ int execute_command_spawn(const std::string& command_line) {
 
   if (args.empty()) return -1;
 
-  std::vector<char*> argv;
-  argv.reserve(args.size() + 1);
-  std::transform(args.begin(), args.end(), std::back_inserter(argv),
-                 [](const std::string& arg) { return const_cast<char*>(arg.data()); });
-  argv.push_back(nullptr);
+  struct ArgvGuard {
+    std::vector<char*> ptrs;
+    ~ArgvGuard() { std::for_each(ptrs.begin(), ptrs.end(), free); }
+  } argv;
+
+  argv.ptrs.reserve(args.size() + 1);
+  std::transform(args.begin(), args.end(), std::back_inserter(argv.ptrs),
+                 [](const std::string& arg) { return strdup(arg.c_str()); });
+  argv.ptrs.push_back(nullptr);
 
   pid_t pid = -1;
-  int status = posix_spawnp(&pid, argv[0], nullptr, nullptr, argv.data(), environ);
+  int status = posix_spawnp(&pid, argv.ptrs[0], nullptr, nullptr, argv.ptrs.data(), environ);
+
   if (status != 0) {
     return status;
   }
