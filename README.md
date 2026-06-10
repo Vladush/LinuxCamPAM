@@ -231,8 +231,8 @@ Shows the version of both the CLI client and the running daemon service.
 ```bash
 linuxcampam version
 # Output:
-# Client Version: 0.9.7.4+ga8f02f6
-# Daemon Version: 0.9.7.4+ga8f02f6
+# Client Version: 0.9.7.5+ga8f02f6
+# Daemon Version: 0.9.7.5+ga8f02f6
 ```
 
 ## Debugging

@@ -1,3 +1,13 @@
+linuxcampam (0.9.7.5-1) unstable; urgency=medium
+
+  * Release 0.9.7.5
+  * Feat: Require interactive user confirmation for privilege escalation (UAC-style)
+  * Feat: Add proximity wake-lock and background worker for sensor initialization
+  * Fix: Prevent memory leaks in subprocess execution and ensure safe process tracking
+  * Docs: Update threat model and risk assessment for new features
+
+ -- Vladimir Orlinski <contact.github.submerge594@slmails.com>  Wed, 10 Jun 2026 22:17:20 +0200
+
 linuxcampam (0.9.7.4-1) unstable; urgency=medium
 
   * Release 0.9.7.4

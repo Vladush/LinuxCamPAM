@@ -2,7 +2,7 @@
 title: PAM_LINUXCAMPAM
 section: 8
 header: LinuxCamPAM System Manager's Manual
-footer: LinuxCamPAM 0.9.7.4
+footer: LinuxCamPAM 0.9.7.5
 date: June 2026
 ---
 

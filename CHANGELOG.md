@@ -5,11 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.7.5] - 2026-06-10
 
 ### Added
 
 - **Universal Confirmation & Password Fallback**: The PAM module now forces an interactive prompt (`<Enter>`) to neutralize silent privilege escalation for sensitive services (like `sudo`). Users can seamlessly bypass face authentication by typing their password at this prompt instead. Configurable via `require_confirmation` and `confirmation_exempt_services`.
+- **Proximity Wake Lock**: Added `always_wake_on_presence_detected` option to force wake on detection. Screen wake now requires presence detection in addition to confidence threshold.
+- **Background Worker**: Offloaded proximity sensor initialization to a background worker.
+
+### Fixed
+
+- **Memory Leaks**: Prevented memory leaks in subprocess execution by properly duplicating and freeing argument strings.
+- **Process Tracking**: Initialized pid variable to -1 to ensure safe process state tracking.
+- **Code Quality**: Applied C++17 best practices and resolved IDE and cppcheck warnings.
+- **Testing**: Added coverage for config parsing, camera device failures, and auth engine detection pipelines.
+
+### Docs
+
+- **Security**: Updated THREAT_MODEL_AND_RISK_ASSESSMENT for interactive confirmation, D-Bus screen-state synchronization, and automated wake/unlock vulnerabilities.
 
 ## [0.9.7.4] - 2026-06-02
 
