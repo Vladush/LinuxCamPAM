@@ -20,5 +20,4 @@ public:
 
 private:
     int fd_;
-    bool initialized_;
 };

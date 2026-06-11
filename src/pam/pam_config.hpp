@@ -12,9 +12,15 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 struct PamConfig {
   uid_t min_uid = linuxcampam::DEFAULT_MIN_UID;
+  bool require_confirmation = true;
+  std::vector<std::string> confirmation_exempt_services = {
+      "gdm-password", "sddm", "lightdm", "login", 
+      "swaylock", "i3lock", "xscreensaver", "kscreenlocker", "kde", "systemd-user"
+  };
 #ifndef DISABLE_WELCOME_MESSAGE
   bool show_welcome = true;
   std::string welcome_message = "LinuxCamPAM: Welcome, %u!";
@@ -36,6 +42,23 @@ inline std::string_view trim(std::string_view s) {
   }
   auto end = s.find_last_not_of(" \t\r\n");
   return s.substr(start, end - start + 1);
+}
+
+inline std::vector<std::string> split(std::string_view str, char delimiter) {
+  std::vector<std::string> result;
+  size_t start = 0;
+  while (start < str.size()) {
+    auto end = str.find(delimiter, start);
+    if (end == std::string_view::npos) {
+      end = str.size();
+    }
+    auto token = trim(str.substr(start, end - start));
+    if (!token.empty()) {
+      result.emplace_back(token);
+    }
+    start = end + 1;
+  }
+  return result;
 }
 
 inline void process_pam_config_line(std::string_view line,
@@ -97,6 +120,21 @@ inline PamConfig resolve_pam_config(const PamConfigState &state) {
         config.min_uid = static_cast<uid_t>(parsed);
       }
     }
+  }
+
+  // --- require_confirmation ---
+  if (auto rc_opt = get_value("require_confirmation")) {
+    const std::string &rc_str = *rc_opt;
+    config.require_confirmation = (rc_str == "true" || rc_str == "1" || rc_str == "yes");
+  }
+
+  // --- confirmation_exempt_services ---
+  if (auto ces_opt = get_value("confirmation_exempt_services")) {
+    std::string ces_str = *ces_opt;
+    if (ces_str.size() >= 2 && ces_str.front() == '"' && ces_str.back() == '"') {
+      ces_str = ces_str.substr(1, ces_str.size() - 2);
+    }
+    config.confirmation_exempt_services = split(ces_str, ',');
   }
 
 #ifndef DISABLE_WELCOME_MESSAGE

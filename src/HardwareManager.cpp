@@ -14,7 +14,7 @@ bool HardwareManager::write_sysfs(const std::string& path, std::string_view valu
 }
 
 bool HardwareManager::resolve_hid_device() {
-    const auto path = "/sys/bus/i2c/devices/" + i2c_address;
+    auto path = sys_i2c_path_ / i2c_address;
     std::error_code ec;
     if (!std::filesystem::exists(path, ec) || ec) {
         return false;
@@ -32,7 +32,7 @@ bool HardwareManager::resolve_hid_device() {
 }
 
 void HardwareManager::resolve_current_driver() {
-    const auto driver_link = "/sys/bus/hid/devices/" + hid_id + "/driver"; 
+    auto driver_link = sys_hid_path_ / hid_id / "driver";
     std::error_code ec;
     if (std::filesystem::exists(driver_link, ec) && std::filesystem::is_symlink(driver_link, ec)) {
         auto target = std::filesystem::read_symlink(driver_link, ec);
@@ -46,7 +46,8 @@ void HardwareManager::resolve_current_driver() {
     }
 }
 
-HardwareManager::HardwareManager(std::string addr) : i2c_address(std::move(addr)) {}
+HardwareManager::HardwareManager(std::string addr, std::filesystem::path sys_i2c_path, std::filesystem::path sys_hid_path, std::filesystem::path dev_path) 
+    : i2c_address(std::move(addr)), sys_i2c_path_(std::move(sys_i2c_path)), sys_hid_path_(std::move(sys_hid_path)), dev_path_(std::move(dev_path)) {}
 
 HardwareManager::~HardwareManager() noexcept {
     try {
@@ -57,7 +58,7 @@ HardwareManager::~HardwareManager() noexcept {
 }
 
 bool HardwareManager::seize_sensor() {
-    if (!write_sysfs("/sys/bus/i2c/devices/" + i2c_address + "/power/wakeup", "disabled")) {
+    if (!write_sysfs((sys_i2c_path_ / i2c_address / "power" / "wakeup").string(), "disabled")) {
         return false;
     }
     if (!resolve_hid_device()) return false;
@@ -73,13 +74,13 @@ bool HardwareManager::seize_sensor() {
 void HardwareManager::release_sensor() {
     if (hid_id.empty()) return;
     // Drivers are no longer unbound/bound, so just restore power/wakeup state
-    (void)write_sysfs("/sys/bus/i2c/devices/" + i2c_address + "/power/wakeup", "enabled");
+    (void)write_sysfs((sys_i2c_path_ / i2c_address / "power" / "wakeup").string(), "enabled");
 }
 
 std::optional<std::string> HardwareManager::get_hidraw_node() const {
     if (hid_id.empty()) return std::nullopt;
-    const std::string parent_path = "/sys/bus/hid/devices/" + hid_id;
-    const std::string search_path = parent_path + "/hidraw";
+    auto parent_path = sys_hid_path_ / hid_id;
+    auto search_path = parent_path / "hidraw";
     std::error_code ec;
 
     if (!std::filesystem::exists(parent_path, ec)) {
@@ -89,7 +90,7 @@ std::optional<std::string> HardwareManager::get_hidraw_node() const {
     for (int i = 0; i < MAX_HIDRAW_RETRIES; ++i) { // Allow udev latency mapping
         if (std::filesystem::exists(search_path, ec)) {
             for (const auto& entry : std::filesystem::directory_iterator(search_path, ec)) {
-                return "/dev/" + entry.path().filename().string();
+                return (dev_path_ / entry.path().filename()).string();
             }
         }
         std::this_thread::sleep_for(UDEV_LATENCY_DELAY);
