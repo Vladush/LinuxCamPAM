@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <system_error>
+#include <unistd.h>
 
 namespace fs = std::filesystem;
 
@@ -21,7 +22,7 @@ protected:
 
   void SetUp() override {
     std::error_code ec;
-    temp_dir_ = fs::path("/tmp/linuxcampam_hw_test");
+    temp_dir_ = fs::temp_directory_path() / ("linuxcampam_hw_test_" + std::to_string(getpid()));
     fs::remove_all(temp_dir_, ec);
     fs::create_directories(temp_dir_ / "sys/bus/i2c/devices");
     fs::create_directories(temp_dir_ / "sys/bus/hid/devices");

@@ -130,7 +130,11 @@ inline PamConfig resolve_pam_config(const PamConfigState &state) {
 
   // --- confirmation_exempt_services ---
   if (auto ces_opt = get_value("confirmation_exempt_services")) {
-    config.confirmation_exempt_services = split(*ces_opt, ',');
+    std::string ces_str = *ces_opt;
+    if (ces_str.size() >= 2 && ces_str.front() == '"' && ces_str.back() == '"') {
+      ces_str = ces_str.substr(1, ces_str.size() - 2);
+    }
+    config.confirmation_exempt_services = split(ces_str, ',');
   }
 
 #ifndef DISABLE_WELCOME_MESSAGE

@@ -153,40 +153,45 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
 
     if (config.require_confirmation) {
       const void *service_ptr = nullptr;
-      if (pam_get_item(pamh, PAM_SERVICE, &service_ptr) == PAM_SUCCESS && service_ptr != nullptr) {
-        const char *service = static_cast<const char *>(service_ptr);
-        std::string_view sv_service{service};
-        auto it = std::find(config.confirmation_exempt_services.begin(),
-                            config.confirmation_exempt_services.end(),
-                            sv_service);
-        if (it == config.confirmation_exempt_services.end()) {
-          const char* msg_text = "Press <Enter> to authenticate with face, or type password:";
-          struct pam_message msg = {
-              .msg_style = PAM_PROMPT_ECHO_OFF,
-              .msg = msg_text
-          };
-          const struct pam_message *msgp = &msg;
-          struct pam_response *resp_pam = nullptr;
+      if (pam_get_item(pamh, PAM_SERVICE, &service_ptr) != PAM_SUCCESS || service_ptr == nullptr) {
+        syslog(LOG_WARNING, "PAM_SERVICE unavailable; applying confirmation prompt as fallback");
+        service_ptr = nullptr;
+      }
 
-          const void *conv_ptr = nullptr;
-          if (int ret = pam_get_item(pamh, PAM_CONV, &conv_ptr); 
-              ret == PAM_SUCCESS && conv_ptr != nullptr) {
-            const struct pam_conv *conv = static_cast<const struct pam_conv *>(conv_ptr);
-            int conv_ret = conv->conv(1, &msgp, &resp_pam, conv->appdata_ptr);
-            PamResponsePtr resp_ptr(resp_pam);
-            if (conv_ret != PAM_SUCCESS) {
-              syslog(LOG_ERR, "Authentication confirmation failed or canceled for service: %s", service);
+      if (service_ptr == nullptr || 
+          std::find(config.confirmation_exempt_services.begin(),
+                    config.confirmation_exempt_services.end(),
+                    std::string_view{static_cast<const char *>(service_ptr)}) == config.confirmation_exempt_services.end()) {
+        const char *service = service_ptr ? static_cast<const char *>(service_ptr) : "unknown";
+        const char* msg_text = "Press <Enter> to authenticate with face, or type password:";
+        struct pam_message msg = {
+            .msg_style = PAM_PROMPT_ECHO_OFF,
+            .msg = msg_text
+        };
+        const struct pam_message *msgp = &msg;
+        struct pam_response *resp_pam = nullptr;
+
+        const void *conv_ptr = nullptr;
+        if (int ret = pam_get_item(pamh, PAM_CONV, &conv_ptr); 
+            ret == PAM_SUCCESS && conv_ptr != nullptr) {
+          const struct pam_conv *conv = static_cast<const struct pam_conv *>(conv_ptr);
+          int conv_ret = conv->conv(1, &msgp, &resp_pam, conv->appdata_ptr);
+          PamResponsePtr resp_ptr(resp_pam);
+          if (conv_ret != PAM_SUCCESS) {
+            syslog(LOG_ERR, "Authentication confirmation failed or canceled for service: %s", service);
+            return PAM_AUTH_ERR;
+          }
+          if (resp_pam && resp_pam[0].resp && std::strlen(resp_pam[0].resp) > 0) {
+            syslog(LOG_INFO, "User provided password input, skipping face auth to allow fallback.");
+            if (pam_set_item(pamh, PAM_AUTHTOK, resp_pam[0].resp) != PAM_SUCCESS) {
+              syslog(LOG_ERR, "Failed to relay password token to PAM stack");
               return PAM_AUTH_ERR;
             }
-            if (resp_pam && resp_pam[0].resp && std::strlen(resp_pam[0].resp) > 0) {
-              syslog(LOG_INFO, "User provided password input, skipping face auth to allow fallback.");
-              pam_set_item(pamh, PAM_AUTHTOK, resp_pam[0].resp);
-              return PAM_IGNORE;
-            }
-          } else {
-            syslog(LOG_ERR, "Failed to get PAM_CONV for confirmation");
-            return PAM_AUTHINFO_UNAVAIL;
+            return PAM_IGNORE;
           }
+        } else {
+          syslog(LOG_ERR, "Failed to get PAM_CONV for confirmation");
+          return PAM_AUTHINFO_UNAVAIL;
         }
       }
     }
