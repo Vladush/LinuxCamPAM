@@ -55,14 +55,21 @@ sudo mkdir -p /usr/share/linuxcampam/models
 sudo mkdir -p /var/log/linuxcampam
 
 if [ -f /etc/linuxcampam/config.ini ]; then
-    echo "Backing up existing config..."
-    sudo cp /etc/linuxcampam/config.ini /etc/linuxcampam/config.ini.bak
+    echo "Existing config found. Installing new defaults to config.ini.new to preserve local settings..."
+    sudo cp ../config/config.ini /etc/linuxcampam/config.ini.new
+    RUN_SETUP=false
+else
+    sudo cp ../config/config.ini /etc/linuxcampam/config.ini
+    RUN_SETUP=true
 fi
-sudo cp ../config/config.ini /etc/linuxcampam/
 
-# Run Smart Config Setup
-echo "Detecting cameras and updating config..."
-sudo ../scripts/setup_config.sh "$@"
+# Run Smart Config Setup only for fresh installs
+if [ "$RUN_SETUP" = true ]; then
+    echo "Detecting cameras and updating config..."
+    sudo ../scripts/setup_config.sh "$@"
+else
+    echo "Skipping automatic camera detection to preserve your existing configuration."
+fi
 
 # Download Models (from Hugging Face)
 MODEL_DIR="/usr/share/linuxcampam/models"
