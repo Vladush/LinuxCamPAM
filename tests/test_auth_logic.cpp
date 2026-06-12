@@ -2,14 +2,28 @@
 #include "service/auth_engine.hpp"
 #include "service/icamera.hpp"
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <sys/stat.h>
+#include <thread>
 #include "json.hpp"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 using ::testing::NiceMock;
 using ::testing::Return;
+
+// RAII guard to clean up config file even on ASSERT failure
+struct TempConfigFile {
+  std::string path;
+  explicit TempConfigFile(std::string p) : path(std::move(p)) {}
+  ~TempConfigFile() { fs::remove(path); }
+  TempConfigFile(const TempConfigFile&) = delete;
+  TempConfigFile& operator=(const TempConfigFile&) = delete;
+  TempConfigFile(TempConfigFile&&) = delete;
+  TempConfigFile& operator=(TempConfigFile&&) = delete;
+};
 
 constexpr int MOCK_FRAME_WIDTH = 640;
 constexpr int MOCK_FRAME_HEIGHT = 480;
@@ -298,4 +312,125 @@ TEST_F(AuthEngineTest, ValidFrameTriggersFaceDetection) {
   AuthResult res = auth_engine->verifyUserWithDetails("user_valid_frame");
   EXPECT_FALSE(res.success);
   EXPECT_THAT(res.reason, ::testing::HasSubstr("No face detected"));
+}
+
+// --- Lockout tests ---
+
+TEST_F(AuthEngineTest, LockoutActivatesAfterNFailures) {
+  initWithMockCamera();
+
+  ASSERT_FALSE(auth_engine->isUserLockedOut("alice"));
+  auth_engine->recordAuthAttempt("alice", false);
+  auth_engine->recordAuthAttempt("alice", false);
+  EXPECT_FALSE(auth_engine->isUserLockedOut("alice")); // 2 < threshold of 3
+  auth_engine->recordAuthAttempt("alice", false);
+  EXPECT_TRUE(auth_engine->isUserLockedOut("alice")); // 3 == threshold
+}
+
+TEST_F(AuthEngineTest, LockoutBlocksVerifyWithoutModels) {
+  // Ensure lockout is checked before models are loaded
+  initWithMockCamera();
+
+  auth_engine->recordAuthAttempt("bob", false);
+  auth_engine->recordAuthAttempt("bob", false);
+  auth_engine->recordAuthAttempt("bob", false);
+  ASSERT_TRUE(auth_engine->isUserLockedOut("bob"));
+
+  AuthResult res = auth_engine->verifyUserWithDetails("bob");
+  EXPECT_FALSE(res.success);
+  EXPECT_THAT(res.reason, ::testing::HasSubstr("locked"));
+}
+
+TEST_F(AuthEngineTest, SuccessfulAttemptResetsCounter) {
+  initWithMockCamera();
+
+  auth_engine->recordAuthAttempt("charlie", false);
+  auth_engine->recordAuthAttempt("charlie", false);
+  EXPECT_FALSE(auth_engine->isUserLockedOut("charlie"));
+
+  auth_engine->recordAuthAttempt("charlie", true);
+  EXPECT_FALSE(auth_engine->isUserLockedOut("charlie"));
+
+  // Counter should be reset after success
+  auth_engine->recordAuthAttempt("charlie", false);
+  auth_engine->recordAuthAttempt("charlie", false);
+  EXPECT_FALSE(auth_engine->isUserLockedOut("charlie"));
+}
+
+TEST_F(AuthEngineTest, LockoutDisabledWhenAttemptsIsZero) {
+  TempConfigFile guard("/tmp/test_no_lockout.ini");
+  {
+    std::ofstream cfg(guard.path);
+    cfg << "[Paths]\nusers_dir=/tmp/linuxcampam_test_users\n\n"
+        << "[Cameras]\nnames=mock_cam\n\n"
+        << "[Camera.mock_cam]\npath=/dev/video0\ntype=rgb\n\n"
+        << "[Security]\nlockout_attempts=0\nlockout_duration_sec=10\n";
+  }
+
+  AuthEngine engine;
+  engine.setCameraFactory([](const Configuration::CameraDefinition&) {
+    return std::make_unique<NiceMock<MockCamera>>();
+  });
+  ASSERT_TRUE(engine.init(guard.path));
+
+  constexpr int EXCESS_FAILURES = 100;
+  for (int i = 0; i < EXCESS_FAILURES; ++i)
+    engine.recordAuthAttempt("dave", false);
+
+  EXPECT_FALSE(engine.isUserLockedOut("dave"));
+}
+
+TEST_F(AuthEngineTest, LockoutExpiresAfterDuration) {
+  TempConfigFile guard("/tmp/test_short_lockout.ini");
+  {
+    std::ofstream cfg(guard.path);
+    cfg << "[Paths]\nusers_dir=/tmp/linuxcampam_test_users\n\n"
+        << "[Cameras]\nnames=mock_cam\n\n"
+        << "[Camera.mock_cam]\npath=/dev/video0\ntype=rgb\n\n"
+        << "[Security]\nlockout_attempts=3\nlockout_duration_sec=1\n";
+  }
+
+  AuthEngine engine;
+  engine.setCameraFactory([](const Configuration::CameraDefinition&) {
+    return std::make_unique<NiceMock<MockCamera>>();
+  });
+  ASSERT_TRUE(engine.init(guard.path));
+
+  engine.recordAuthAttempt("eve", false);
+  engine.recordAuthAttempt("eve", false);
+  engine.recordAuthAttempt("eve", false);
+  ASSERT_TRUE(engine.isUserLockedOut("eve"));
+
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+  EXPECT_FALSE(engine.isUserLockedOut("eve"));
+}
+
+TEST_F(AuthEngineTest, LockoutIsUserSpecific) {
+  initWithMockCamera();
+
+  auth_engine->recordAuthAttempt("frank", false);
+  auth_engine->recordAuthAttempt("frank", false);
+  auth_engine->recordAuthAttempt("frank", false);
+  ASSERT_TRUE(auth_engine->isUserLockedOut("frank"));
+
+  EXPECT_FALSE(auth_engine->isUserLockedOut("grace"));
+}
+
+// --- Permission tests ---
+
+TEST_F(AuthEngineTest, SetLabelWritesFileWithSecurePermissions) {
+  initWithMockCamera();
+
+  std::string vec = makeDummyVec();
+  {
+    std::ofstream f("/tmp/linuxcampam_test_users/perm_user.json");
+    f << "{\"_pending_rgb\": " << vec << "}";
+  }
+
+  ASSERT_TRUE(auth_engine->setLabel("perm_user", "perm_label"));
+
+  struct stat st{};
+  ASSERT_EQ(stat("/tmp/linuxcampam_test_users/perm_user.json", &st), 0);
+  EXPECT_EQ(st.st_mode & 0777, 0600u)
+      << "setLabel must produce a 0600 file; POSIX open() fix is broken";
 }

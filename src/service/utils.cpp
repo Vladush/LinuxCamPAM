@@ -226,6 +226,11 @@ int execute_command_spawn(const std::string& command_line) {
   struct ArgvGuard {
     std::vector<char*> ptrs;
     ~ArgvGuard() { std::for_each(ptrs.begin(), ptrs.end(), free); }
+    ArgvGuard() = default;
+    ArgvGuard(const ArgvGuard&) = delete;
+    ArgvGuard& operator=(const ArgvGuard&) = delete;
+    ArgvGuard(ArgvGuard&&) = delete;
+    ArgvGuard& operator=(ArgvGuard&&) = delete;
   } argv;
 
   argv.ptrs.reserve(args.size() + 1);

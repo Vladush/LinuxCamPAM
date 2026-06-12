@@ -40,6 +40,7 @@ struct FileDescriptor {
   }
 
   [[nodiscard]] int get() const { return fd; }
+  [[nodiscard]] int release() { return std::exchange(fd, -1); }
   [[nodiscard]] bool isValid() const { return fd >= 0; }
   operator int() const { return fd; }
 };

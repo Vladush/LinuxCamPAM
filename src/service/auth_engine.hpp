@@ -84,6 +84,10 @@ public:
       const Configuration::CameraDefinition &)>;
   void setCameraFactory(CameraFactory factory);
 
+  // Expose lockout state for tests and daemon maintenance.
+  [[nodiscard]] bool isUserLockedOut(std::string_view username);
+  void recordAuthAttempt(std::string_view username, bool success);
+
 private:
   Configuration config;
   CameraFactory camera_factory_;
@@ -103,7 +107,7 @@ private:
   std::vector<ActiveCamera> active_cameras;
 
   // Internal helper to capture from a specific camera instance
-  cv::Mat captureFrame(ICamera *cam);
+  static cv::Mat captureFrame(ICamera *cam);
 
   // Helper to generate embedding from a frame.
   // Returns number of faces found. Populates out_embedding and out_aligned_face
@@ -129,7 +133,7 @@ private:
                                 cv::Mat &out_face);
 
   // Helper to calculate brightness
-  [[nodiscard]] double calculateBrightness(const cv::Mat &frame);
+  [[nodiscard]] static double calculateBrightness(const cv::Mat &frame);
   void fallbackToCPU();
 
   // Dynamic Loading
@@ -146,6 +150,4 @@ private:
   };
   std::unordered_map<std::string, LockoutState> lockout_map_;
   mutable std::mutex lockout_mutex_;
-  [[nodiscard]] bool isUserLockedOut(std::string_view username);
-  void recordAuthAttempt(std::string_view username, bool success);
 };

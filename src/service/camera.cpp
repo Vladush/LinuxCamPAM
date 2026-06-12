@@ -8,9 +8,11 @@
 #include <linux/videodev2.h>
 #include <opencv2/core/utils/logger.hpp>
 #include <opencv2/photo.hpp>
+#include <poll.h>
 #include <spawn.h>
 #include <sstream>
 #include <sys/ioctl.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <system_error>
 #include <thread>
@@ -51,16 +53,47 @@ void Camera::triggerIrEmitter() {
                            args.data(), environ);
 
   if (status == 0) {
-    // Block until process completes
-    if (waitpid(pid, &status, 0) != -1) {
-      if (WIFEXITED(status)) {
-        log_info("[Camera] IR emitter exited with code: " +
-                 std::to_string(WEXITSTATUS(status)));
-      } else {
-        log_error("[Camera] IR emitter terminated abnormally.");
+    constexpr int IR_TIMEOUT_MS = 5000;
+    int wait_status = 0;
+
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg)
+    FileDescriptor pidfd(static_cast<int>(syscall(SYS_pidfd_open, pid, 0)));
+    if (pidfd.isValid()) {
+      // poll() returns immediately when the process exits
+      struct pollfd pfd = {};
+      pfd.fd     = pidfd.get();
+      pfd.events = POLLIN;
+      int ret = poll(&pfd, 1, IR_TIMEOUT_MS);
+      while (ret < 0 && errno == EINTR)
+        ret = poll(&pfd, 1, IR_TIMEOUT_MS);
+      if (ret == 0) {
+        log_error("[Camera] IR emitter timed out; sending SIGKILL.");
+        kill(pid, SIGKILL);
       }
+      while (waitpid(pid, &wait_status, 0) == -1 && errno == EINTR) {}
     } else {
-      log_error("[Camera] Failed to wait for IR emitter.");
+      // Fallback to sleep-poll if pidfd_open fails
+      log_warn("[Camera] pidfd_open failed; falling back to sleep-poll.");
+      constexpr int POLL_INTERVAL_MS = 100;
+      bool exited = false;
+      for (int i = 0; i < IR_TIMEOUT_MS / POLL_INTERVAL_MS; ++i) {
+        const pid_t w = waitpid(pid, &wait_status, WNOHANG);
+        if (w == pid) { exited = true; break; }
+        if (w == -1 && errno != EINTR) { wait_status = -1; exited = true; break; }
+        std::this_thread::sleep_for(std::chrono::milliseconds(POLL_INTERVAL_MS));
+      }
+      if (!exited) {
+        log_error("[Camera] IR emitter timed out; sending SIGKILL.");
+        kill(pid, SIGKILL);
+        while (waitpid(pid, &wait_status, 0) == -1 && errno == EINTR) {}
+      }
+    }
+
+    if (wait_status != -1 && WIFEXITED(wait_status)) {
+      log_info("[Camera] IR emitter exited with code: " +
+               std::to_string(WEXITSTATUS(wait_status)));
+    } else {
+      log_error("[Camera] IR emitter terminated abnormally.");
     }
   } else {
     std::ostringstream oss;

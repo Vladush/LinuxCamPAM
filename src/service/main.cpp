@@ -280,7 +280,7 @@ void handle_client(int fd, AuthEngine &engine) {
   send(client_fd.get(), response.c_str(), response.length(), 0);
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, const char *const argv[]) {
   (void)signal(SIGINT, signal_handler);
   (void)signal(SIGTERM, signal_handler);
 
@@ -355,13 +355,16 @@ int main(int argc, char *argv[]) {
   Logger::enableSyslog("linuxcampamd");
 
   // Proximity Sensor Integration Lifecycle
+  // Declare VirtualKeyboard first so it outlives tripwire.
+  // This ensures the polling thread is fully joined before the fd is closed.
+  VirtualKeyboard vkb;
   std::optional<HardwareManager> hw_manager;
   SensorFactory sensor_factory;
   PresenceTripwire tripwire(sensor_factory);
   ScopedWorker proximity_init_worker;
 
   if (cfg.proximity_sensor == Configuration::ProximitySensorMode::AUTO || cfg.proximity_sensor == Configuration::ProximitySensorMode::ENABLED) {
-    proximity_init_worker = ScopedWorker([&cfg, &hw_manager, &tripwire]() {
+    proximity_init_worker = ScopedWorker([&cfg, &hw_manager, &tripwire, &vkb]() {
       std::string hw_id = cfg.proximity_sensor_id;
       std::string i2c_addr;
       std::error_code ec;
@@ -392,10 +395,7 @@ int main(int argc, char *argv[]) {
         hw_manager.emplace(i2c_addr);
         if (hw_manager->seize_sensor()) {
           if (std::optional<std::string> hidraw_node = hw_manager->get_hidraw_node(); hidraw_node) {
-            // Initialize VirtualKeyboard for wake functionality
-            static VirtualKeyboard vkb;
-
-            if (!tripwire.start(*hidraw_node, HardwareId(hw_id), [&cfg](bool present, int confidence) {
+            if (!tripwire.start(*hidraw_node, HardwareId(hw_id), [&cfg, &vkb](bool present, int confidence) {
               static bool last_state = false;
               static int last_confidence = 0;
 
