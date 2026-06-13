@@ -84,11 +84,16 @@ public:
       const Configuration::CameraDefinition &)>;
   void setCameraFactory(CameraFactory factory);
 
-  // Expose lockout state for tests and daemon maintenance.
+private:
+  // Lockout state must only be mutated via the auth path.
+  // Tests bypass this via the friend declaration below.
   [[nodiscard]] bool isUserLockedOut(std::string_view username);
   void recordAuthAttempt(std::string_view username, bool success);
 
-private:
+#ifdef UNIT_TESTING
+  friend class AuthEngineTest;
+#endif
+
   Configuration config;
   CameraFactory camera_factory_;
 

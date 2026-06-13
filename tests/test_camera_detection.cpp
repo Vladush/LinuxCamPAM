@@ -1,5 +1,6 @@
 #include "../src/service/utils.hpp"
 
+#include <chrono>
 #include <gtest/gtest.h>
 #include <linux/videodev2.h>
 #include <map>
@@ -108,4 +109,32 @@ TEST(CameraDetectionTest, DetectMixedDevices) {
   EXPECT_EQ(cameras[0].second, "ir");
   EXPECT_EQ(cameras[1].first, "/dev/video1");
   EXPECT_EQ(cameras[1].second, "rgb");
+}
+
+// --- poll_remaining_ms ---
+// Verify timeout shrinking for the IR poll loop. Prevents infinite blocking.
+
+TEST(PollRemainingMs, ReturnsFullWindowWhenDeadlineIsAhead) {
+  const auto now = std::chrono::steady_clock::now();
+  const auto deadline = now + std::chrono::milliseconds(5000);
+  EXPECT_EQ(poll_remaining_ms(deadline, now), 5000);
+}
+
+TEST(PollRemainingMs, ShrinksAsTimeElapses) {
+  const auto now = std::chrono::steady_clock::now();
+  const auto deadline = now + std::chrono::milliseconds(5000);
+  const auto later = now + std::chrono::milliseconds(3200);
+  EXPECT_EQ(poll_remaining_ms(deadline, later), 1800);
+}
+
+TEST(PollRemainingMs, ClampsToZeroAtDeadline) {
+  const auto now = std::chrono::steady_clock::now();
+  EXPECT_EQ(poll_remaining_ms(now, now), 0);
+}
+
+TEST(PollRemainingMs, ClampsToZeroPastDeadline) {
+  const auto now = std::chrono::steady_clock::now();
+  const auto deadline = now - std::chrono::milliseconds(1500);
+  // Must never go negative; a negative poll() timeout blocks forever.
+  EXPECT_EQ(poll_remaining_ms(deadline, now), 0);
 }

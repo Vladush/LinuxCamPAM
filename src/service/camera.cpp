@@ -63,9 +63,19 @@ void Camera::triggerIrEmitter() {
       struct pollfd pfd = {};
       pfd.fd     = pidfd.get();
       pfd.events = POLLIN;
+      // Shrink timeout on EINTR retries to strictly enforce the deadline.
+      const auto deadline = std::chrono::steady_clock::now() +
+                            std::chrono::milliseconds(IR_TIMEOUT_MS);
       int ret = poll(&pfd, 1, IR_TIMEOUT_MS);
-      while (ret < 0 && errno == EINTR)
-        ret = poll(&pfd, 1, IR_TIMEOUT_MS);
+      while (ret < 0 && errno == EINTR) {
+        const int remaining = linuxcampam::poll_remaining_ms(
+            deadline, std::chrono::steady_clock::now());
+        if (remaining == 0) {  // deadline reached; treat as timeout
+          ret = 0;
+          break;
+        }
+        ret = poll(&pfd, 1, remaining);
+      }
       if (ret == 0) {
         log_error("[Camera] IR emitter timed out; sending SIGKILL.");
         kill(pid, SIGKILL);

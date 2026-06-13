@@ -300,7 +300,14 @@ int main(int argc, const char *const argv[]) {
   // Directory for socket is created if needed.
   fs::path p(socket_path);
   if (p.has_parent_path()) {
-    fs::create_directories(p.parent_path());
+    std::error_code ec;
+    fs::create_directories(p.parent_path(), ec);
+    if (ec) {
+      // Abort early. Uncaught exceptions here trigger std::terminate.
+      log_error("Failed to create socket directory '" +
+                p.parent_path().string() + "': " + ec.message());
+      return 1;
+    }
   }
 
   // Config path

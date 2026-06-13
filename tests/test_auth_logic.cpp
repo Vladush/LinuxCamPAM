@@ -102,6 +102,15 @@ public:
     ASSERT_TRUE(auth_engine->init("test_auth_config.ini"));
   }
 
+  // Forwarders for private APIs (friend access isn't inherited by TEST_F subclasses).
+  static bool isUserLockedOut(AuthEngine &engine, std::string_view user) {
+    return engine.isUserLockedOut(user);
+  }
+  static void recordAuthAttempt(AuthEngine &engine, std::string_view user,
+                                bool success) {
+    engine.recordAuthAttempt(user, success);
+  }
+
   std::unique_ptr<AuthEngine> auth_engine;
 };
 
@@ -319,22 +328,22 @@ TEST_F(AuthEngineTest, ValidFrameTriggersFaceDetection) {
 TEST_F(AuthEngineTest, LockoutActivatesAfterNFailures) {
   initWithMockCamera();
 
-  ASSERT_FALSE(auth_engine->isUserLockedOut("alice"));
-  auth_engine->recordAuthAttempt("alice", false);
-  auth_engine->recordAuthAttempt("alice", false);
-  EXPECT_FALSE(auth_engine->isUserLockedOut("alice")); // 2 < threshold of 3
-  auth_engine->recordAuthAttempt("alice", false);
-  EXPECT_TRUE(auth_engine->isUserLockedOut("alice")); // 3 == threshold
+  ASSERT_FALSE(isUserLockedOut(*auth_engine, "alice"));
+  recordAuthAttempt(*auth_engine, "alice", false);
+  recordAuthAttempt(*auth_engine, "alice", false);
+  EXPECT_FALSE(isUserLockedOut(*auth_engine, "alice")); // 2 < threshold of 3
+  recordAuthAttempt(*auth_engine, "alice", false);
+  EXPECT_TRUE(isUserLockedOut(*auth_engine, "alice")); // 3 == threshold
 }
 
 TEST_F(AuthEngineTest, LockoutBlocksVerifyWithoutModels) {
   // Ensure lockout is checked before models are loaded
   initWithMockCamera();
 
-  auth_engine->recordAuthAttempt("bob", false);
-  auth_engine->recordAuthAttempt("bob", false);
-  auth_engine->recordAuthAttempt("bob", false);
-  ASSERT_TRUE(auth_engine->isUserLockedOut("bob"));
+  recordAuthAttempt(*auth_engine, "bob", false);
+  recordAuthAttempt(*auth_engine, "bob", false);
+  recordAuthAttempt(*auth_engine, "bob", false);
+  ASSERT_TRUE(isUserLockedOut(*auth_engine, "bob"));
 
   AuthResult res = auth_engine->verifyUserWithDetails("bob");
   EXPECT_FALSE(res.success);
@@ -344,17 +353,17 @@ TEST_F(AuthEngineTest, LockoutBlocksVerifyWithoutModels) {
 TEST_F(AuthEngineTest, SuccessfulAttemptResetsCounter) {
   initWithMockCamera();
 
-  auth_engine->recordAuthAttempt("charlie", false);
-  auth_engine->recordAuthAttempt("charlie", false);
-  EXPECT_FALSE(auth_engine->isUserLockedOut("charlie"));
+  recordAuthAttempt(*auth_engine, "charlie", false);
+  recordAuthAttempt(*auth_engine, "charlie", false);
+  EXPECT_FALSE(isUserLockedOut(*auth_engine, "charlie"));
 
-  auth_engine->recordAuthAttempt("charlie", true);
-  EXPECT_FALSE(auth_engine->isUserLockedOut("charlie"));
+  recordAuthAttempt(*auth_engine, "charlie", true);
+  EXPECT_FALSE(isUserLockedOut(*auth_engine, "charlie"));
 
   // Counter should be reset after success
-  auth_engine->recordAuthAttempt("charlie", false);
-  auth_engine->recordAuthAttempt("charlie", false);
-  EXPECT_FALSE(auth_engine->isUserLockedOut("charlie"));
+  recordAuthAttempt(*auth_engine, "charlie", false);
+  recordAuthAttempt(*auth_engine, "charlie", false);
+  EXPECT_FALSE(isUserLockedOut(*auth_engine, "charlie"));
 }
 
 TEST_F(AuthEngineTest, LockoutDisabledWhenAttemptsIsZero) {
@@ -375,9 +384,9 @@ TEST_F(AuthEngineTest, LockoutDisabledWhenAttemptsIsZero) {
 
   constexpr int EXCESS_FAILURES = 100;
   for (int i = 0; i < EXCESS_FAILURES; ++i)
-    engine.recordAuthAttempt("dave", false);
+    recordAuthAttempt(engine, "dave", false);
 
-  EXPECT_FALSE(engine.isUserLockedOut("dave"));
+  EXPECT_FALSE(isUserLockedOut(engine, "dave"));
 }
 
 TEST_F(AuthEngineTest, LockoutExpiresAfterDuration) {
@@ -396,24 +405,24 @@ TEST_F(AuthEngineTest, LockoutExpiresAfterDuration) {
   });
   ASSERT_TRUE(engine.init(guard.path));
 
-  engine.recordAuthAttempt("eve", false);
-  engine.recordAuthAttempt("eve", false);
-  engine.recordAuthAttempt("eve", false);
-  ASSERT_TRUE(engine.isUserLockedOut("eve"));
+  recordAuthAttempt(engine, "eve", false);
+  recordAuthAttempt(engine, "eve", false);
+  recordAuthAttempt(engine, "eve", false);
+  ASSERT_TRUE(isUserLockedOut(engine, "eve"));
 
   std::this_thread::sleep_for(std::chrono::seconds(2));
-  EXPECT_FALSE(engine.isUserLockedOut("eve"));
+  EXPECT_FALSE(isUserLockedOut(engine, "eve"));
 }
 
 TEST_F(AuthEngineTest, LockoutIsUserSpecific) {
   initWithMockCamera();
 
-  auth_engine->recordAuthAttempt("frank", false);
-  auth_engine->recordAuthAttempt("frank", false);
-  auth_engine->recordAuthAttempt("frank", false);
-  ASSERT_TRUE(auth_engine->isUserLockedOut("frank"));
+  recordAuthAttempt(*auth_engine, "frank", false);
+  recordAuthAttempt(*auth_engine, "frank", false);
+  recordAuthAttempt(*auth_engine, "frank", false);
+  ASSERT_TRUE(isUserLockedOut(*auth_engine, "frank"));
 
-  EXPECT_FALSE(auth_engine->isUserLockedOut("grace"));
+  EXPECT_FALSE(isUserLockedOut(*auth_engine, "grace"));
 }
 
 // --- Permission tests ---
@@ -433,4 +442,18 @@ TEST_F(AuthEngineTest, SetLabelWritesFileWithSecurePermissions) {
   ASSERT_EQ(stat("/tmp/linuxcampam_test_users/perm_user.json", &st), 0);
   EXPECT_EQ(st.st_mode & 0777, 0600u)
       << "setLabel must produce a 0600 file; POSIX open() fix is broken";
+
+  // Biometric dir must be 0700.
+  struct stat dir_st{};
+  ASSERT_EQ(stat("/tmp/linuxcampam_test_users", &dir_st), 0);
+  EXPECT_EQ(dir_st.st_mode & 0777, 0700u)
+      << "writeJsonAtomic must tighten the users directory to 0700";
+
+  // Ensure no stale tmp files are left behind.
+  for (const auto &entry :
+       fs::directory_iterator("/tmp/linuxcampam_test_users")) {
+    EXPECT_EQ(entry.path().filename().string().find(".tmp."),
+              std::string::npos)
+        << "leftover temp file: " << entry.path();
+  }
 }

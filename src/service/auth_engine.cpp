@@ -8,6 +8,7 @@
 #include "logger.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <fcntl.h>
 #include <filesystem>
 #include <fstream>
@@ -596,22 +597,34 @@ AuthResult AuthEngine::verifyUserWithDetails(std::string_view username) {
   });
 }
 
-// Atomically writes data to final_path via a unique secure tmp file in the
-// same directory. The tmp name embeds PID + thread id so concurrent writes
-// for the same user from different threads cannot collide.
-// Returns empty string on success, or an error message.
+// Atomic write: stage to temp file, fsync, then rename.
+// mkostemp's O_EXCL prevents symlink/tempfile collisions.
 static std::string writeJsonAtomic(const fs::path& final_path,
                                    const std::string& data) {
-  const std::string tmp_path =
-      final_path.string() + ".tmp." + std::to_string(getpid()) + "." +
-      std::to_string(
-          std::hash<std::thread::id>{}(std::this_thread::get_id()));
+  // Ensure biometric directory remains 0700. Best-effort.
+  if (const fs::path dir = final_path.parent_path(); !dir.empty()) {
+    std::error_code perm_ec;
+    fs::permissions(dir, fs::perms::owner_all, fs::perm_options::replace, perm_ec);
+  }
+
+  std::string tmp_path = final_path.string() + ".tmp.XXXXXX";
+
+  // Non-throwing cleanup. We're already in an error path; don't mask it.
+  auto discard_tmp = [](const std::string &p) {
+    std::error_code ec;
+    fs::remove(p, ec);
+  };
+
   {
-    linuxcampam::FileDescriptor fd(
-        open(tmp_path.c_str(), O_CREAT | O_WRONLY | O_TRUNC | O_CLOEXEC | O_NOFOLLOW,
-             linuxcampam::SECURE_FILE_MODE));
+    linuxcampam::FileDescriptor fd(mkostemp(tmp_path.data(), O_CLOEXEC));
     if (!fd.isValid()) {
-      return "open failed: " + std::system_category().message(errno);
+      return "mkostemp failed: " + std::system_category().message(errno);
+    }
+    // Force 0600 (don't trust libc mkostemp defaults for biometrics).
+    if (fchmod(fd.get(), linuxcampam::SECURE_FILE_MODE) < 0) {
+      const int saved_errno = errno;
+      discard_tmp(tmp_path);
+      return "fchmod failed: " + std::system_category().message(saved_errno);
     }
     size_t written = 0;
     while (written < data.size()) {
@@ -619,20 +632,32 @@ static std::string writeJsonAtomic(const fs::path& final_path,
       if (n < 0) {
         if (errno == EINTR) continue;
         const int saved_errno = errno;
-        fs::remove(tmp_path);
+        discard_tmp(tmp_path);
         return "write failed: " + std::system_category().message(saved_errno);
       }
       written += static_cast<size_t>(n);
     }
     if (fsync(fd.get()) < 0) {
       const int saved_errno = errno;
-      fs::remove(tmp_path);
+      discard_tmp(tmp_path);
       return "fsync failed: " + std::system_category().message(saved_errno);
     }
   } // Must close fd before renaming
   std::error_code ec;
   fs::rename(tmp_path, final_path, ec);
-  return ec ? ec.message() : "";
+  if (ec) {
+    discard_tmp(tmp_path);  // don't leak the staged file on a failed rename
+    return ec.message();
+  }
+
+  // Fsync parent dir so the rename survives a power loss. Best-effort.
+  if (const fs::path dir = final_path.parent_path(); !dir.empty()) {
+    linuxcampam::FileDescriptor dir_fd(
+        open(dir.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
+    if (dir_fd.isValid())
+      (void)fsync(dir_fd.get());
+  }
+  return "";
 }
 
 std::pair<bool, std::string>
@@ -714,7 +739,10 @@ AuthEngine::enrollUser(std::string_view username) {
                                       " | threshold: " +
                                       std::to_string(config.detection_threshold));
 
-      fs::create_directories(config.log_dir);
+      std::error_code dir_ec;
+      fs::create_directories(config.log_dir, dir_ec);
+      if (dir_ec)
+        log_warn("Could not create log dir for debug frame: " + dir_ec.message());
       std::string fail_filename = (config.log_dir / "failed_enroll_").string();
       fail_filename += id;
       fail_filename += "_";
@@ -736,7 +764,12 @@ AuthEngine::enrollUser(std::string_view username) {
   }
 
   log_info("Saving pending enrollment...");
-  fs::create_directories(config.users_dir);
+  std::error_code users_dir_ec;
+  fs::create_directories(config.users_dir, users_dir_ec);
+  if (users_dir_ec) {
+    log_error("Failed to create user directory: " + users_dir_ec.message());
+    return {false, "Failed to create user directory: " + users_dir_ec.message()};
+  }
   if (auto err = writeJsonAtomic(user_file, j.dump(4)); !err.empty()) {
     log_error("Failed to write user file: " + err);
     return {false, "Write failed"};

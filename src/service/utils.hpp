@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -93,6 +94,12 @@ enumerateCameras();
 
 // Helpers
 [[nodiscard]] std::string getIREmitterVersion(std::string_view path);
+
+// Computes ms remaining until deadline.
+// Clamps to [0, INT_MAX] to prevent infinite poll() blocks.
+[[nodiscard]] int
+poll_remaining_ms(std::chrono::steady_clock::time_point deadline,
+                  std::chrono::steady_clock::time_point now);
 
 // Execute a shell-free command using posix_spawnp
 [[nodiscard]] int execute_command_spawn(const std::string& command_line);
