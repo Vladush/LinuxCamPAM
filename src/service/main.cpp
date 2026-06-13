@@ -100,7 +100,13 @@ void handle_client(int fd, AuthEngine &engine) {
     case Command::AUTH_REQUEST: {
       if (req.args.empty())
         break;
-      
+      if (!check_permission(req.args[0])) {
+        // Enforce SO_PEERCRED validation. Unprivileged cross-user requests are dropped
+        // to prevent local DoS attacks from tying up the camera hardware.
+        response = "AUTH_FAIL";
+        break;
+      }
+
       if (engine.getConfig().proximity_enforce && !g_proximity_present.load()) {
         response = "AUTH_FAIL: Proximity sensor reports no human present";
         log_warn("Authentication rejected by proximity sensor enforcement.");
