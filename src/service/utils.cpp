@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
+#include <climits>
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
@@ -124,6 +126,18 @@ std::vector<std::pair<std::string, std::string>> enumerateCameras() {
   return enumerateCameras(backend);
 }
 
+int poll_remaining_ms(std::chrono::steady_clock::time_point deadline,
+                      std::chrono::steady_clock::time_point now) {
+  if (now >= deadline)
+    return 0;
+  const auto remaining =
+      std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now)
+          .count();
+  if (remaining > INT_MAX)
+    return INT_MAX;
+  return static_cast<int>(remaining);
+}
+
 std::string getIREmitterVersion(std::string_view path) {
   if (path.empty()) return {};
 
@@ -226,6 +240,11 @@ int execute_command_spawn(const std::string& command_line) {
   struct ArgvGuard {
     std::vector<char*> ptrs;
     ~ArgvGuard() { std::for_each(ptrs.begin(), ptrs.end(), free); }
+    ArgvGuard() = default;
+    ArgvGuard(const ArgvGuard&) = delete;
+    ArgvGuard& operator=(const ArgvGuard&) = delete;
+    ArgvGuard(ArgvGuard&&) = delete;
+    ArgvGuard& operator=(ArgvGuard&&) = delete;
   } argv;
 
   argv.ptrs.reserve(args.size() + 1);

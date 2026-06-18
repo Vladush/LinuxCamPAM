@@ -29,9 +29,10 @@ TEST(ScopedWorkerTest, MoveConstructor) {
 TEST(ScopedWorkerTest, MoveAssignment) {
   std::atomic<bool> executed1{false};
   std::atomic<bool> executed2{false};
+  constexpr auto kSleepDuration = std::chrono::milliseconds(10);
   
   ScopedWorker worker1([&]() {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    std::this_thread::sleep_for(kSleepDuration);
     executed1 = true; 
   });
   

@@ -2,14 +2,28 @@
 #include "service/auth_engine.hpp"
 #include "service/icamera.hpp"
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <sys/stat.h>
+#include <thread>
 #include "json.hpp"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 using ::testing::NiceMock;
 using ::testing::Return;
+
+// RAII guard to clean up config file even on ASSERT failure
+struct TempConfigFile {
+  std::string path;
+  explicit TempConfigFile(std::string p) : path(std::move(p)) {}
+  ~TempConfigFile() { fs::remove(path); }
+  TempConfigFile(const TempConfigFile&) = delete;
+  TempConfigFile& operator=(const TempConfigFile&) = delete;
+  TempConfigFile(TempConfigFile&&) = delete;
+  TempConfigFile& operator=(TempConfigFile&&) = delete;
+};
 
 constexpr int MOCK_FRAME_WIDTH = 640;
 constexpr int MOCK_FRAME_HEIGHT = 480;
@@ -86,6 +100,15 @@ public:
       return std::make_unique<NiceMock<MockCamera>>();
     });
     ASSERT_TRUE(auth_engine->init("test_auth_config.ini"));
+  }
+
+  // Forwarders for private APIs (friend access isn't inherited by TEST_F subclasses).
+  static bool isUserLockedOut(AuthEngine &engine, std::string_view user) {
+    return engine.isUserLockedOut(user);
+  }
+  static void recordAuthAttempt(AuthEngine &engine, std::string_view user,
+                                bool success) {
+    engine.recordAuthAttempt(user, success);
   }
 
   std::unique_ptr<AuthEngine> auth_engine;
@@ -298,4 +321,139 @@ TEST_F(AuthEngineTest, ValidFrameTriggersFaceDetection) {
   AuthResult res = auth_engine->verifyUserWithDetails("user_valid_frame");
   EXPECT_FALSE(res.success);
   EXPECT_THAT(res.reason, ::testing::HasSubstr("No face detected"));
+}
+
+// --- Lockout tests ---
+
+TEST_F(AuthEngineTest, LockoutActivatesAfterNFailures) {
+  initWithMockCamera();
+
+  ASSERT_FALSE(isUserLockedOut(*auth_engine, "alice"));
+  recordAuthAttempt(*auth_engine, "alice", false);
+  recordAuthAttempt(*auth_engine, "alice", false);
+  EXPECT_FALSE(isUserLockedOut(*auth_engine, "alice")); // 2 < threshold of 3
+  recordAuthAttempt(*auth_engine, "alice", false);
+  EXPECT_TRUE(isUserLockedOut(*auth_engine, "alice")); // 3 == threshold
+}
+
+TEST_F(AuthEngineTest, LockoutBlocksVerifyWithoutModels) {
+  // Ensure lockout is checked before models are loaded
+  initWithMockCamera();
+
+  recordAuthAttempt(*auth_engine, "bob", false);
+  recordAuthAttempt(*auth_engine, "bob", false);
+  recordAuthAttempt(*auth_engine, "bob", false);
+  ASSERT_TRUE(isUserLockedOut(*auth_engine, "bob"));
+
+  AuthResult res = auth_engine->verifyUserWithDetails("bob");
+  EXPECT_FALSE(res.success);
+  EXPECT_THAT(res.reason, ::testing::HasSubstr("locked"));
+}
+
+TEST_F(AuthEngineTest, SuccessfulAttemptResetsCounter) {
+  initWithMockCamera();
+
+  recordAuthAttempt(*auth_engine, "charlie", false);
+  recordAuthAttempt(*auth_engine, "charlie", false);
+  EXPECT_FALSE(isUserLockedOut(*auth_engine, "charlie"));
+
+  recordAuthAttempt(*auth_engine, "charlie", true);
+  EXPECT_FALSE(isUserLockedOut(*auth_engine, "charlie"));
+
+  // Counter should be reset after success
+  recordAuthAttempt(*auth_engine, "charlie", false);
+  recordAuthAttempt(*auth_engine, "charlie", false);
+  EXPECT_FALSE(isUserLockedOut(*auth_engine, "charlie"));
+}
+
+TEST_F(AuthEngineTest, LockoutDisabledWhenAttemptsIsZero) {
+  TempConfigFile guard("/tmp/test_no_lockout.ini");
+  {
+    std::ofstream cfg(guard.path);
+    cfg << "[Paths]\nusers_dir=/tmp/linuxcampam_test_users\n\n"
+        << "[Cameras]\nnames=mock_cam\n\n"
+        << "[Camera.mock_cam]\npath=/dev/video0\ntype=rgb\n\n"
+        << "[Security]\nlockout_attempts=0\nlockout_duration_sec=10\n";
+  }
+
+  AuthEngine engine;
+  engine.setCameraFactory([](const Configuration::CameraDefinition&) {
+    return std::make_unique<NiceMock<MockCamera>>();
+  });
+  ASSERT_TRUE(engine.init(guard.path));
+
+  constexpr int EXCESS_FAILURES = 100;
+  for (int i = 0; i < EXCESS_FAILURES; ++i)
+    recordAuthAttempt(engine, "dave", false);
+
+  EXPECT_FALSE(isUserLockedOut(engine, "dave"));
+}
+
+TEST_F(AuthEngineTest, LockoutExpiresAfterDuration) {
+  TempConfigFile guard("/tmp/test_short_lockout.ini");
+  {
+    std::ofstream cfg(guard.path);
+    cfg << "[Paths]\nusers_dir=/tmp/linuxcampam_test_users\n\n"
+        << "[Cameras]\nnames=mock_cam\n\n"
+        << "[Camera.mock_cam]\npath=/dev/video0\ntype=rgb\n\n"
+        << "[Security]\nlockout_attempts=3\nlockout_duration_sec=1\n";
+  }
+
+  AuthEngine engine;
+  engine.setCameraFactory([](const Configuration::CameraDefinition&) {
+    return std::make_unique<NiceMock<MockCamera>>();
+  });
+  ASSERT_TRUE(engine.init(guard.path));
+
+  recordAuthAttempt(engine, "eve", false);
+  recordAuthAttempt(engine, "eve", false);
+  recordAuthAttempt(engine, "eve", false);
+  ASSERT_TRUE(isUserLockedOut(engine, "eve"));
+
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+  EXPECT_FALSE(isUserLockedOut(engine, "eve"));
+}
+
+TEST_F(AuthEngineTest, LockoutIsUserSpecific) {
+  initWithMockCamera();
+
+  recordAuthAttempt(*auth_engine, "frank", false);
+  recordAuthAttempt(*auth_engine, "frank", false);
+  recordAuthAttempt(*auth_engine, "frank", false);
+  ASSERT_TRUE(isUserLockedOut(*auth_engine, "frank"));
+
+  EXPECT_FALSE(isUserLockedOut(*auth_engine, "grace"));
+}
+
+// --- Permission tests ---
+
+TEST_F(AuthEngineTest, SetLabelWritesFileWithSecurePermissions) {
+  initWithMockCamera();
+
+  std::string vec = makeDummyVec();
+  {
+    std::ofstream f("/tmp/linuxcampam_test_users/perm_user.json");
+    f << "{\"_pending_rgb\": " << vec << "}";
+  }
+
+  ASSERT_TRUE(auth_engine->setLabel("perm_user", "perm_label"));
+
+  struct stat st{};
+  ASSERT_EQ(stat("/tmp/linuxcampam_test_users/perm_user.json", &st), 0);
+  EXPECT_EQ(st.st_mode & 0777, 0600u)
+      << "setLabel must produce a 0600 file; POSIX open() fix is broken";
+
+  // Biometric dir must be 0700.
+  struct stat dir_st{};
+  ASSERT_EQ(stat("/tmp/linuxcampam_test_users", &dir_st), 0);
+  EXPECT_EQ(dir_st.st_mode & 0777, 0700u)
+      << "writeJsonAtomic must tighten the users directory to 0700";
+
+  // Ensure no stale tmp files are left behind.
+  for (const auto &entry :
+       fs::directory_iterator("/tmp/linuxcampam_test_users")) {
+    EXPECT_EQ(entry.path().filename().string().find(".tmp."),
+              std::string::npos)
+        << "leftover temp file: " << entry.path();
+  }
 }

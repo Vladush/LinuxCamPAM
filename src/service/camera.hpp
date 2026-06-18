@@ -45,5 +45,5 @@ private:
   bool supports_manual_exposure_ = false;
 
   bool detectExposureSupport();
-  bool openAndWarmup(cv::VideoCapture &cap);
+  bool openAndWarmup(cv::VideoCapture &temp_cap);
 };

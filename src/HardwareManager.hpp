@@ -33,7 +33,7 @@ private:
     std::string hid_id;
     std::string previous_hid_driver;
 
-    [[nodiscard]] bool write_sysfs(const std::string& path, std::string_view value);
+    [[nodiscard]] static bool write_sysfs(const std::string& path, std::string_view value);
     [[nodiscard]] bool resolve_hid_device();
     void resolve_current_driver();
     std::filesystem::path sys_i2c_path_;

@@ -85,6 +85,15 @@ public:
   void setCameraFactory(CameraFactory factory);
 
 private:
+  // Lockout state must only be mutated via the auth path.
+  // Tests bypass this via the friend declaration below.
+  [[nodiscard]] bool isUserLockedOut(std::string_view username);
+  void recordAuthAttempt(std::string_view username, bool success);
+
+#ifdef UNIT_TESTING
+  friend class AuthEngineTest;
+#endif
+
   Configuration config;
   CameraFactory camera_factory_;
 
@@ -103,7 +112,7 @@ private:
   std::vector<ActiveCamera> active_cameras;
 
   // Internal helper to capture from a specific camera instance
-  cv::Mat captureFrame(ICamera *cam);
+  static cv::Mat captureFrame(ICamera *cam);
 
   // Helper to generate embedding from a frame.
   // Returns number of faces found. Populates out_embedding and out_aligned_face
@@ -129,7 +138,7 @@ private:
                                 cv::Mat &out_face);
 
   // Helper to calculate brightness
-  [[nodiscard]] double calculateBrightness(const cv::Mat &frame);
+  [[nodiscard]] static double calculateBrightness(const cv::Mat &frame);
   void fallbackToCPU();
 
   // Dynamic Loading
@@ -146,6 +155,4 @@ private:
   };
   std::unordered_map<std::string, LockoutState> lockout_map_;
   mutable std::mutex lockout_mutex_;
-  [[nodiscard]] bool isUserLockedOut(std::string_view username);
-  void recordAuthAttempt(std::string_view username, bool success);
 };

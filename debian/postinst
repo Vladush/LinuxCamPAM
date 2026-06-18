@@ -27,8 +27,8 @@ if [ "$1" = "configure" ]; then
     chmod 700 /etc/linuxcampam/users
     chmod 755 /etc/linuxcampam/models
     
-    # Run Camera Config Detection
-    if [ -x /usr/bin/linuxcampam-setup-config ]; then
+    # Run Camera Config Detection (only on fresh install, $2 is empty)
+    if [ -z "$2" ] && [ -x /usr/bin/linuxcampam-setup-config ]; then
         echo "Auto-configuring cameras..."
         /usr/bin/linuxcampam-setup-config || true
     fi

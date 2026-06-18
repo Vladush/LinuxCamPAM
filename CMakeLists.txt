@@ -233,12 +233,15 @@ if(TARGET gtest)
         tests/test_scoped_worker.cpp
     )
     
-    # The tests link against the service_core library to test internal logic without 
+    # The tests link against the service_core library to test internal logic without
     # duplicating compilation units or pulling in the main service entry point.
-    target_link_libraries(linuxcampam_tests PRIVATE 
+    target_link_libraries(linuxcampam_tests PRIVATE
         gtest gtest_main gmock
         service_core
     )
+
+    # Expose private lockout methods for testing.
+    target_compile_definitions(linuxcampam_tests PRIVATE UNIT_TESTING)
     
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(linuxcampam_tests PRIVATE -fPIE)

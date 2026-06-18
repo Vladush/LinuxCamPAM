@@ -8,6 +8,7 @@
 #include "logger.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <fcntl.h>
 #include <filesystem>
 #include <fstream>
@@ -18,6 +19,7 @@
 #include <sstream>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <system_error>
 #include <thread>
 #include <unistd.h>
 
@@ -330,10 +332,6 @@ AuthResult AuthEngine::verifyUserCore(std::string_view username,
   result.success = false;
   result.best_score = 0.0f;
 
-  if (!ensureModelsLoaded()) {
-    result.reason = "Failed to load models";
-    return result;
-  }
   if (!linuxcampam::isValidUsername(username)) {
     result.reason = "Invalid username";
     if (callback)
@@ -342,6 +340,10 @@ AuthResult AuthEngine::verifyUserCore(std::string_view username,
   }
   if (isUserLockedOut(username)) {
     result.reason = "User locked out";
+    return result;
+  }
+  if (!ensureModelsLoaded()) {
+    result.reason = "Failed to load models";
     return result;
   }
   fs::path user_file = config.users_dir / (std::string(username) + ".json");
@@ -359,16 +361,15 @@ AuthResult AuthEngine::verifyUserCore(std::string_view username,
   float overall_best_score = 0.0f;
 
   log_info("Verifying user " + std::string(username) + " with policy " +
-           std::to_string((int)config.policy));
+           std::to_string(static_cast<int>(config.policy)));
 
   for (auto &ac : active_cameras) {
     std::string id = ac.config.id;
     cv::Mat frame = captureFrame(ac.cam.get());
 
     if (frame.empty()) {
-      std::string msg = "Capture failed";
       if (callback)
-        callback(id, frame, false, 0.0f, msg);
+        callback(id, frame, false, 0.0f, "Capture failed");
 
       if (config.policy == Configuration::AuthPolicy::STRICT_ALL) {
         result.reason = "Camera " + id + " failed to capture";
@@ -596,6 +597,69 @@ AuthResult AuthEngine::verifyUserWithDetails(std::string_view username) {
   });
 }
 
+// Atomic write: stage to temp file, fsync, then rename.
+// mkostemp's O_EXCL prevents symlink/tempfile collisions.
+static std::string writeJsonAtomic(const fs::path& final_path,
+                                   const std::string& data) {
+  // Ensure biometric directory remains 0700. Best-effort.
+  if (const fs::path dir = final_path.parent_path(); !dir.empty()) {
+    std::error_code perm_ec;
+    fs::permissions(dir, fs::perms::owner_all, fs::perm_options::replace, perm_ec);
+  }
+
+  std::string tmp_path = final_path.string() + ".tmp.XXXXXX";
+
+  // Non-throwing cleanup. We're already in an error path; don't mask it.
+  auto discard_tmp = [](const std::string &p) {
+    std::error_code ec;
+    fs::remove(p, ec);
+  };
+
+  {
+    linuxcampam::FileDescriptor fd(mkostemp(tmp_path.data(), O_CLOEXEC));
+    if (!fd.isValid()) {
+      return "mkostemp failed: " + std::system_category().message(errno);
+    }
+    // Force 0600 (don't trust libc mkostemp defaults for biometrics).
+    if (fchmod(fd.get(), linuxcampam::SECURE_FILE_MODE) < 0) {
+      const int saved_errno = errno;
+      discard_tmp(tmp_path);
+      return "fchmod failed: " + std::system_category().message(saved_errno);
+    }
+    size_t written = 0;
+    while (written < data.size()) {
+      ssize_t n = write(fd.get(), data.data() + written, data.size() - written);
+      if (n < 0) {
+        if (errno == EINTR) continue;
+        const int saved_errno = errno;
+        discard_tmp(tmp_path);
+        return "write failed: " + std::system_category().message(saved_errno);
+      }
+      written += static_cast<size_t>(n);
+    }
+    if (fsync(fd.get()) < 0) {
+      const int saved_errno = errno;
+      discard_tmp(tmp_path);
+      return "fsync failed: " + std::system_category().message(saved_errno);
+    }
+  } // Must close fd before renaming
+  std::error_code ec;
+  fs::rename(tmp_path, final_path, ec);
+  if (ec) {
+    discard_tmp(tmp_path);  // don't leak the staged file on a failed rename
+    return ec.message();
+  }
+
+  // Fsync parent dir so the rename survives a power loss. Best-effort.
+  if (const fs::path dir = final_path.parent_path(); !dir.empty()) {
+    linuxcampam::FileDescriptor dir_fd(
+        open(dir.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
+    if (dir_fd.isValid())
+      (void)fsync(dir_fd.get());
+  }
+  return "";
+}
+
 std::pair<bool, std::string>
 AuthEngine::enrollUser(std::string_view username) {
   if (!ensureModelsLoaded())
@@ -675,7 +739,10 @@ AuthEngine::enrollUser(std::string_view username) {
                                       " | threshold: " +
                                       std::to_string(config.detection_threshold));
 
-      fs::create_directories(config.log_dir);
+      std::error_code dir_ec;
+      fs::create_directories(config.log_dir, dir_ec);
+      if (dir_ec)
+        log_warn("Could not create log dir for debug frame: " + dir_ec.message());
       std::string fail_filename = (config.log_dir / "failed_enroll_").string();
       fail_filename += id;
       fail_filename += "_";
@@ -697,19 +764,16 @@ AuthEngine::enrollUser(std::string_view username) {
   }
 
   log_info("Saving pending enrollment...");
-  fs::create_directories(config.users_dir);
-  std::string tmp_file = std::string(user_file) + ".tmp";
-  std::ofstream out(tmp_file);
-  out << j.dump(4);
-  out.close();
-  if (out.fail()) {
-    log_error("Failed to write user file");
-    fs::remove(tmp_file);
+  std::error_code users_dir_ec;
+  fs::create_directories(config.users_dir, users_dir_ec);
+  if (users_dir_ec) {
+    log_error("Failed to create user directory: " + users_dir_ec.message());
+    return {false, "Failed to create user directory: " + users_dir_ec.message()};
+  }
+  if (auto err = writeJsonAtomic(user_file, j.dump(4)); !err.empty()) {
+    log_error("Failed to write user file: " + err);
     return {false, "Write failed"};
   }
-  chmod(tmp_file.c_str(),
-        linuxcampam::SECURE_FILE_MODE); // Restrict to root-only
-  fs::rename(tmp_file, user_file);
   return {true, "Success"};
 }
 
@@ -797,18 +861,10 @@ bool AuthEngine::setLabel(std::string_view username,
   }
 
   if (updated) {
-    std::string tmp_file = std::string(user_file) + ".tmp";
-    std::ofstream out(tmp_file);
-    out << j.dump(4);
-    out.close();
-    if (out.fail()) {
-      log_error("Failed to write user file");
-      fs::remove(tmp_file);
+    if (auto err = writeJsonAtomic(user_file, j.dump(4)); !err.empty()) {
+      log_error("Failed to write user file: " + err);
       return false;
     }
-    chmod(tmp_file.c_str(),
-          linuxcampam::SECURE_FILE_MODE); // Restrict to root-only
-    fs::rename(tmp_file, user_file);
     log_info("Set label '" + std::string(label) + "' for " + std::string(username));
   }
   return updated;
@@ -921,18 +977,10 @@ bool AuthEngine::trainUser(std::string_view username,
   }
 
   if (updated_any) {
-    std::string tmp_file = std::string(user_file) + ".tmp";
-    std::ofstream out(tmp_file);
-    out << j.dump(4);
-    out.close();
-    if (out.fail()) {
-      log_error("Failed to write user file");
-      fs::remove(tmp_file);
+    if (auto err = writeJsonAtomic(user_file, j.dump(4)); !err.empty()) {
+      log_error("Failed to write user file: " + err);
       return false;
     }
-    chmod(tmp_file.c_str(),
-          linuxcampam::SECURE_FILE_MODE); // Restrict to root-only
-    fs::rename(tmp_file, user_file);
   }
   return updated_any;
 }
@@ -949,7 +997,7 @@ AuthEngine::listEmbeddings(std::string_view username) {
     return {};
   json j = *j_opt;
 
-  for (auto &ac : active_cameras) {
+  for (const auto &ac : active_cameras) {
     std::string emb_array_key = "embeddings_" + ac.config.type;
     if (j.contains(emb_array_key) && j[emb_array_key].is_array()) {
       for (const auto &entry : j[emb_array_key]) {
@@ -996,18 +1044,10 @@ bool AuthEngine::removeEmbedding(std::string_view username,
   }
 
   if (removed) {
-    std::string tmp_file = std::string(user_file) + ".tmp";
-    std::ofstream out(tmp_file);
-    out << j.dump(4);
-    out.close();
-    if (out.fail()) {
-      log_error("Failed to write user file");
-      fs::remove(tmp_file);
+    if (auto err = writeJsonAtomic(user_file, j.dump(4)); !err.empty()) {
+      log_error("Failed to write user file: " + err);
       return false;
     }
-    chmod(tmp_file.c_str(),
-          linuxcampam::SECURE_FILE_MODE); // Restrict to root-only
-    fs::rename(tmp_file, user_file);
     log_info("Removed embedding '" + std::string(label) + "' for " + std::string(username));
   }
   return removed;
