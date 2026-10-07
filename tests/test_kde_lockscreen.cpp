@@ -15,6 +15,10 @@ session optional        pam_kwallet5.so auto_start
   EXPECT_EQ(kde::scan_text(stack), kde::Scan::KwalletAuth);
 }
 
+TEST(KdeStack, Plasma6StackHasKwalletAuth) {
+  EXPECT_EQ(kde::scan_text("auth optional pam_kwallet6.so\n"), kde::Scan::KwalletAuth);
+}
+
 TEST(KdeStack, SessionRuleAloneDoesNotCount) {
   EXPECT_EQ(kde::scan_text("session optional pam_kwallet5.so auto_start\n"),
             kde::Scan::NoKwalletAuth);

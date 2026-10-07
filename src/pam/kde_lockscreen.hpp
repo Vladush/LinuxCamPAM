@@ -13,7 +13,7 @@
 namespace linuxcampam::kde {
 
 inline constexpr std::string_view SERVICE = "kde";
-inline constexpr std::string_view KWALLET_MODULE = "pam_kwallet5.so";
+
 inline constexpr size_t MAX_STACK_BYTES = 64 * 1024;
 
 #ifdef LINUXCAMPAM_TEST_PAM_DIR
@@ -88,7 +88,7 @@ inline Line classify_line(std::string_view line) {
   if (auto slash = module.rfind('/'); slash != std::string_view::npos) {
     module.remove_prefix(slash + 1);
   }
-  if (module == KWALLET_MODULE) {
+  if (module == "pam_kwallet5.so" || module == "pam_kwallet6.so") {
     return Line::KwalletAuth;
   }
   if (module.substr(0, 11) == "pam_kwallet") {
