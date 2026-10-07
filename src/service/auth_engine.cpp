@@ -835,17 +835,13 @@ bool AuthEngine::setLabel(std::string_view username,
         }
       } else {
         // Find existing label to overwrite, or add new
-        bool found = false;
-        for (auto &entry : j[emb_array_key]) {
-          if (entry["label"] == label) {
-            entry["data"] = embedding_data;
-            entry["created"] = std::time(nullptr);
-            entry["model_version"] = getModelVersion(recognition_model_path);
-            found = true;
-            break;
-          }
-        }
-        if (!found) {
+        auto it = std::find_if(j[emb_array_key].begin(), j[emb_array_key].end(),
+                               [&label](const json &entry) { return entry["label"] == label; });
+        if (it != j[emb_array_key].end()) {
+          (*it)["data"] = embedding_data;
+          (*it)["created"] = std::time(nullptr);
+          (*it)["model_version"] = getModelVersion(recognition_model_path);
+        } else {
           json new_entry;
           new_entry["label"] = label;
           new_entry["data"] = embedding_data;
@@ -941,29 +937,26 @@ bool AuthEngine::trainUser(std::string_view username,
       updated_any = true;
     } else {
       // Refine existing label (average)
-      bool found = false;
-      for (auto &entry : j[emb_array_key]) {
-        if (entry["label"] == label) {
-          std::vector<float> old_vec = entry["data"].get<std::vector<float>>();
-          cv::Mat old_emb(1, static_cast<int>(old_vec.size()), CV_32F,
-                          old_vec.data());
-          // Reconstruct new_emb from vector
-          cv::Mat new_emb(1, static_cast<int>(new_vec.size()), CV_32F,
-                          new_vec.data());
+      auto it = std::find_if(j[emb_array_key].begin(), j[emb_array_key].end(),
+                             [&label](const json &entry) { return entry["label"] == label; });
+      if (it != j[emb_array_key].end()) {
+        auto &entry = *it;
+        std::vector<float> old_vec = entry["data"].get<std::vector<float>>();
+        cv::Mat old_emb(1, static_cast<int>(old_vec.size()), CV_32F,
+                        old_vec.data());
+        // Reconstruct new_emb from vector
+        cv::Mat new_emb(1, static_cast<int>(new_vec.size()), CV_32F,
+                        new_vec.data());
 
-          cv::Mat avg = old_emb + new_emb;
-          cv::normalize(avg, avg);
-          std::vector<float> avg_vec;
-          avg.reshape(1, 1).copyTo(avg_vec);
-          entry["data"] = avg_vec;
-          entry["created"] = std::time(nullptr);
-          found = true;
-          log_info("Train: Refined embedding '" + std::string(label) + "'");
-          updated_any = true;
-          break;
-        }
-      }
-      if (!found) {
+        cv::Mat avg = old_emb + new_emb;
+        cv::normalize(avg, avg);
+        std::vector<float> avg_vec;
+        avg.reshape(1, 1).copyTo(avg_vec);
+        entry["data"] = avg_vec;
+        entry["created"] = std::time(nullptr);
+        log_info("Train: Refined embedding '" + std::string(label) + "'");
+        updated_any = true;
+      } else {
         // Create new if label doesn't exist
         json entry;
         entry["label"] = label;
