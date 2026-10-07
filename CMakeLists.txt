@@ -224,6 +224,7 @@ if(TARGET gtest)
         tests/test_auth_logic.cpp
         tests/test_protocol.cpp
         tests/test_pam_logic.cpp
+        tests/test_kde_lockscreen.cpp
         tests/test_config_parsing.cpp
         tests/test_camera.cpp
         tests/test_hardware_manager.cpp
@@ -247,6 +248,34 @@ if(TARGET gtest)
         target_compile_options(linuxcampam_tests PRIVATE -fPIE)
     endif()
     add_test(NAME UnitTests COMMAND linuxcampam_tests)
+
+    set(PAM_IT_DIR ${CMAKE_BINARY_DIR}/pam_it)
+
+    add_library(pam_linuxcampam_it MODULE src/pam/pam_linuxcampam.cpp)
+    target_include_directories(pam_linuxcampam_it PRIVATE
+        include src/common ${PAM_INCLUDE_DIR})
+    target_link_libraries(pam_linuxcampam_it PRIVATE ${PAM_LIBRARY})
+    target_compile_definitions(pam_linuxcampam_it PRIVATE
+        LINUXCAMPAM_TEST_PAM_DIR="${PAM_IT_DIR}"
+        LINUXCAMPAM_TEST_SOCKET_PATH="${PAM_IT_DIR}/socket"
+        LINUXCAMPAM_TEST_CONFIG_PATH="${PAM_IT_DIR}/config.ini")
+
+    add_library(pam_fake_kwallet MODULE tests/pam_it/pam_fake_kwallet.cpp)
+    add_library(pam_fake_unix MODULE tests/pam_it/pam_fake_unix.cpp)
+    set_target_properties(pam_linuxcampam_it pam_fake_kwallet pam_fake_unix
+        PROPERTIES PREFIX "" LIBRARY_OUTPUT_DIRECTORY ${PAM_IT_DIR}/modules)
+    set_target_properties(pam_fake_kwallet PROPERTIES OUTPUT_NAME pam_kwallet5)
+    target_link_libraries(pam_fake_kwallet PRIVATE ${PAM_LIBRARY})
+    target_link_libraries(pam_fake_unix PRIVATE ${PAM_LIBRARY})
+
+    add_executable(pam_integration_tests tests/pam_it/test_kde_flow.cpp)
+    target_link_libraries(pam_integration_tests PRIVATE
+        gtest gtest_main ${PAM_LIBRARY} Threads::Threads)
+    target_compile_definitions(pam_integration_tests PRIVATE
+        PAM_IT_DIR="${PAM_IT_DIR}")
+    add_dependencies(pam_integration_tests
+        pam_linuxcampam_it pam_fake_kwallet pam_fake_unix)
+    add_test(NAME PamIntegration COMMAND pam_integration_tests)
 endif()
 
 # --- Install Targets ---

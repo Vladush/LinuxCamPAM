@@ -14,6 +14,8 @@
 #include <string_view>
 #include <vector>
 
+enum class KdeLockscreenMode { Auto, SingleEnter, Legacy };
+
 struct PamConfig {
   uid_t min_uid = linuxcampam::DEFAULT_MIN_UID;
   bool require_confirmation = true;
@@ -21,6 +23,9 @@ struct PamConfig {
       "gdm-password", "sddm", "lightdm", "login", 
       "swaylock", "i3lock", "xscreensaver", "kscreenlocker", "kde", "systemd-user"
   };
+  bool exempt_services_explicit = false;
+  KdeLockscreenMode kde_lockscreen = KdeLockscreenMode::Auto;
+  bool kde_lockscreen_invalid = false;
 #ifndef DISABLE_WELCOME_MESSAGE
   bool show_welcome = true;
   std::string welcome_message = "LinuxCamPAM: Welcome, %u!";
@@ -42,6 +47,31 @@ inline std::string_view trim(std::string_view s) {
   }
   auto end = s.find_last_not_of(" \t\r\n");
   return s.substr(start, end - start + 1);
+}
+
+inline std::string_view unquote(std::string_view s) {
+  if (s.size() >= 2 && s.front() == '"' && s.back() == '"') {
+    return s.substr(1, s.size() - 2);
+  }
+  return s;
+}
+
+inline std::optional<KdeLockscreenMode>
+parse_kde_lockscreen(std::string_view value) {
+  value = trim(unquote(trim(value)));
+  if (value == "auto") return KdeLockscreenMode::Auto;
+  if (value == "single_enter") return KdeLockscreenMode::SingleEnter;
+  if (value == "legacy") return KdeLockscreenMode::Legacy;
+  return std::nullopt;
+}
+
+inline const char *to_string(KdeLockscreenMode mode) {
+  switch (mode) {
+  case KdeLockscreenMode::Auto: return "auto";
+  case KdeLockscreenMode::SingleEnter: return "single_enter";
+  case KdeLockscreenMode::Legacy: return "legacy";
+  }
+  return "legacy";
 }
 
 inline std::vector<std::string> split(std::string_view str, char delimiter) {
@@ -130,11 +160,18 @@ inline PamConfig resolve_pam_config(const PamConfigState &state) {
 
   // --- confirmation_exempt_services ---
   if (auto ces_opt = get_value("confirmation_exempt_services")) {
-    std::string ces_str = *ces_opt;
-    if (ces_str.size() >= 2 && ces_str.front() == '"' && ces_str.back() == '"') {
-      ces_str = ces_str.substr(1, ces_str.size() - 2);
+    config.confirmation_exempt_services = split(unquote(*ces_opt), ',');
+    config.exempt_services_explicit = true;
+  }
+
+  // --- kde_lockscreen ---
+  if (auto kl_opt = get_value("kde_lockscreen")) {
+    if (auto mode = parse_kde_lockscreen(*kl_opt)) {
+      config.kde_lockscreen = *mode;
+    } else {
+      config.kde_lockscreen = KdeLockscreenMode::Legacy;
+      config.kde_lockscreen_invalid = true;
     }
-    config.confirmation_exempt_services = split(ces_str, ',');
   }
 
 #ifndef DISABLE_WELCOME_MESSAGE

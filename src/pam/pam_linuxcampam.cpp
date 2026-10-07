@@ -1,6 +1,7 @@
 #include "constants.hpp"
 #include "ipc_protocol.hpp"
 #include "pam_config.hpp"
+#include "kde_lockscreen.hpp"
 
 #include <algorithm>
 #include <array>
@@ -17,6 +18,28 @@
 #include <utility>
 
 namespace {
+namespace kde = linuxcampam::kde;
+
+#ifdef LINUXCAMPAM_TEST_SOCKET_PATH
+constexpr const char *PAM_SOCKET_PATH = LINUXCAMPAM_TEST_SOCKET_PATH;
+constexpr const char *PAM_CONFIG_PATH = LINUXCAMPAM_TEST_CONFIG_PATH;
+#else
+constexpr const char *PAM_SOCKET_PATH = linuxcampam::SOCKET_PATH;
+constexpr const char *PAM_CONFIG_PATH = linuxcampam::CONFIG_PATH;
+#endif
+
+// pam_kwallet5 prompts when PAM_AUTHTOK is NULL and skips an empty token.
+void set_empty_authtok_if_unset(pam_handle_t *pamh) {
+  const void *tok = nullptr;
+  if (pam_get_item(pamh, PAM_AUTHTOK, &tok) != PAM_SUCCESS ||
+      tok != nullptr) {
+    return;
+  }
+  if (pam_set_item(pamh, PAM_AUTHTOK, "") != PAM_SUCCESS) {
+    syslog(LOG_WARNING, "Could not set empty PAM_AUTHTOK for kde");
+  }
+}
+
 constexpr size_t BUFFER_SIZE = 128;
 constexpr int TIMEOUT_SEC = 5;
 
@@ -111,7 +134,28 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
       return retval;
     }
 
-    PamConfig config = load_pam_config(linuxcampam::CONFIG_PATH);
+    PamConfig config = load_pam_config(PAM_CONFIG_PATH);
+
+    const void *service_ptr = nullptr;
+    if (pam_get_item(pamh, PAM_SERVICE, &service_ptr) != PAM_SUCCESS) {
+      service_ptr = nullptr;
+    }
+    const char *service = static_cast<const char *>(service_ptr);
+
+    kde::Decision kde_mode;
+    if (service != nullptr && std::string_view{service} == kde::SERVICE) {
+      kde::StackInfo stack;
+      if (config.kde_lockscreen == KdeLockscreenMode::Auto) {
+        stack = kde::scan_effective_stack();
+      }
+      kde_mode = kde::decide(config, stack);
+      syslog(config.kde_lockscreen_invalid ? LOG_WARNING : LOG_DEBUG,
+             "kde_lockscreen: %s -> %s (%s%s%s)",
+             to_string(config.kde_lockscreen),
+             kde_mode.single_enter ? "single_enter" : "legacy",
+             kde_mode.reason, stack.path ? ", " : "",
+             stack.path ? stack.path : "");
+    }
 
 #ifndef DISABLE_WELCOME_MESSAGE
     if (std::any_of(argv, argv + argc, [](const char *arg) {
@@ -152,17 +196,12 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
     }
 
     if (config.require_confirmation) {
-      const void *service_ptr = nullptr;
-      if (pam_get_item(pamh, PAM_SERVICE, &service_ptr) != PAM_SUCCESS || service_ptr == nullptr) {
+      if (service == nullptr) {
         syslog(LOG_WARNING, "PAM_SERVICE unavailable; applying confirmation prompt as fallback");
-        service_ptr = nullptr;
       }
 
-      if (service_ptr == nullptr || 
-          std::find(config.confirmation_exempt_services.begin(),
-                    config.confirmation_exempt_services.end(),
-                    std::string_view{static_cast<const char *>(service_ptr)}) == config.confirmation_exempt_services.end()) {
-        const char *service = service_ptr ? static_cast<const char *>(service_ptr) : "unknown";
+      if (service == nullptr || 
+          !kde::is_confirmation_exempt(config, service, kde_mode)) {
         const char* msg_text = "Press <Enter> to authenticate with face, or type password:";
         struct pam_message msg = {
             .msg_style = PAM_PROMPT_ECHO_OFF,
@@ -178,7 +217,7 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
           int conv_ret = conv->conv(1, &msgp, &resp_pam, conv->appdata_ptr);
           PamResponsePtr resp_ptr(resp_pam);
           if (conv_ret != PAM_SUCCESS) {
-            syslog(LOG_ERR, "Authentication confirmation failed or canceled for service: %s", service);
+            syslog(LOG_ERR, "Authentication confirmation failed or canceled for service: %s", service ? service : "unknown");
             return PAM_AUTH_ERR;
           }
           if (resp_pam && resp_pam[0].resp && std::strlen(resp_pam[0].resp) > 0) {
@@ -206,7 +245,7 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
     addr.sun_family = AF_UNIX;
     // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-array-to-pointer-decay)
     (void)std::snprintf(addr.sun_path, sizeof(addr.sun_path), "%s",
-                        linuxcampam::SOCKET_PATH);
+                        PAM_SOCKET_PATH);
 
     // Set timeout (exceeds detection timeout of 3s)
     // to avoid aborting while the camera is still looking.
@@ -245,6 +284,9 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
     if (valread > 0) {
       std::string resp(response_buffer.data(), static_cast<size_t>(valread));
       if (resp.find("AUTH_SUCCESS") != std::string::npos) {
+        if (kde_mode.single_enter) {
+          set_empty_authtok_if_unset(pamh);
+        }
 #ifndef DISABLE_WELCOME_MESSAGE
         if (config.show_welcome && ((flags & PAM_SILENT) == 0)) {
           std::string welcome_msg = config.welcome_message;

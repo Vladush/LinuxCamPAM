@@ -171,3 +171,74 @@ confirmation_exempt_services = sudo,login
   EXPECT_EQ(config.confirmation_exempt_services[0], "sudo");
   EXPECT_EQ(config.confirmation_exempt_services[1], "login");
 }
+
+TEST_F(PamConfigTest, KdeLockscreenDefaultsToAuto) {
+  auto config = loadConfig("");
+  EXPECT_EQ(config.kde_lockscreen, KdeLockscreenMode::Auto);
+  EXPECT_FALSE(config.kde_lockscreen_invalid);
+}
+
+TEST_F(PamConfigTest, KdeLockscreenParsesAllValues) {
+  EXPECT_EQ(loadConfig("kde_lockscreen = auto").kde_lockscreen, KdeLockscreenMode::Auto);
+  EXPECT_EQ(loadConfig("kde_lockscreen = single_enter").kde_lockscreen, KdeLockscreenMode::SingleEnter);
+  EXPECT_EQ(loadConfig("kde_lockscreen = legacy").kde_lockscreen, KdeLockscreenMode::Legacy);
+}
+
+TEST_F(PamConfigTest, KdeLockscreenQuotedValue) {
+  EXPECT_EQ(loadConfig("kde_lockscreen = \"single_enter\"").kde_lockscreen, KdeLockscreenMode::SingleEnter);
+}
+
+TEST_F(PamConfigTest, KdeLockscreenInvalidFallsBackToLegacy) {
+  auto config = loadConfig("kde_lockscreen = invalid_mode");
+  EXPECT_EQ(config.kde_lockscreen, KdeLockscreenMode::Legacy);
+  EXPECT_TRUE(config.kde_lockscreen_invalid);
+}
+
+TEST_F(PamConfigTest, KdeLockscreenInlineCommentIsInvalid) {
+  // Our INI parser doesn't strip inline comments
+  auto config = loadConfig("kde_lockscreen = auto ; comment");
+  EXPECT_EQ(config.kde_lockscreen, KdeLockscreenMode::Legacy);
+  EXPECT_TRUE(config.kde_lockscreen_invalid);
+}
+
+TEST_F(PamConfigTest, ExemptListDefaultIsNotExplicit) {
+  auto config = loadConfig("");
+  EXPECT_FALSE(config.exempt_services_explicit);
+}
+
+TEST_F(PamConfigTest, ExemptListSetIsExplicit) {
+  auto config = loadConfig("confirmation_exempt_services = sudo");
+  EXPECT_TRUE(config.exempt_services_explicit);
+}
+
+TEST_F(PamConfigTest, EmptyExemptListIsExplicit) {
+  auto config = loadConfig("confirmation_exempt_services = ");
+  EXPECT_TRUE(config.exempt_services_explicit);
+  EXPECT_TRUE(config.confirmation_exempt_services.empty());
+}
+
+TEST_F(PamConfigTest, SecuritySectionWinsForKdeLockscreen) {
+  auto config = loadConfig(R"(
+kde_lockscreen = legacy
+
+[Security]
+kde_lockscreen = single_enter
+)");
+  EXPECT_EQ(config.kde_lockscreen, KdeLockscreenMode::SingleEnter);
+}
+
+TEST_F(PamConfigTest, DefaultExemptListContents) {
+  auto config = loadConfig("");
+  const auto& list = config.confirmation_exempt_services;
+  ASSERT_EQ(list.size(), 10);
+  EXPECT_EQ(list[0], "gdm-password");
+  EXPECT_EQ(list[1], "sddm");
+  EXPECT_EQ(list[2], "lightdm");
+  EXPECT_EQ(list[3], "login");
+  EXPECT_EQ(list[4], "swaylock");
+  EXPECT_EQ(list[5], "i3lock");
+  EXPECT_EQ(list[6], "xscreensaver");
+  EXPECT_EQ(list[7], "kscreenlocker");
+  EXPECT_EQ(list[8], "kde");
+  EXPECT_EQ(list[9], "systemd-user");
+}
