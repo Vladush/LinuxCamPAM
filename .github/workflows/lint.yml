@@ -28,4 +28,4 @@ jobs:
 
       - name: Run Markdown Lint
         # Check all markdown files in root and docs/
-        run: markdownlint "**/*.md" --ignore "node_modules"
+        run: markdownlint "**/*.md" --ignore "node_modules" --ignore "build"

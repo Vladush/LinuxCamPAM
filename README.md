@@ -139,21 +139,21 @@ The package installation will automatically backup your PAM config, configure th
 
 These are required to **compile** the project from source (Options B & C).
 
-| Debian/Ubuntu Package        | Arch Linux Package | Purpose                                     |
-| :--------------------------- | :----------------- | :------------------------------------------ |
+| Debian/Ubuntu Package        | Arch Linux Package    | Purpose                                     |
+| :--------------------------- | :-------------------- | :------------------------------------------ |
 | `cmake`, `build-essential`   | `cmake`, `base-devel` | Build system                                |
-| `libpam0g-dev`               | `pam`              | PAM module development headers              |
-| `libudev-dev`                | `systemd`          | Required for HIDAPI proximity sensor [2]    |
-| `v4l-utils`                  | `v4l-utils`        | Camera detection tools (also a runtime dep) |
-| `curl` / `wget`              | `wget`             | Downloading models and dependencies         |
-| `ninja-build` *(optional)*   | `ninja`            | Faster builds (recommended)                 |
-| `libtss2-dev`                | `tpm2-tss`         | TPM2 hardware integration                   |
-| `libjsoncpp-dev`             | `jsoncpp`          | JSON configuration parsing                  |
-| `nlohmann-json3-dev`         | `nlohmann-json`    | Modern JSON C++ library                     |
-| `libhidapi-dev`              | `hidapi`           | Proximity sensor communication              |
-| `libgmock-dev`               | `gtest`            | Testing framework                           |
-| `pkg-config`                 | `pkgconf`          | Library configuration                       |
-| `clang`                      | `clang`            | C/C++ compiler alternative                  |
+| `libpam0g-dev`               | `pam`                 | PAM module development headers              |
+| `libudev-dev`                | `systemd`             | Required for HIDAPI proximity sensor [2]    |
+| `v4l-utils`                  | `v4l-utils`           | Camera detection tools (also a runtime dep) |
+| `curl` / `wget`              | `wget`                | Downloading models and dependencies         |
+| `ninja-build` *(optional)*   | `ninja`               | Faster builds (recommended)                 |
+| `libtss2-dev`                | `tpm2-tss`            | TPM2 hardware integration                   |
+| `libjsoncpp-dev`             | `jsoncpp`             | JSON configuration parsing                  |
+| `nlohmann-json3-dev`         | `nlohmann-json`       | Modern JSON C++ library                     |
+| `libhidapi-dev`              | `hidapi`              | Proximity sensor communication              |
+| `libgmock-dev`               | `gtest`               | Testing framework                           |
+| `pkg-config`                 | `pkgconf`             | Library configuration                       |
+| `clang`                      | `clang`               | C/C++ compiler alternative                  |
 
 > [2] **libudev-dev Troubleshooting**: This is a hard dependency for `hidapi` (via `pkg-config`). On Ubuntu/Debian, the package is `libudev-dev`. On RedHat/Fedora/CentOS-based distributions, it is typically named `systemd-devel` or `libudev-devel`. If CMake fails on `PkgConfig::HIDAPI`, ensure these headers are installed.
 >

@@ -145,6 +145,7 @@ removes or rewrites it.
 A core requirement is that this solution works robustly alongside GNOME (Ubuntu 24.04/26.04), other Desktop Environments (DEs), Display Managers (DMs), and Window Managers.
 
 The design ensures strict isolation for non-KDE environments:
+
 1. **Targeted Service Matching**: The `kde_lockscreen` logic and empty token injection are strictly guarded by a service name check (`std::string_view{service} == "kde"`). If the active PAM service is `gdm-password` (GNOME), `sddm`, `lightdm`, `swaylock`, or `login`, the new behavior is completely bypassed.
 2. **Exemption Preservation**: GNOME and other environments continue to rely on the `confirmation_exempt_services` list (which includes `gdm-password`, `sddm`, `lightdm`, etc.). The single-Enter face scan bypass for those environments continues to work exactly as it does today, unaffected by the `kde` specific token-clearing step.
 3. **Graceful Degradation**: If the LinuxCamPAM module is invoked in a non-KDE context, the parser (`kde::scan_effective_stack`) and token injection (`set_empty_authtok_if_unset`) are never executed. This guarantees zero overhead and zero risk of inadvertently injecting an empty token into GDM or LightDM's authentication flow, preventing potential lockouts.
