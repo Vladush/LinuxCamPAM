@@ -10,6 +10,7 @@
 #include <mutex>
 #include <opencv2/dnn.hpp>
 #include <opencv2/opencv.hpp>
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -153,6 +154,6 @@ private:
     int failed_attempts = 0;
     std::chrono::steady_clock::time_point lockout_until{};
   };
-  std::unordered_map<std::string, LockoutState> lockout_map_;
+  std::map<std::string, LockoutState, std::less<>> lockout_map_;
   mutable std::mutex lockout_mutex_;
 };

@@ -160,13 +160,32 @@ Protect against brute-force attacks by limiting the number of consecutive failur
 lockout_attempts = 5
 lockout_duration_sec = 300
 require_confirmation = true
-confirmation_exempt_services = gdm-password, swaylock, login, kdm, lightdm, sddm
+confirmation_exempt_services = gdm-password, sddm, lightdm, login, swaylock, i3lock, xscreensaver, kscreenlocker, kde, systemd-user
 ```
 
 - **lockout_attempts**: Number of failed attempts before temporary lockout.
 - **lockout_duration_sec**: Duration of lockout in seconds (default 300s = 5 minutes).
 - **require_confirmation**: If `true` (default), blocks silent privilege escalation by requiring you to press `<Enter>` to invoke the camera, or type a password to seamlessly bypass face authentication altogether.
 - **confirmation_exempt_services**: A comma-separated list of PAM services that bypass the confirmation prompt. These are typically explicit login events where the camera should activate instantly to avoid user fatigue.
+
+#### KDE Lock Screen
+
+KDE Plasma handles facial authentication differently than other environments. To avoid being prompted for your password immediately after your face is scanned, LinuxCamPAM injects an empty token to trick the KWallet PAM module.
+
+```ini
+[Security]
+kde_lockscreen = auto
+```
+
+| Mode | Behavior |
+| --- | --- |
+| `auto` (default) | Analyzes your KDE PAM stack. Uses `single_enter` if a KWallet auth rule is found, otherwise uses `legacy`. |
+| `single_enter` | Forces injection of the empty token. Bypasses the extra KWallet prompt. Requires you to press Enter to initiate a scan (unless explicitly exempted). |
+| `legacy` | Does not inject an empty token. KDE will ask for an empty password after scanning. |
+
+*Upgrade Note:* If you relied on the `kde` service being exempt from confirmation in older versions (where the camera activated immediately on lock), and your stack automatically resolves to `single_enter`, you will now need to press Enter to scan. You can opt out by setting `kde_lockscreen = legacy`.
+
+*Manual Fallback:* If your distribution's PAM stack isn't auto-detected, you can manually remove the `auth optional pam_kwallet5.so` line from `/etc/pam.d/kde`.
 
 ### Advanced Configuration Security
 

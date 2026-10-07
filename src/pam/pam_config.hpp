@@ -56,7 +56,7 @@ inline std::string_view unquote(std::string_view s) {
   return s;
 }
 
-inline std::optional<KdeLockscreenMode>
+[[nodiscard]] inline std::optional<KdeLockscreenMode>
 parse_kde_lockscreen(std::string_view value) {
   value = trim(unquote(trim(value)));
   if (value == "auto") return KdeLockscreenMode::Auto;
@@ -65,7 +65,7 @@ parse_kde_lockscreen(std::string_view value) {
   return std::nullopt;
 }
 
-inline const char *to_string(KdeLockscreenMode mode) {
+[[nodiscard]] inline const char *to_string(KdeLockscreenMode mode) {
   switch (mode) {
   case KdeLockscreenMode::Auto: return "auto";
   case KdeLockscreenMode::SingleEnter: return "single_enter";
@@ -74,7 +74,7 @@ inline const char *to_string(KdeLockscreenMode mode) {
   return "legacy";
 }
 
-inline std::vector<std::string> split(std::string_view str, char delimiter) {
+[[nodiscard]] inline std::vector<std::string> split(std::string_view str, char delimiter) {
   std::vector<std::string> result;
   size_t start = 0;
   while (start < str.size()) {
@@ -116,7 +116,7 @@ inline void process_pam_config_line(std::string_view line,
   }
 }
 
-inline PamConfig resolve_pam_config(const PamConfigState &state) {
+[[nodiscard]] inline PamConfig resolve_pam_config(const PamConfigState &state) {
   PamConfig config;
 
   // Lookup: [Security] > any other section that defines the key > default.
@@ -195,7 +195,7 @@ inline PamConfig resolve_pam_config(const PamConfigState &state) {
 }
 
 // C-style FILE* avoids iostream, which causes linker issues in PIC PAM modules.
-inline PamConfig load_pam_config(const char *path) {
+[[nodiscard]] inline PamConfig load_pam_config(const char *path) {
   PamConfigState state;
 
   struct FileCloser {

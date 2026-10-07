@@ -42,7 +42,7 @@ struct Decision {
 };
 
 namespace detail {
-inline std::pair<std::string_view, std::string_view>
+[[nodiscard]] inline std::pair<std::string_view, std::string_view>
 next_token(std::string_view s) {
   s = trim(s);
   auto end = s.find_first_of(" \t");
@@ -53,7 +53,7 @@ next_token(std::string_view s) {
 }
 } // namespace detail
 
-inline Line classify_line(std::string_view line) {
+[[nodiscard]] inline Line classify_line(std::string_view line) {
   if (auto hash = line.find('#'); hash != std::string_view::npos) {
     line = line.substr(0, hash);
   }
@@ -97,7 +97,7 @@ inline Line classify_line(std::string_view line) {
   return Line::Other;
 }
 
-inline Scan scan_text(std::string_view text) {
+[[nodiscard]] inline Scan scan_text(std::string_view text) {
   bool kwallet = false;
   bool other = false;
   while (!text.empty()) {
@@ -116,7 +116,7 @@ inline Scan scan_text(std::string_view text) {
   return other ? Scan::OtherKwalletAuth : Scan::NoKwalletAuth;
 }
 
-inline Scan scan_file(const char *path) {
+[[nodiscard]] inline Scan scan_file(const char *path) {
   struct FileCloser {
     void operator()(FILE *f) const {
       if (f) {
@@ -128,19 +128,29 @@ inline Scan scan_file(const char *path) {
   if (!f) {
     return errno == ENOENT ? Scan::Missing : Scan::Unreadable;
   }
-  std::string text;
-  std::array<char, 4096> buf{};
-  size_t n = 0;
-  while ((n = std::fread(buf.data(), 1, buf.size(), f.get())) > 0) {
-    if (text.size() + n > MAX_STACK_BYTES) {
-      return Scan::TooLarge;
-    }
-    text.append(buf.data(), n);
+  if (std::fseek(f.get(), 0, SEEK_END) != 0) {
+    return Scan::Unreadable;
   }
-  return std::ferror(f.get()) ? Scan::Unreadable : scan_text(text);
+  long size = std::ftell(f.get());
+  if (size < 0) {
+    return Scan::Unreadable;
+  }
+  if (static_cast<size_t>(size) > MAX_STACK_BYTES) {
+    return Scan::TooLarge;
+  }
+  std::rewind(f.get());
+
+  std::string text;
+  text.resize(static_cast<size_t>(size));
+  size_t n = std::fread(text.data(), 1, text.size(), f.get());
+  if (n != text.size() && std::ferror(f.get())) {
+    return Scan::Unreadable;
+  }
+  text.resize(n);
+  return scan_text(text);
 }
 
-inline StackInfo scan_effective_stack() {
+[[nodiscard]] inline StackInfo scan_effective_stack() {
   Scan etc = scan_file(ETC_STACK);
   if (etc != Scan::Missing) {
     return {ETC_STACK, etc};
@@ -148,7 +158,7 @@ inline StackInfo scan_effective_stack() {
   return {VENDOR_STACK, scan_file(VENDOR_STACK)};
 }
 
-inline Decision decide(const PamConfig &config, const StackInfo &stack) {
+[[nodiscard]] inline Decision decide(const PamConfig &config, const StackInfo &stack) {
   switch (config.kde_lockscreen) {
   case KdeLockscreenMode::Legacy:
     return {false, config.kde_lockscreen_invalid
@@ -171,7 +181,7 @@ inline Decision decide(const PamConfig &config, const StackInfo &stack) {
   return {false, "unknown"};
 }
 
-inline bool is_confirmation_exempt(const PamConfig &config,
+[[nodiscard]] inline bool is_confirmation_exempt(const PamConfig &config,
                                    std::string_view service,
                                    const Decision &kde) {
   if (kde.single_enter && service == SERVICE &&

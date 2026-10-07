@@ -1113,7 +1113,7 @@ bool AuthEngine::isUserLockedOut(std::string_view username) {
     return false;
 
   std::scoped_lock lock(lockout_mutex_);
-  if (auto it = lockout_map_.find(std::string(username)); it != lockout_map_.end()) {
+  if (auto it = lockout_map_.find(username); it != lockout_map_.end()) {
     return std::chrono::steady_clock::now() < it->second.lockout_until;
   }
   return false;
@@ -1124,15 +1124,20 @@ void AuthEngine::recordAuthAttempt(std::string_view username, bool success) {
     return;
 
   std::scoped_lock lock(lockout_mutex_);
-  auto &state = lockout_map_[std::string(username)];
+  auto it = lockout_map_.find(username);
 
   if (success) {
-    state.failed_attempts = 0;
-    state.lockout_until = {};
+    if (it != lockout_map_.end()) {
+      it->second.failed_attempts = 0;
+      it->second.lockout_until = {};
+    }
   } else {
-    state.failed_attempts++;
-    if (state.failed_attempts >= config.lockout_attempts) {
-      state.lockout_until = std::chrono::steady_clock::now() +
+    if (it == lockout_map_.end()) {
+      it = lockout_map_.emplace(std::string(username), LockoutState{}).first;
+    }
+    it->second.failed_attempts++;
+    if (it->second.failed_attempts >= config.lockout_attempts) {
+      it->second.lockout_until = std::chrono::steady_clock::now() +
                             std::chrono::seconds(config.lockout_duration_sec);
       log_warn(std::string(username) + " locked out");
     }
