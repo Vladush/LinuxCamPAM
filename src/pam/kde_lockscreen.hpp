@@ -9,12 +9,13 @@
 #include <string_view>
 #include <utility>
 #include <algorithm>
+#include <cstdint>
 
 namespace linuxcampam::kde {
 
 inline constexpr std::string_view SERVICE = "kde";
 
-inline constexpr size_t MAX_STACK_BYTES = 64 * 1024;
+inline constexpr size_t MAX_STACK_BYTES = 64ULL * 1024ULL;
 
 #ifdef LINUXCAMPAM_TEST_PAM_DIR
 inline constexpr const char *ETC_STACK = LINUXCAMPAM_TEST_PAM_DIR "/etc/kde";
@@ -25,8 +26,8 @@ inline constexpr const char *ETC_STACK = "/etc/pam.d/kde";
 inline constexpr const char *VENDOR_STACK = "/usr/lib/pam.d/kde";
 #endif
 
-enum class Line { Other, KwalletAuth, OtherKwalletAuth, Unsupported };
-enum class Scan {
+enum class Line : std::uint8_t { Other, KwalletAuth, OtherKwalletAuth, Unsupported };
+enum class Scan : std::uint8_t {
   KwalletAuth, NoKwalletAuth, OtherKwalletAuth,
   Missing, Unreadable, TooLarge, Unsupported
 };
@@ -91,7 +92,8 @@ next_token(std::string_view s) {
   if (module == "pam_kwallet5.so" || module == "pam_kwallet6.so") {
     return Line::KwalletAuth;
   }
-  if (module.substr(0, 11) == "pam_kwallet") {
+  constexpr std::string_view kwallet_prefix = "pam_kwallet";
+  if (module.size() >= kwallet_prefix.size() && module.substr(0, kwallet_prefix.size()) == kwallet_prefix) {
     return Line::OtherKwalletAuth;
   }
   return Line::Other;
@@ -138,7 +140,9 @@ next_token(std::string_view s) {
   if (static_cast<size_t>(size) > MAX_STACK_BYTES) {
     return Scan::TooLarge;
   }
-  std::rewind(f.get());
+  if (std::fseek(f.get(), 0, SEEK_SET) != 0) {
+    return Scan::Unreadable;
+  }
 
   std::string text;
   text.resize(static_cast<size_t>(size));
