@@ -118,7 +118,7 @@ protected:
 
   void write_config(const std::string &kde_lockscreen, const std::string &extra = "") {
     std::ofstream cfg(std::string(PAM_IT_DIR) + "/config.ini");
-    cfg << "[Security]\nkde_lockscreen=" << kde_lockscreen << "\n" << extra;
+    cfg << "[Security]\nkde_lockscreen=" << kde_lockscreen << "\nmin_uid=0\n" << extra;
   }
 
   void remove_kwallet_rule() {
