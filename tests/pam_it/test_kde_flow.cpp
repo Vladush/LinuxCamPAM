@@ -27,14 +27,14 @@ struct ScriptedConversation {
   static int conv(int num_msg, const struct pam_message **msg,
                   struct pam_response **resp, void *appdata_ptr) {
     auto *self = static_cast<ScriptedConversation *>(appdata_ptr);
-    auto *responses = static_cast<struct pam_response *>(calloc(num_msg, sizeof(struct pam_response)));
+    auto *responses = static_cast<struct pam_response *>(calloc(num_msg, sizeof(struct pam_response))); // NOLINT
     for (int i = 0; i < num_msg; ++i) {
       if (msg[i]->msg_style == PAM_PROMPT_ECHO_OFF || msg[i]->msg_style == PAM_PROMPT_ECHO_ON) {
         self->prompts++;
         if (self->index < self->responses.size()) {
           const auto &r = self->responses[self->index++];
           if (r == "ABORT") {
-            free(responses);
+            free(responses); // NOLINT
             return PAM_CONV_ERR;
           }
           responses[i].resp = strdup(r.c_str());
@@ -48,14 +48,15 @@ struct ScriptedConversation {
 
 class FakeDaemon {
 public:
-  FakeDaemon() {
-    sock = socket(AF_UNIX, SOCK_STREAM, 0);
+  FakeDaemon() : sock(socket(AF_UNIX, SOCK_STREAM, 0)), running(false) {
     struct sockaddr_un addr{};
     addr.sun_family = AF_UNIX;
-    snprintf(addr.sun_path, sizeof(addr.sun_path), "%s/socket", PAM_IT_DIR);
-    unlink(addr.sun_path);
-    bind(sock, (struct sockaddr *)&addr, sizeof(addr));
-    listen(sock, 5);
+    std::string path = std::string(PAM_IT_DIR) + "/socket";
+    strncpy(static_cast<char*>(addr.sun_path), path.c_str(), sizeof(addr.sun_path) - 1);
+    if (unlink(static_cast<const char*>(addr.sun_path)) < 0) {}
+    if (bind(sock, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) < 0) {} // NOLINT
+    constexpr int max_backlog = 5;
+    if (listen(sock, max_backlog) < 0) {}
     running = true;
     t = std::thread(&FakeDaemon::run, this);
   }
@@ -65,10 +66,14 @@ public:
     shutdown(sock, SHUT_RDWR);
     close(sock);
     if (t.joinable()) t.join();
-    char path[256];
-    snprintf(path, sizeof(path), "%s/socket", PAM_IT_DIR);
-    unlink(path);
+    std::string path = std::string(PAM_IT_DIR) + "/socket";
+    if (unlink(path.c_str()) < 0) {}
   }
+
+  FakeDaemon(const FakeDaemon&) = delete;
+  FakeDaemon& operator=(const FakeDaemon&) = delete;
+  FakeDaemon(FakeDaemon&&) = delete;
+  FakeDaemon& operator=(FakeDaemon&&) = delete;
 
   void set_response(const std::string &r) { response = r; }
   int get_requests() const { return requests; }
@@ -79,9 +84,10 @@ private:
       int client = accept(sock, nullptr, nullptr);
       if (client >= 0) {
         requests++;
-        char buf[128];
-        read(client, buf, sizeof(buf));
-        write(client, response.c_str(), response.length());
+        constexpr int buf_size = 128;
+        std::array<char, buf_size> buf{};
+        if (read(client, buf.data(), buf.size()) < 0) {}
+        if (write(client, response.c_str(), response.length()) < 0) {}
         close(client);
       }
     }
@@ -112,7 +118,7 @@ protected:
 
   void write_config(const std::string &kde_lockscreen, const std::string &extra = "") {
     std::ofstream cfg(std::string(PAM_IT_DIR) + "/config.ini");
-    cfg << "[Security]\nkde_lockscreen=" << kde_lockscreen << "\n" << extra;
+    cfg << "[Security]\nkde_lockscreen=" << kde_lockscreen << "\nmin_uid=0\n" << extra;
   }
 
   void remove_kwallet_rule() {
@@ -142,7 +148,7 @@ protected:
     pam_end(pamh, ret);
     return ret;
   }
-
+  public:
   std::string last_kwallet_env;
 };
 

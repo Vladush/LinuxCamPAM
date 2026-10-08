@@ -11,7 +11,7 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int, int,
     pam_putenv(pamh, "FAKE_KWALLET=prompted");
     char *resp = nullptr;
     pam_prompt(pamh, PAM_PROMPT_ECHO_OFF, &resp, "Password: ");
-    free(resp);
+    free(resp); // NOLINT
     return PAM_IGNORE;
   }
   pam_putenv(pamh, *static_cast<const char *>(tok) == '\0'
