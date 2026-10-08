@@ -12,7 +12,6 @@
 #include <opencv2/opencv.hpp>
 #include <map>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 

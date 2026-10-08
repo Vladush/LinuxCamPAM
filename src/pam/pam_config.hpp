@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -14,7 +15,7 @@
 #include <string_view>
 #include <vector>
 
-enum class KdeLockscreenMode { Auto, SingleEnter, Legacy };
+enum class KdeLockscreenMode : std::uint8_t { Auto, SingleEnter, Legacy };
 
 struct PamConfig {
   uid_t min_uid = linuxcampam::DEFAULT_MIN_UID;
