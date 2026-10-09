@@ -146,14 +146,18 @@ This will automatically fetch dependencies, build the static OpenCV library, com
 Unlike Debian/Ubuntu, Arch Linux does not automatically start services or manage PAM configurations. After installation, you must:
 
 1. **Enable and start the daemon:**
+
    ```bash
    sudo systemctl enable --now linuxcampam
    ```
+
 2. **Configure PAM:**
    Manually add the module to your PAM stack (e.g., `/etc/pam.d/system-auth` or `/etc/pam.d/sudo`). Place the following line at the top of the `auth` section:
+
    ```text
    auth sufficient pam_linuxcampam.so
    ```
+
 ### Build Dependencies & Compatibility
 
 #### Build Dependencies
