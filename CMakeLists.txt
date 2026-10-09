@@ -52,10 +52,15 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(
         -Wall -Wextra -Werror
         -fstack-protector-strong
-        -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
         -Wformat -Wformat-security
         -Werror=format-security
     )
+
+    # Apply _FORTIFY_SOURCE=2 only if not already set by the distro/environment
+    # (e.g. Arch Linux sets _FORTIFY_SOURCE=3 via CXXFLAGS)
+    if(NOT CMAKE_C_FLAGS MATCHES "_FORTIFY_SOURCE" AND NOT CMAKE_CXX_FLAGS MATCHES "_FORTIFY_SOURCE")
+        add_compile_options(-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2)
+    endif()
     # -fPIE is applied per-target to executables only (not the PAM .so module,
     # which needs pure -fPIC to avoid relocation errors with STL internals).
     add_link_options(
