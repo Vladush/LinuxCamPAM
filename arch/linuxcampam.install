@@ -1,0 +1,25 @@
+post_install() {
+    echo "======================================================================"
+    echo " LinuxCamPAM installed successfully!"
+    echo " "
+    echo " 1. Enable and start the background daemon:"
+    echo "    sudo systemctl enable --now linuxcampam"
+    echo " "
+    echo " 2. Configure PAM to use the module:"
+    echo "    Add the following line to the TOP of the 'auth' section in"
+    echo "    /etc/pam.d/system-auth (or /etc/pam.d/sudo):"
+    echo " "
+    echo "    auth sufficient pam_linuxcampam.so"
+    echo " "
+    echo " 3. Run the setup script to configure your cameras:"
+    echo "    sudo linuxcampam-setup-config"
+    echo " "
+    echo " 4. Enroll your face:"
+    echo "    linuxcampam add <username>"
+    echo "======================================================================"
+}
+
+post_upgrade() {
+    echo "Restarting LinuxCamPAM daemon..."
+    systemctl restart linuxcampam || true
+}

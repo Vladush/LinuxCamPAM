@@ -1,5 +1,5 @@
 pkgname=linuxcampam-git
-pkgver=r100.gabc1234
+pkgver=v0.9.7.4.r65.gd560924
 pkgrel=1
 pkgdesc="Face unlock for Linux, like Windows Hello"
 arch=('x86_64' 'aarch64' 'riscv64')
@@ -12,6 +12,7 @@ sha256sums=('SKIP')
 provides=('linuxcampam')
 conflicts=('linuxcampam')
 backup=('etc/linuxcampam/config.ini')
+install='linuxcampam.install'
 
 pkgver() {
   cd "LinuxCamPAM"
