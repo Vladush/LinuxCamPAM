@@ -4,7 +4,7 @@ set -e
 echo "Installing LinuxCamPAM dependencies..."
 if [ -f /etc/arch-release ] || command -v pacman >/dev/null 2>&1; then
     echo "Detected Arch Linux. Using pacman..."
-    sudo pacman -Sy --needed \
+    sudo pacman -Sy --noconfirm --needed \
         base-devel \
         cmake \
         pam \

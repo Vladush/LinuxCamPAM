@@ -19,7 +19,7 @@ if [[ -z "$SKIP_DEPS" ]]; then
     fi
 
     if [ -f /etc/arch-release ] || command -v pacman >/dev/null 2>&1; then
-        $SUDO pacman -Sy --needed base-devel cmake git pkgconf \
+        $SUDO pacman -Sy --noconfirm --needed base-devel cmake git pkgconf \
             libjpeg-turbo libpng libtiff \
             ffmpeg v4l-utils \
             x264 xvidcore \
