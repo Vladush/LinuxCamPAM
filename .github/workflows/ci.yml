@@ -409,7 +409,10 @@ jobs:
           chown -R builduser:builduser .
 
       - name: Build PKGBUILD
-        run: su builduser -c 'cd arch && makepkg -s --noconfirm'
+        run: |
+          # Point the PKGBUILD to the exact commit being tested by CI
+          sed -i "s|source=.*|source=(\"git+https://github.com/Vladush/LinuxCamPAM.git#commit=$GITHUB_SHA\")|g" arch/PKGBUILD
+          su builduser -c 'cd arch && makepkg -s --noconfirm'
 
       - name: Verify package exists
         run: ls -la arch/*.pkg.tar.zst
