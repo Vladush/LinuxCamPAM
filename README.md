@@ -131,6 +131,17 @@ The package installation will automatically backup your PAM config, configure th
 > [!TIP]
 > **Visual Guide**: detailed flowcharts for installation and enrollment are available in the [User Flows Guide](docs/USER_FLOWS.md).
 
+### Option D: Build Arch Linux Package (PKGBUILD)
+
+For Arch-based distributions (Arch Linux, Manjaro, EndeavourOS), you can build a native package using `makepkg`:
+
+```bash
+cd arch
+makepkg -si
+```
+
+This will automatically fetch dependencies, build the static OpenCV library, compile the project, and install the pacman package to your system.
+
 ### Build Dependencies & Compatibility
 
 #### Build Dependencies

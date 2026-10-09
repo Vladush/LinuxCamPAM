@@ -18,14 +18,25 @@ if [[ -z "$SKIP_DEPS" ]]; then
         SUDO="sudo"
     fi
 
-    $SUDO apt-get update
-    # Note: libgtk-3-dev removed as we are building headless
-    # libatlas-base-dev for linear algebra optimizations
-    $SUDO apt-get install -y build-essential cmake git pkg-config \
-        libjpeg-dev libpng-dev libtiff-dev \
-        libavcodec-dev libavformat-dev libswscale-dev libv4l-dev \
-        libxvidcore-dev libx264-dev \
-        libatlas-base-dev gfortran python3-dev unzip wget
+    if [ -f /etc/arch-release ] || command -v pacman >/dev/null 2>&1; then
+        $SUDO pacman -Sy --needed base-devel cmake git pkgconf \
+            libjpeg-turbo libpng libtiff \
+            ffmpeg v4l-utils \
+            x264 xvidcore \
+            openblas gcc-fortran python unzip wget
+    elif command -v apt-get >/dev/null 2>&1; then
+        $SUDO apt-get update
+        # Note: libgtk-3-dev removed as we are building headless
+        # libatlas-base-dev for linear algebra optimizations
+        $SUDO apt-get install -y build-essential cmake git pkg-config \
+            libjpeg-dev libpng-dev libtiff-dev \
+            libavcodec-dev libavformat-dev libswscale-dev libv4l-dev \
+            libxvidcore-dev libx264-dev \
+            libatlas-base-dev gfortran python3-dev unzip wget
+    else
+        echo "Unsupported package manager. Please install dependencies manually."
+        exit 1
+    fi
 fi
 
 # Workspace

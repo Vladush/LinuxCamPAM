@@ -1,0 +1,43 @@
+pkgname=linuxcampam-git
+pkgver=r100.gabc1234
+pkgrel=1
+pkgdesc="Face unlock for Linux, like Windows Hello"
+arch=('x86_64' 'aarch64' 'riscv64')
+url="https://github.com/Vladush/LinuxCamPAM"
+license=('MIT')
+depends=('pam' 'v4l-utils' 'hidapi' 'systemd-libs' 'tpm2-tss')
+makedepends=('git' 'cmake' 'ninja' 'wget' 'jsoncpp' 'nlohmann-json' 'gtest' 'pkgconf')
+source=("git+https://github.com/Vladush/LinuxCamPAM.git")
+sha256sums=('SKIP')
+provides=('linuxcampam')
+conflicts=('linuxcampam')
+backup=('etc/linuxcampam/config.ini')
+
+pkgver() {
+  cd "LinuxCamPAM"
+  git describe --long --tags | sed 's/\([^-]*-g\)/r\1/;s/-/./g'
+}
+
+build() {
+  cd "LinuxCamPAM"
+  
+  # Build static OpenCV dependency as per project's recommendation
+  ./scripts/build_opencv.sh
+  
+  cmake -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DSYSCONFDIR=/etc
+  cmake --build build
+}
+
+package() {
+  cd "LinuxCamPAM"
+  DESTDIR="$pkgdir" cmake --install build
+  
+  # Ensure the service directory exists
+  install -Dm644 scripts/linuxcampam.service "$pkgdir/usr/lib/systemd/system/linuxcampam.service"
+  
+  # License
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

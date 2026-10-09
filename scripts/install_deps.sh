@@ -2,12 +2,13 @@
 set -e
 
 echo "Installing LinuxCamPAM dependencies..."
-if [ -f /etc/arch-release ]; then
+if [ -f /etc/arch-release ] || command -v pacman >/dev/null 2>&1; then
     echo "Detected Arch Linux. Using pacman..."
     sudo pacman -Sy --needed \
         base-devel \
         cmake \
         pam \
+        tpm2-tss \
         jsoncpp \
         nlohmann-json \
         wget \
@@ -25,6 +26,7 @@ elif command -v apt-get >/dev/null 2>&1; then
         build-essential \
         cmake \
         libpam0g-dev \
+        libtss2-dev \
         libjsoncpp-dev \
         nlohmann-json3-dev \
         wget \
