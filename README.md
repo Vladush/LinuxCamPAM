@@ -112,14 +112,6 @@ cmake ..
 cpack -G DEB
 ```
 
-### Build Options (CMake)
-
-When building from source, you can customize the compilation by passing variables to `cmake`.
-
-| CMake Option | Default | Description |
-| :--- | :--- | :--- |
-| `-DDISABLE_WELCOME_MESSAGE=ON` | `OFF` | Completely strips the welcome message logic from the compiled PAM module and executable. This provides maximum stealth and security, ignoring any INI or PAM arguments. |
-
 Then install the generated package:
 
 ```bash
@@ -128,10 +120,18 @@ sudo apt install ./linuxcampam_*.deb
 
 The package installation will automatically backup your PAM config, configure the cameras, and enable the module.
 
+### Build Options (CMake)
+
+When building from source, you can customize the compilation by passing variables to `cmake`.
+
+| CMake Option | Default | Description |
+| :--- | :--- | :--- |
+| `-DDISABLE_WELCOME_MESSAGE=ON` | `OFF` | Completely strips the welcome message logic from the compiled PAM module and executable. This provides maximum stealth and security, ignoring any INI or PAM arguments. |
+
 > [!TIP]
 > **Visual Guide**: detailed flowcharts for installation and enrollment are available in the [User Flows Guide](docs/USER_FLOWS.md).
 
-### Option D: Build Arch Linux Package (PKGBUILD)
+### Arch Linux Build (Community Add-on)
 
 For Arch-based distributions (Arch Linux, Manjaro, EndeavourOS), you can build a native package using `makepkg`:
 
