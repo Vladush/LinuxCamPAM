@@ -23,7 +23,7 @@ if [[ -z "$SKIP_DEPS" ]]; then
             libjpeg-turbo libpng libtiff \
             ffmpeg v4l-utils \
             x264 xvidcore \
-            openblas gcc-fortran python unzip wget
+            openblas gcc-fortran python unzip wget openmp
     elif command -v apt-get >/dev/null 2>&1; then
         $SUDO apt-get update
         # Note: libgtk-3-dev removed as we are building headless

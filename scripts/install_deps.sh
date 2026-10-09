@@ -18,7 +18,8 @@ if [ -f /etc/arch-release ] || command -v pacman >/dev/null 2>&1; then
         systemd \
         hidapi \
         gtest \
-        pkgconf
+        pkgconf \
+        openmp
 elif command -v apt-get >/dev/null 2>&1; then
     echo "Detected Debian/Ubuntu. Using apt-get..."
     sudo apt-get update
