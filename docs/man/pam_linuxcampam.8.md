@@ -29,6 +29,12 @@ It communicates with the `linuxcampamd` service to perform the actual biometric 
 
 All other configuration is handled via `/etc/linuxcampam/config.ini` to ensure security and centralization.
 
+# KDE LOCK SCREEN
+
+When the PAM service is `kde` and the configuration is set to `single_enter` (or `auto` resolves to it), this module injects an empty string into `PAM_AUTHTOK` upon successful face authentication if the token is previously unset. This is designed to satisfy `pam_kwallet5.so` and bypass its password prompt, allowing for a single-Enter unlock experience.
+
+In `auto` mode, the module determines compatibility by scanning `/etc/pam.d/kde` and `/usr/lib/pam.d/kde` (in that order) to check if an active authentication rule for `pam_kwallet5.so` or `pam_kwallet6.so` is present.
+
 # FILES
 
 */etc/pam.d/common-auth*
