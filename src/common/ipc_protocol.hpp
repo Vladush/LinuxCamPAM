@@ -7,6 +7,8 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <poll.h>
+#include <time.h>
 #include <string.h>
 
 namespace linuxcampam {
@@ -123,66 +125,77 @@ struct Request {
 
 constexpr uint8_t PROTOCOL_VERSION = 1;
 
-inline bool send_message(int fd, const std::string& msg, int timeout_ms = 2000) {
-    struct timeval tv;
-    tv.tv_sec = timeout_ms / 1000;
-    tv.tv_usec = (timeout_ms % 1000) * 1000;
-    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+inline int64_t _now_ms() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
 
+inline bool send_message(int fd, const std::string& msg, int timeout_ms = 2000) {
+    int64_t deadline = _now_ms() + timeout_ms;
     uint8_t header[5];
     header[0] = PROTOCOL_VERSION;
     uint32_t len = msg.size();
     memcpy(header + 1, &len, sizeof(len));
 
-    int flags = 0;
+    int flags = MSG_DONTWAIT;
 #ifdef MSG_NOSIGNAL
     flags |= MSG_NOSIGNAL;
 #endif
 
-    size_t sent = 0;
-    while (sent < sizeof(header)) {
-        ssize_t n = send(fd, header + sent, sizeof(header) - sent, flags);
-        if (n <= 0) return false;
-        sent += n;
-    }
+    auto send_all = [&](const uint8_t* buf, size_t length) {
+        size_t sent = 0;
+        while (sent < length) {
+            int64_t current = _now_ms();
+            if (current >= deadline) return false;
+            struct pollfd pfd = {fd, POLLOUT, 0};
+            int ret = poll(&pfd, 1, deadline - current);
+            if (ret <= 0) return false;
+            ssize_t n = send(fd, buf + sent, length - sent, flags);
+            if (n <= 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) continue;
+                return false;
+            }
+            sent += n;
+        }
+        return true;
+    };
 
-    sent = 0;
-    while (sent < len) {
-        ssize_t n = send(fd, msg.data() + sent, len - sent, flags);
-        if (n <= 0) return false;
-        sent += n;
-    }
-    return true;
+    if (!send_all(header, sizeof(header))) return false;
+    return send_all(reinterpret_cast<const uint8_t*>(msg.data()), len);
 }
 
 inline bool recv_message(int fd, std::string& out_msg, int timeout_ms = 2000) {
-    struct timeval tv;
-    tv.tv_sec = timeout_ms / 1000;
-    tv.tv_usec = (timeout_ms % 1000) * 1000;
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    int64_t deadline = _now_ms() + timeout_ms;
+    auto recv_all = [&](uint8_t* buf, size_t length) {
+        size_t received = 0;
+        while (received < length) {
+            int64_t current = _now_ms();
+            if (current >= deadline) return false;
+            struct pollfd pfd = {fd, POLLIN, 0};
+            int ret = poll(&pfd, 1, deadline - current);
+            if (ret <= 0) return false;
+            ssize_t n = recv(fd, buf + received, length - received, MSG_DONTWAIT);
+            if (n <= 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) continue;
+                return false;
+            }
+            received += n;
+        }
+        return true;
+    };
 
     uint8_t header[5];
-    size_t received = 0;
-    while (received < sizeof(header)) {
-        ssize_t n = recv(fd, header + received, sizeof(header) - received, 0);
-        if (n <= 0) return false;
-        received += n;
-    }
+    if (!recv_all(header, sizeof(header))) return false;
 
     if (header[0] != PROTOCOL_VERSION) return false;
     uint32_t len = 0;
     memcpy(&len, header + 1, sizeof(len));
 
-    if (len > 1024 * 1024) return false; // 1MB sanity limit
+    if (len > 1024 * 1024) return false;
 
     out_msg.resize(len);
-    received = 0;
-    while (received < len) {
-        ssize_t n = recv(fd, out_msg.data() + received, len - received, 0);
-        if (n <= 0) return false;
-        received += n;
-    }
-    return true;
+    return recv_all(reinterpret_cast<uint8_t*>(out_msg.data()), len);
 }
 
 } // namespace protocol

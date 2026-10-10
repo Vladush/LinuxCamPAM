@@ -511,10 +511,14 @@ AuthResult AuthEngine::verifyUserCore(std::string_view username,
   }
 
   bool auth_ok = false;
-  if (config.policy == Configuration::AuthPolicy::STRICT_ALL)
+  if (config.policy == Configuration::AuthPolicy::STRICT_ALL) {
     auth_ok = (failures == 0 && successes > 0);
-  else
-    auth_ok = (successes > 0 && mandatory_failures == 0);
+  } else if (config.policy == Configuration::AuthPolicy::ADAPTIVE) {
+    auth_ok = (failures == 0 && successes > 0 && mandatory_failures == 0);
+  } else {
+    // LENIENT
+    auth_ok = (successes > 0);
+  }
 
   if (auth_ok) {
     result.success = true;

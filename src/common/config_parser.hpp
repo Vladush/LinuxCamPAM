@@ -53,7 +53,7 @@ inline void parse_ini_line(std::string_view line, std::string& current_section, 
   if (eq_pos == std::string_view::npos) return;
 
   std::string_view key = trim(sv.substr(0, eq_pos));
-  std::string_view val = trim(sv.substr(eq_pos + 1));
+  std::string_view val = unquote(trim(sv.substr(eq_pos + 1)));
 
   if (!key.empty()) {
     data[current_section][std::string(key)] = std::string(val);
