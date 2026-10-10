@@ -28,6 +28,22 @@
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
+static void saveDiagnosticImageSafe(const std::string& filepath, const cv::Mat& frame) {
+  if (frame.empty()) return;
+  mode_t old_mask = umask(0077);
+  bool saved = cv::imwrite(filepath, frame);
+  umask(old_mask);
+  if (saved) {
+    std::error_code ec;
+    fs::permissions(filepath, fs::perms::owner_read | fs::perms::owner_write, fs::perm_options::replace, ec);
+    if (ec) {
+      log_warn("Failed to set permissions on " + filepath + ": " + ec.message());
+    }
+  } else {
+    log_warn("Failed to write image: " + filepath);
+  }
+}
+
 // Helper for loading user json safely
 static std::optional<json> loadUserJsonSafe(const fs::path& user_file) {
   std::ifstream f(user_file);
@@ -357,6 +373,7 @@ AuthResult AuthEngine::verifyUserCore(std::string_view username,
   int participants = 0;
   int successes = 0;
   int failures = 0;
+  int mandatory_failures = 0;
   bool any_no_face = false;
   float overall_best_score = 0.0f;
 
@@ -393,6 +410,10 @@ AuthResult AuthEngine::verifyUserCore(std::string_view username,
         if (callback)
           callback(id, frame, false, 0.0f, msg);
 
+        if (config.policy == Configuration::AuthPolicy::STRICT_ALL) {
+          result.reason = "Camera " + id + " too dark";
+          return result;
+        }
         if (config.policy == Configuration::AuthPolicy::ADAPTIVE &&
             ac.config.mandatory) {
           log_warn("Mandatory Camera " + id + " is too dark. Failing.");
@@ -424,6 +445,7 @@ AuthResult AuthEngine::verifyUserCore(std::string_view username,
       if (callback)
         callback(id, frame, false, 0.0f, "No embeddings found");
       failures++;
+      if (ac.config.mandatory) mandatory_failures++;
       continue;
     }
 
@@ -464,6 +486,7 @@ AuthResult AuthEngine::verifyUserCore(std::string_view username,
         successes++;
       } else {
         failures++;
+        if (ac.config.mandatory) mandatory_failures++;
       }
 
       if (callback)
@@ -473,6 +496,7 @@ AuthResult AuthEngine::verifyUserCore(std::string_view username,
     } else {
       any_no_face = true;
       failures++;
+      if (ac.config.mandatory) mandatory_failures++;
       if (callback)
         callback(id, frame, false, 0.0f, "NO_FACE_DETECTED");
     }
@@ -487,10 +511,14 @@ AuthResult AuthEngine::verifyUserCore(std::string_view username,
   }
 
   bool auth_ok = false;
-  if (config.policy == Configuration::AuthPolicy::STRICT_ALL)
+  if (config.policy == Configuration::AuthPolicy::STRICT_ALL) {
     auth_ok = (failures == 0 && successes > 0);
-  else
+  } else if (config.policy == Configuration::AuthPolicy::ADAPTIVE) {
+    auth_ok = (failures == 0 && successes > 0 && mandatory_failures == 0);
+  } else {
+    // LENIENT
     auth_ok = (successes > 0);
+  }
 
   if (auth_ok) {
     result.success = true;
@@ -534,8 +562,7 @@ bool AuthEngine::verifyUser(std::string_view username) {
           if (config.save_success) {
             std::string fn =
                 (config.log_dir / ("success_" + id + "_" + std::string(username) + ".jpg")).string();
-            if (!frame.empty())
-              cv::imwrite(fn, frame);
+            saveDiagnosticImageSafe(fn, frame);
           }
         } else {
           log_warn(full_msg);
@@ -546,10 +573,8 @@ bool AuthEngine::verifyUser(std::string_view username) {
                                      : "fail_mismatched_";
             std::string fn =
                 (config.log_dir / (prefix + id + "_" + std::string(username) + ".jpg")).string();
-            if (!frame.empty()) {
-              cv::imwrite(fn, frame);
-              log_debug("Saved fail image to: " + fn);
-            }
+            saveDiagnosticImageSafe(fn, frame);
+            log_debug("Saved fail image to: " + fn);
           }
         }
       });
@@ -575,8 +600,7 @@ AuthResult AuthEngine::verifyUserWithDetails(std::string_view username) {
       if (config.save_success) {
         std::string fn =
             (config.log_dir / ("success_test_" + id + "_" + std::string(username) + ".jpg")).string();
-        if (!frame.empty())
-          cv::imwrite(fn, frame);
+        saveDiagnosticImageSafe(fn, frame);
       }
     } else {
       log_warn(full_msg);
@@ -588,10 +612,8 @@ AuthResult AuthEngine::verifyUserWithDetails(std::string_view username) {
                                  : "fail_mismatched_";
         std::string fn =
             (config.log_dir / (prefix + "test_" + id + "_" + std::string(username) + ".jpg")).string();
-        if (!frame.empty()) {
-          cv::imwrite(fn, frame);
-          log_debug("Saved test fail image to: " + fn);
-        }
+        saveDiagnosticImageSafe(fn, frame);
+        log_debug("Saved test fail image to: " + fn);
       }
     }
   });
@@ -748,11 +770,10 @@ AuthEngine::enrollUser(std::string_view username) {
       fail_filename += "_";
       fail_filename += std::string(username);
       fail_filename += ".jpg";
-      if (cv::imwrite(fail_filename, frame)) {
+      if (config.save_fail) {
+        saveDiagnosticImageSafe(fail_filename, frame);
         log_info("Debug frame saved: " + fail_filename +
                         " - inspect to verify camera output.");
-      } else {
-        log_warn("Could not save debug frame: " + fail_filename);
       }
 
       return {false, err};

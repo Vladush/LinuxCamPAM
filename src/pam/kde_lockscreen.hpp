@@ -45,7 +45,7 @@ struct Decision {
 namespace detail {
 [[nodiscard]] inline std::pair<std::string_view, std::string_view>
 next_token(std::string_view s) {
-  s = trim(s);
+  s = config_parser::trim(s);
   auto end = s.find_first_of(" \t");
   if (end == std::string_view::npos) {
     return {s, {}};
@@ -58,7 +58,7 @@ next_token(std::string_view s) {
   if (auto hash = line.find('#'); hash != std::string_view::npos) {
     line = line.substr(0, hash);
   }
-  line = trim(line);
+  line = config_parser::trim(line);
   if (line.empty() || line.front() == '@') {
     return Line::Other;
   }
@@ -74,7 +74,7 @@ next_token(std::string_view s) {
     return Line::Other;
   }
 
-  rest = trim(rest);
+  rest = config_parser::trim(rest);
   if (!rest.empty() && rest.front() == '[') {
     auto close = rest.find(']');
     if (close == std::string_view::npos) {

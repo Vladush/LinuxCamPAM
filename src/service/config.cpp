@@ -2,6 +2,7 @@
 #include "constants.hpp"
 #include "logger.hpp"
 #include "utils.hpp"
+#include "../common/config_parser.hpp"
 
 #include <charconv>
 #include <fcntl.h>
@@ -20,62 +21,31 @@ std::unordered_map<std::string, std::string>
 parse_ini_stream(std::istream &input) {
   std::unordered_map<std::string, std::string> result;
   std::string line, current_section;
+  config_parser::IniData data;
   while (std::getline(input, line)) {
-    // Trim
-    line.erase(0, line.find_first_not_of(" \t"));
-    if (line.empty() || line[0] == ';')
-      continue;
-    auto last = line.find_last_not_of(" \t");
-    if (last != std::string::npos)
-      line.erase(last + 1);
-
-    if (line[0] == '[' && line.back() == ']') {
-      current_section = line.substr(1, line.size() - 2);
-    } else {
-      size_t eq = line.find('=');
-      if (eq != std::string::npos) {
-        std::string key = line.substr(0, eq);
-        key.erase(key.find_last_not_of(" \t") + 1);
-        std::string val = line.substr(eq + 1);
-        val.erase(0, val.find_first_not_of(" \t"));
-        std::string full_key = current_section;
-        full_key += '.';
-        full_key += key;
-        result[full_key] = val;
-      }
+    config_parser::parse_ini_line(line, current_section, data);
+  }
+  for (const auto& [section, keys] : data) {
+    for (const auto& [k, v] : keys) {
+      std::string full_key = section;
+      if (!full_key.empty()) full_key += '.';
+      full_key += k;
+      result[full_key] = v;
     }
   }
   return result;
 }
 
-// Safe int parsing without exceptions
-inline std::optional<int> parse_int(std::string_view str) {
-  if (str.empty())
-    return std::nullopt;
-  int out = 0;
-  auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), out);
-  if (ec == std::errc{})
-    return out;
-  return std::nullopt;
+inline std::optional<int> parse_int(std::string_view str, int min_val = std::numeric_limits<int>::min(), int max_val = std::numeric_limits<int>::max()) {
+  return config_parser::parse_int_strict(str, min_val, max_val);
 }
 
-// Safe float parsing (from_chars float support varies by compiler)
-inline std::optional<float> parse_float(std::string_view str) {
-  if (str.empty())
-    return std::nullopt;
-#if defined(__cpp_lib_to_chars) && __cpp_lib_to_chars >= 201611L
-  float out = 0.0f;
-  auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), out);
-  if (ec == std::errc{})
-    return out;
-  return std::nullopt;
-#else
-  try {
-    return std::stof(std::string(str));
-  } catch (...) {
-    return std::nullopt;
-  }
-#endif
+inline std::optional<float> parse_float(std::string_view str, float min_val = -std::numeric_limits<float>::infinity(), float max_val = std::numeric_limits<float>::infinity()) {
+  return config_parser::parse_float_strict(str, min_val, max_val);
+}
+
+inline std::optional<bool> parse_bool(std::string_view str) {
+  return config_parser::parse_bool_strict(str);
 }
 
 } // namespace
@@ -94,8 +64,13 @@ bool Configuration::load(const fs::path &config_path,
 
 bool Configuration::load(std::istream &input,
                          const linuxcampam::ICameraBackend *backend) {
-  parse_ini_into_self(input, backend);
-  return true;
+  try {
+    parse_ini_into_self(input, backend);
+    return true;
+  } catch (const std::invalid_argument &e) {
+    log_error("Configuration error: " + std::string(e.what()));
+    return false;
+  }
 }
 
 void Configuration::parse_ini_into_self(
@@ -105,24 +80,38 @@ void Configuration::parse_ini_into_self(
     return ini.count(key) ? ini.at(key) : def;
   };
 
+  auto get_int = [&](const std::string &key, const std::string &def, int min_val = std::numeric_limits<int>::min(), int max_val = std::numeric_limits<int>::max()) {
+    std::string str = get(key, def);
+    if (auto val = parse_int(str, min_val, max_val)) return *val;
+    throw std::invalid_argument("Invalid integer or out of bounds for " + key + ": " + str);
+  };
+  auto get_float = [&](const std::string &key, const std::string &def, float min_val = -std::numeric_limits<float>::infinity(), float max_val = std::numeric_limits<float>::infinity()) {
+    std::string str = get(key, def);
+    if (auto val = parse_float(str, min_val, max_val)) return *val;
+    throw std::invalid_argument("Invalid float or out of bounds for " + key + ": " + str);
+  };
+  auto get_bool = [&](const std::string &key, const std::string &def) {
+    std::string str = get(key, def);
+    if (auto val = parse_bool(str)) return *val;
+    throw std::invalid_argument("Invalid boolean for " + key + ": " + str);
+  };
+
+
   // Logic ported from AuthEngine::init
   // General & Auth (Support both for backward compatibility, prefer [Auth])
   // General.threshold (Legacy) vs Auth.threshold
-  std::string th_str = get("Auth.threshold");
-  if (th_str.empty())
-    th_str = get("General.threshold", std::to_string(DEFAULT_THRESHOLD));
-  if (auto val = parse_float(th_str)) threshold = *val;
+  threshold = get_float("Auth.threshold",
+                        get("General.threshold", std::to_string(DEFAULT_THRESHOLD)),
+                        0.0f, 1.0f);
 
-  std::string dt_str = get("Auth.detection_threshold");
-  if (dt_str.empty())
-    dt_str = get("General.detection_threshold",
-                 std::to_string(DEFAULT_DETECTION_THRESHOLD));
-  if (auto val = parse_float(dt_str)) detection_threshold = *val;
+  detection_threshold = get_float(
+      "Auth.detection_threshold",
+      get("General.detection_threshold", std::to_string(DEFAULT_DETECTION_THRESHOLD)),
+      0.0f, 1.0f);
 
-  std::string to_str = get("Auth.timeout_ms");
-  if (to_str.empty())
-    to_str = get("General.timeout_ms", std::to_string(DEFAULT_TIMEOUT_MS));
-  if (auto val = parse_int(to_str)) timeout_ms = *val;
+  timeout_ms = get_int("Auth.timeout_ms",
+                       get("General.timeout_ms", std::to_string(DEFAULT_TIMEOUT_MS)),
+                       0);
 
   log_level = get("General.log_level", "info");
   log_file = get("General.log_file", "");
@@ -131,17 +120,20 @@ void Configuration::parse_ini_into_self(
   std::string method = get("Auth.policy");
   if (method.empty()) {
     // Fallback to General
-    method = get("General.auth_method", "adaptive");
-    if (ini.count("General.policy"))
+    method = get("General.auth_method");
+    if (method.empty() && ini.count("General.policy"))
       method = get("General.policy");
   }
 
-  if (method == "strict_all" || method == "2fa" || method == "strict")
+  if (method.empty() || method == "adaptive")
+    policy = AuthPolicy::ADAPTIVE;
+  else if (method == "strict_all" || method == "2fa" || method == "strict")
     policy = AuthPolicy::STRICT_ALL;
   else if (method == "lenient_any" || method == "1fa" || method == "lenient")
     policy = AuthPolicy::LENIENT_ANY;
   else
-    policy = AuthPolicy::ADAPTIVE;
+    throw std::invalid_argument("Invalid auth policy: " + method);
+
 
   // Paths
   if (ini.count("Paths.users_dir"))
@@ -153,28 +145,20 @@ void Configuration::parse_ini_into_self(
 
   // Limits
   // Can be in Auth or General
-  std::string me_str = get("Auth.max_embeddings");
-  if (me_str.empty())
-    me_str =
-        get("General.max_embeddings", std::to_string(DEFAULT_MAX_EMBEDDINGS));
-  if (auto val = parse_int(me_str)) max_embeddings = *val;
+  max_embeddings = get_int(
+      "Auth.max_embeddings",
+      get("General.max_embeddings", std::to_string(DEFAULT_MAX_EMBEDDINGS)), 0);
 
   // Capture Settings (Global)
   if (ini.count("Capture.enroll_hdr"))
     enroll_hdr = get("Capture.enroll_hdr");
   if (ini.count("Capture.enroll_averaging"))
-    enroll_averaging = (get("Capture.enroll_averaging") == "on" ||
-                        get("Capture.enroll_averaging") == "true");
-  if (auto val = parse_int(get("Capture.enroll_average_frames",
-                std::to_string(DEFAULT_ENROLL_AVG_FRAMES))))
-    enroll_average_frames = *val;
+    enroll_averaging = get_bool("Capture.enroll_averaging", "false");
+  enroll_average_frames = get_int("Capture.enroll_average_frames", std::to_string(DEFAULT_ENROLL_AVG_FRAMES));
 
   if (ini.count("Capture.verify_averaging"))
-    verify_averaging = (get("Capture.verify_averaging") == "on" ||
-                        get("Capture.verify_averaging") == "true");
-  if (auto val = parse_int(get("Capture.verify_average_frames",
-                std::to_string(DEFAULT_VERIFY_AVG_FRAMES))))
-    verify_average_frames = *val;
+    verify_averaging = get_bool("Capture.verify_averaging", "false");
+  verify_average_frames = get_int("Capture.verify_average_frames", std::to_string(DEFAULT_VERIFY_AVG_FRAMES));
 
   // Cameras
   std::string cam_names = get("Cameras.names", "");
@@ -193,12 +177,12 @@ void Configuration::parse_ini_into_self(
       def.path = get("Camera." + id + ".path", "/dev/video0");
       def.type = get("Camera." + id + ".type", "generic");
       std::string mb_str = get("Camera." + id + ".min_brightness", "0");
-      if (auto val = parse_int(mb_str)) def.min_brightness = *val;
-      def.mandatory = (get("Camera." + id + ".mandatory", "false") == "true");
+      def.min_brightness = get_int("Camera." + id + ".min_brightness", "0");
+      def.mandatory = get_bool("Camera." + id + ".mandatory", "false");
       def.enroll_hdr = get("Camera." + id + ".enroll_hdr", "");
       def.enroll_averaging = get("Camera." + id + ".enroll_averaging", "");
       std::string eaf_str = get("Camera." + id + ".enroll_average_frames", "0");
-      if (auto val = parse_int(eaf_str)) def.enroll_average_frames = *val;
+      def.enroll_average_frames = get_int("Camera." + id + ".enroll_average_frames", "0");
 
       camera_defs.push_back(def);
     }
@@ -279,27 +263,29 @@ void Configuration::parse_ini_into_self(
     proximity_sensor = ProximitySensorMode::ENABLED;
   } else if (prox_str == "false" || prox_str == "off" || prox_str == "disabled") {
     proximity_sensor = ProximitySensorMode::DISABLED;
-  } else {
+  } else if (prox_str == "auto") {
     proximity_sensor = ProximitySensorMode::AUTO;
+  } else {
+    throw std::invalid_argument("Invalid proximity_sensor mode: " + prox_str);
   }
   proximity_sensor_id = get("Hardware.proximity_sensor_id", "ITE8353");
-  proximity_enforce = (get("Hardware.proximity_enforce", "false") == "true");
+  proximity_enforce = get_bool("Hardware.proximity_enforce", "false");
 
   // Proximity Wake/Lock
-  wake_enabled = (get("Proximity.wake_enabled", "true") == "true");
-  always_wake_on_presence_detected = (get("Proximity.always_wake_on_presence_detected", "true") == "true");
-  if (auto val = parse_int(get("Proximity.wake_confidence_threshold", "50"))) wake_confidence_threshold = *val;
-  lock_enabled = (get("Proximity.lock_enabled", "false") == "true");
-  if (auto val = parse_int(get("Proximity.lock_confidence_threshold", "5"))) lock_confidence_threshold = *val;
-  if (auto val = parse_int(get("Proximity.lock_timeout_seconds", "10"))) lock_timeout_seconds = *val;
+  wake_enabled = get_bool("Proximity.wake_enabled", "true");
+  always_wake_on_presence_detected = get_bool("Proximity.always_wake_on_presence_detected", "true");
+  wake_confidence_threshold = get_int("Proximity.wake_confidence_threshold", "50", 0, 100);
+  lock_enabled = get_bool("Proximity.lock_enabled", "false");
+  lock_confidence_threshold = get_int("Proximity.lock_confidence_threshold", "5", 0, 100);
+  lock_timeout_seconds = get_int("Proximity.lock_timeout_seconds", "10", 0);
   lock_command = get("Proximity.lock_command", "loginctl lock-sessions");
 
   // Other settings
-  save_success = (get("Storage.save_success_images") == "true");
-  save_fail = (get("Storage.save_fail_images") == "true");
-  if (auto val = parse_int(get("Performance.model_keep_alive_sec", "0"))) model_keep_alive_sec = *val;
-  if (auto val = parse_int(get("Security.lockout_attempts", "5"))) lockout_attempts = *val;
-  if (auto val = parse_int(get("Security.lockout_duration_sec", "300"))) lockout_duration_sec = *val;
+  if (ini.count("Storage.save_success_images")) save_success = get_bool("Storage.save_success_images", "false");
+  if (ini.count("Storage.save_fail_images")) save_fail = get_bool("Storage.save_fail_images", "false");
+  model_keep_alive_sec = get_int("Performance.model_keep_alive_sec", "0", 0);
+  lockout_attempts = get_int("Security.lockout_attempts", get("General.lockout_attempts", "5"), 1);
+  lockout_duration_sec = get_int("Security.lockout_duration_sec", get("General.lockout_duration_sec", "300"), 1);
 
   // Minimal UID (shared with PAM module)
   // Int is used for parsing, then cast to uid_t

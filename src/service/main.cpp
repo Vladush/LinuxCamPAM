@@ -58,15 +58,12 @@ struct Config {
 
 void handle_client(int fd, AuthEngine &engine) {
   linuxcampam::FileDescriptor client_fd(fd);
-  std::array<char, BUFFER_SIZE> buffer = {};
-  ssize_t valread = read(client_fd.get(), buffer.data(), buffer.size() - 1);
-  if (valread <= 0) {
+  std::string request;
+  if (!linuxcampam::protocol::recv_message(client_fd.get(), request, 2000)) {
     return;
   }
 
-  buffer.at(static_cast<size_t>(valread)) = '\0';
-  std::string_view request(buffer.data(), static_cast<size_t>(valread));
-  log_debug("Received Request: " + std::string(request));
+  log_debug("Received Request: " + request);
 
   struct ucred cred{};
   socklen_t len = sizeof(struct ucred);
@@ -283,7 +280,7 @@ void handle_client(int fd, AuthEngine &engine) {
     response = "ERROR Unknown Exception";
   }
 
-  send(client_fd.get(), response.c_str(), response.length(), 0);
+  linuxcampam::protocol::send_message(client_fd.get(), response, 2000);
 }
 
 int main(int argc, const char *const argv[]) {

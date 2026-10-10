@@ -273,16 +273,13 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
         linuxcampam::protocol::Command::AUTH_REQUEST, {user}};
     std::string reqStr = req.serialize();
 
-    if (send(sock.get(), reqStr.c_str(), reqStr.length(), 0) < 0) {
+    if (!linuxcampam::protocol::send_message(sock.get(), reqStr, 5000)) {
       syslog(LOG_ERR, "Failed to send auth request: %m");
       return PAM_AUTHINFO_UNAVAIL;
     }
 
-    std::array<char, BUFFER_SIZE> response_buffer = {};
-    ssize_t valread = read(sock.get(), response_buffer.data(), response_buffer.size() - 1);
-
-    if (valread > 0) {
-      std::string resp(response_buffer.data(), static_cast<size_t>(valread));
+    std::string resp;
+    if (linuxcampam::protocol::recv_message(sock.get(), resp, 5000)) {
       if (resp.find("AUTH_SUCCESS") != std::string::npos) {
         if (kde_mode.single_enter) {
           set_empty_authtok_if_unset(pamh);

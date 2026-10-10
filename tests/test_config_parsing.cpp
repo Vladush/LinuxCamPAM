@@ -57,17 +57,15 @@ max_embeddings=20
 }
 
 TEST_F(ConfigParsingTest, HandlesMalformedNumbers) {
-  loadConfig(R"(
+  std::stringstream ss(std::string{R"(
 [Auth]
 threshold=bad_float
 timeout_ms=not_an_int
 max_embeddings=-invalid
-  )");
+  )"});
   
-  // Should retain defaults since parsing failed
-  EXPECT_FLOAT_EQ(config.threshold, Configuration::DEFAULT_THRESHOLD);
-  EXPECT_EQ(config.timeout_ms, Configuration::DEFAULT_TIMEOUT_MS);
-  EXPECT_EQ(config.max_embeddings, Configuration::DEFAULT_MAX_EMBEDDINGS);
+  // Should fail since parsing failed
+  EXPECT_FALSE(config.load(ss, nullptr));
 }
 
 TEST_F(ConfigParsingTest, ProximitySensorSettings) {

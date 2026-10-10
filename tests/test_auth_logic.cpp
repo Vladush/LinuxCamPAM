@@ -366,7 +366,7 @@ TEST_F(AuthEngineTest, SuccessfulAttemptResetsCounter) {
   EXPECT_FALSE(isUserLockedOut(*auth_engine, "charlie"));
 }
 
-TEST_F(AuthEngineTest, LockoutDisabledWhenAttemptsIsZero) {
+TEST_F(AuthEngineTest, LockoutBoundsValidation) {
   TempConfigFile guard("/tmp/test_no_lockout.ini");
   {
     std::ofstream cfg(guard.path);
@@ -382,11 +382,11 @@ TEST_F(AuthEngineTest, LockoutDisabledWhenAttemptsIsZero) {
   });
   ASSERT_TRUE(engine.init(guard.path));
 
-  constexpr int EXCESS_FAILURES = 100;
-  for (int i = 0; i < EXCESS_FAILURES; ++i)
+  constexpr int DEFAULT_FAILURES = 5;
+  for (int i = 0; i < DEFAULT_FAILURES; ++i)
     recordAuthAttempt(engine, "dave", false);
 
-  EXPECT_FALSE(isUserLockedOut(engine, "dave"));
+  EXPECT_TRUE(isUserLockedOut(engine, "dave"));
 }
 
 TEST_F(AuthEngineTest, LockoutExpiresAfterDuration) {
