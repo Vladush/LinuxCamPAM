@@ -285,6 +285,9 @@ endif()
 
 # --- Install Targets ---
 include(GNUInstallDirs)
+set(LINUXCAMPAM_SYSTEMD_UNIT_DIR "/lib/systemd/system" CACHE PATH
+    "Directory for the LinuxCamPAM systemd service")
+option(INSTALL_PAM_AUTH_UPDATE_PROFILE "Install the Debian pam-auth-update profile" ON)
 
 install(TARGETS linuxcampamd linuxcampam check_opencl
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -304,15 +307,14 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/models/
     FILES_MATCHING PATTERN "*.onnx"
 )
 
-install(FILES ${CMAKE_SOURCE_DIR}/config/linuxcampam_pam_profile
-    DESTINATION /usr/share/pam-configs
-    RENAME linuxcampam
-)
-
-
-
+if(INSTALL_PAM_AUTH_UPDATE_PROFILE)
+    install(FILES ${CMAKE_SOURCE_DIR}/config/linuxcampam_pam_profile
+        DESTINATION /usr/share/pam-configs
+        RENAME linuxcampam
+    )
+endif()
 install(FILES ${CMAKE_SOURCE_DIR}/scripts/linuxcampam.service
-    DESTINATION /lib/systemd/system
+    DESTINATION ${LINUXCAMPAM_SYSTEMD_UNIT_DIR}
 )
 
 install(PROGRAMS ${CMAKE_SOURCE_DIR}/scripts/setup_config.sh

@@ -2,13 +2,13 @@
 set -e
 
 echo "Installing LinuxCamPAM dependencies..."
-if [ -f /etc/arch-release ] || command -v pacman >/dev/null 2>&1; then
+if [ -f /etc/arch-release ]; then
     echo "Detected Arch Linux. Using pacman..."
-    sudo pacman -Sy --noconfirm --needed \
+    echo "Run a full system upgrade (sudo pacman -Syu) before installing dependencies."
+    sudo pacman -S --needed \
         base-devel \
         cmake \
         pam \
-        tpm2-tss \
         jsoncpp \
         nlohmann-json \
         wget \
@@ -18,8 +18,7 @@ if [ -f /etc/arch-release ] || command -v pacman >/dev/null 2>&1; then
         systemd \
         hidapi \
         gtest \
-        pkgconf \
-        openmp
+        pkgconf
 elif command -v apt-get >/dev/null 2>&1; then
     echo "Detected Debian/Ubuntu. Using apt-get..."
     sudo apt-get update
@@ -27,7 +26,6 @@ elif command -v apt-get >/dev/null 2>&1; then
         build-essential \
         cmake \
         libpam0g-dev \
-        libtss2-dev \
         libjsoncpp-dev \
         nlohmann-json3-dev \
         wget \
