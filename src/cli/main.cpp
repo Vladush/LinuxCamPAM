@@ -11,9 +11,6 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-namespace {
-constexpr size_t BUFFER_SIZE = 4096;
-}
 
 std::string get_current_user() {
   const char *sudo_user = std::getenv("SUDO_USER");
