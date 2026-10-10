@@ -194,11 +194,10 @@ TEST_F(PamConfigTest, KdeLockscreenInvalidFallsBackToLegacy) {
   EXPECT_TRUE(config.kde_lockscreen_invalid);
 }
 
-TEST_F(PamConfigTest, KdeLockscreenInlineCommentIsInvalid) {
-  // Our INI parser doesn't strip inline comments
+TEST_F(PamConfigTest, KdeLockscreenInlineCommentIsValid) {
   auto config = loadConfig("kde_lockscreen = auto ; comment");
-  EXPECT_EQ(config.kde_lockscreen, KdeLockscreenMode::Legacy);
-  EXPECT_TRUE(config.kde_lockscreen_invalid);
+  EXPECT_EQ(config.kde_lockscreen, KdeLockscreenMode::Auto);
+  EXPECT_FALSE(config.kde_lockscreen_invalid);
 }
 
 TEST_F(PamConfigTest, ExemptListDefaultIsNotExplicit) {

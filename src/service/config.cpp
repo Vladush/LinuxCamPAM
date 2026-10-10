@@ -2,6 +2,7 @@
 #include "constants.hpp"
 #include "logger.hpp"
 #include "utils.hpp"
+#include "../common/config_parser.hpp"
 
 #include <charconv>
 #include <fcntl.h>
@@ -20,62 +21,31 @@ std::unordered_map<std::string, std::string>
 parse_ini_stream(std::istream &input) {
   std::unordered_map<std::string, std::string> result;
   std::string line, current_section;
+  config_parser::IniData data;
   while (std::getline(input, line)) {
-    // Trim
-    line.erase(0, line.find_first_not_of(" \t"));
-    if (line.empty() || line[0] == ';')
-      continue;
-    auto last = line.find_last_not_of(" \t");
-    if (last != std::string::npos)
-      line.erase(last + 1);
-
-    if (line[0] == '[' && line.back() == ']') {
-      current_section = line.substr(1, line.size() - 2);
-    } else {
-      size_t eq = line.find('=');
-      if (eq != std::string::npos) {
-        std::string key = line.substr(0, eq);
-        key.erase(key.find_last_not_of(" \t") + 1);
-        std::string val = line.substr(eq + 1);
-        val.erase(0, val.find_first_not_of(" \t"));
-        std::string full_key = current_section;
-        full_key += '.';
-        full_key += key;
-        result[full_key] = val;
-      }
+    config_parser::parse_ini_line(line, current_section, data);
+  }
+  for (const auto& [section, keys] : data) {
+    for (const auto& [k, v] : keys) {
+      std::string full_key = section;
+      if (!full_key.empty()) full_key += '.';
+      full_key += k;
+      result[full_key] = v;
     }
   }
   return result;
 }
 
-// Safe int parsing without exceptions
-inline std::optional<int> parse_int(std::string_view str) {
-  if (str.empty())
-    return std::nullopt;
-  int out = 0;
-  auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), out);
-  if (ec == std::errc{})
-    return out;
-  return std::nullopt;
+inline std::optional<int> parse_int(std::string_view str, int min_val = std::numeric_limits<int>::min(), int max_val = std::numeric_limits<int>::max()) {
+  return config_parser::parse_int_strict(str, min_val, max_val);
 }
 
-// Safe float parsing (from_chars float support varies by compiler)
-inline std::optional<float> parse_float(std::string_view str) {
-  if (str.empty())
-    return std::nullopt;
-#if defined(__cpp_lib_to_chars) && __cpp_lib_to_chars >= 201611L
-  float out = 0.0f;
-  auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), out);
-  if (ec == std::errc{})
-    return out;
-  return std::nullopt;
-#else
-  try {
-    return std::stof(std::string(str));
-  } catch (...) {
-    return std::nullopt;
-  }
-#endif
+inline std::optional<float> parse_float(std::string_view str, float min_val = -std::numeric_limits<float>::infinity(), float max_val = std::numeric_limits<float>::infinity()) {
+  return config_parser::parse_float_strict(str, min_val, max_val);
+}
+
+inline std::optional<bool> parse_bool(std::string_view str) {
+  return config_parser::parse_bool_strict(str);
 }
 
 } // namespace
@@ -111,18 +81,18 @@ void Configuration::parse_ini_into_self(
   std::string th_str = get("Auth.threshold");
   if (th_str.empty())
     th_str = get("General.threshold", std::to_string(DEFAULT_THRESHOLD));
-  if (auto val = parse_float(th_str)) threshold = *val;
+  if (auto val = parse_float(th_str, 0.0f, 1.0f)) threshold = *val;
 
   std::string dt_str = get("Auth.detection_threshold");
   if (dt_str.empty())
     dt_str = get("General.detection_threshold",
                  std::to_string(DEFAULT_DETECTION_THRESHOLD));
-  if (auto val = parse_float(dt_str)) detection_threshold = *val;
+  if (auto val = parse_float(dt_str, 0.0f, 1.0f)) detection_threshold = *val;
 
   std::string to_str = get("Auth.timeout_ms");
   if (to_str.empty())
     to_str = get("General.timeout_ms", std::to_string(DEFAULT_TIMEOUT_MS));
-  if (auto val = parse_int(to_str)) timeout_ms = *val;
+  if (auto val = parse_int(to_str, 0)) timeout_ms = *val;
 
   log_level = get("General.log_level", "info");
   log_file = get("General.log_file", "");
@@ -157,7 +127,7 @@ void Configuration::parse_ini_into_self(
   if (me_str.empty())
     me_str =
         get("General.max_embeddings", std::to_string(DEFAULT_MAX_EMBEDDINGS));
-  if (auto val = parse_int(me_str)) max_embeddings = *val;
+  if (auto val = parse_int(me_str, 1)) max_embeddings = *val;
 
   // Capture Settings (Global)
   if (ini.count("Capture.enroll_hdr"))
@@ -295,11 +265,11 @@ void Configuration::parse_ini_into_self(
   lock_command = get("Proximity.lock_command", "loginctl lock-sessions");
 
   // Other settings
-  save_success = (get("Storage.save_success_images") == "true");
-  save_fail = (get("Storage.save_fail_images") == "true");
-  if (auto val = parse_int(get("Performance.model_keep_alive_sec", "0"))) model_keep_alive_sec = *val;
-  if (auto val = parse_int(get("Security.lockout_attempts", "5"))) lockout_attempts = *val;
-  if (auto val = parse_int(get("Security.lockout_duration_sec", "300"))) lockout_duration_sec = *val;
+  if (auto b = parse_bool(get("Storage.save_success_images"))) save_success = *b;
+  if (auto b = parse_bool(get("Storage.save_fail_images"))) save_fail = *b;
+  if (auto val = parse_int(get("Performance.model_keep_alive_sec", "0"), 0)) model_keep_alive_sec = *val;
+  if (auto val = parse_int(get("Security.lockout_attempts", "5"), 1)) lockout_attempts = *val;
+  if (auto val = parse_int(get("Security.lockout_duration_sec", "300"), 1)) lockout_duration_sec = *val;
 
   // Minimal UID (shared with PAM module)
   // Int is used for parsing, then cast to uid_t

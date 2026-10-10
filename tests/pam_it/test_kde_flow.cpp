@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <security/pam_appl.h>
+#include "../../src/common/ipc_protocol.hpp"
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -84,10 +85,10 @@ private:
       int client = accept(sock, nullptr, nullptr);
       if (client >= 0) {
         requests++;
-        constexpr int buf_size = 128;
-        std::array<char, buf_size> buf{};
-        if (read(client, buf.data(), buf.size()) < 0) {}
-        if (write(client, response.c_str(), response.length()) < 0) {}
+        std::string req;
+        if (linuxcampam::protocol::recv_message(client, req, 2000)) {
+          linuxcampam::protocol::send_message(client, response, 2000);
+        }
         close(client);
       }
     }

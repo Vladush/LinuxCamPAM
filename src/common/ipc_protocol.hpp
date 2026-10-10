@@ -4,6 +4,10 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <unistd.h>
+#include <string.h>
 
 namespace linuxcampam {
 namespace protocol {
@@ -116,6 +120,70 @@ struct Request {
     return req;
   }
 };
+
+constexpr uint8_t PROTOCOL_VERSION = 1;
+
+inline bool send_message(int fd, const std::string& msg, int timeout_ms = 2000) {
+    struct timeval tv;
+    tv.tv_sec = timeout_ms / 1000;
+    tv.tv_usec = (timeout_ms % 1000) * 1000;
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+
+    uint8_t header[5];
+    header[0] = PROTOCOL_VERSION;
+    uint32_t len = msg.size();
+    memcpy(header + 1, &len, sizeof(len));
+
+    int flags = 0;
+#ifdef MSG_NOSIGNAL
+    flags |= MSG_NOSIGNAL;
+#endif
+
+    size_t sent = 0;
+    while (sent < sizeof(header)) {
+        ssize_t n = send(fd, header + sent, sizeof(header) - sent, flags);
+        if (n <= 0) return false;
+        sent += n;
+    }
+
+    sent = 0;
+    while (sent < len) {
+        ssize_t n = send(fd, msg.data() + sent, len - sent, flags);
+        if (n <= 0) return false;
+        sent += n;
+    }
+    return true;
+}
+
+inline bool recv_message(int fd, std::string& out_msg, int timeout_ms = 2000) {
+    struct timeval tv;
+    tv.tv_sec = timeout_ms / 1000;
+    tv.tv_usec = (timeout_ms % 1000) * 1000;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    uint8_t header[5];
+    size_t received = 0;
+    while (received < sizeof(header)) {
+        ssize_t n = recv(fd, header + received, sizeof(header) - received, 0);
+        if (n <= 0) return false;
+        received += n;
+    }
+
+    if (header[0] != PROTOCOL_VERSION) return false;
+    uint32_t len = 0;
+    memcpy(&len, header + 1, sizeof(len));
+
+    if (len > 1024 * 1024) return false; // 1MB sanity limit
+
+    out_msg.resize(len);
+    received = 0;
+    while (received < len) {
+        ssize_t n = recv(fd, out_msg.data() + received, len - received, 0);
+        if (n <= 0) return false;
+        received += n;
+    }
+    return true;
+}
 
 } // namespace protocol
 } // namespace linuxcampam

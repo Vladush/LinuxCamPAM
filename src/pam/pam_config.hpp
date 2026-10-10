@@ -1,5 +1,6 @@
 #pragma once
 #include "constants.hpp"
+#include "../common/config_parser.hpp"
 
 #include <algorithm>
 #include <array>
@@ -33,33 +34,14 @@ struct PamConfig {
 #endif
 };
 
-// Section name → { key → value }. Last write wins within each section.
-using IniData = std::map<std::string, std::map<std::string, std::string>>;
-
 struct PamConfigState {
   std::string current_section;
-  IniData data;
+  config_parser::IniData data;
 };
-
-inline std::string_view trim(std::string_view s) {
-  auto start = s.find_first_not_of(" \t\r\n");
-  if (start == std::string_view::npos) {
-    return {};
-  }
-  auto end = s.find_last_not_of(" \t\r\n");
-  return s.substr(start, end - start + 1);
-}
-
-inline std::string_view unquote(std::string_view s) {
-  if (s.size() >= 2 && s.front() == '"' && s.back() == '"') {
-    return s.substr(1, s.size() - 2);
-  }
-  return s;
-}
 
 [[nodiscard]] inline std::optional<KdeLockscreenMode>
 parse_kde_lockscreen(std::string_view value) {
-  value = trim(unquote(trim(value)));
+  value = config_parser::trim(config_parser::unquote(config_parser::trim(value)));
   if (value == "auto") return KdeLockscreenMode::Auto;
   if (value == "single_enter") return KdeLockscreenMode::SingleEnter;
   if (value == "legacy") return KdeLockscreenMode::Legacy;
@@ -83,7 +65,7 @@ parse_kde_lockscreen(std::string_view value) {
     if (end == std::string_view::npos) {
       end = str.size();
     }
-    auto token = trim(str.substr(start, end - start));
+    auto token = config_parser::trim(str.substr(start, end - start));
     if (!token.empty()) {
       result.emplace_back(token);
     }
@@ -94,27 +76,7 @@ parse_kde_lockscreen(std::string_view value) {
 
 inline void process_pam_config_line(std::string_view line,
                                     PamConfigState &state) {
-  std::string_view sv = trim(line);
-  if (sv.empty() || sv[0] == ';' || sv[0] == '#') {
-    return;
-  }
-
-  if (sv[0] == '[' && sv.back() == ']') {
-    state.current_section = std::string(sv.substr(1, sv.size() - 2));
-    return;
-  }
-
-  auto eq_pos = sv.find('=');
-  if (eq_pos == std::string_view::npos) {
-    return;
-  }
-
-  std::string_view key = trim(sv.substr(0, eq_pos));
-  std::string_view val = trim(sv.substr(eq_pos + 1));
-
-  if (!key.empty()) {
-    state.data[state.current_section][std::string(key)] = std::string(val);
-  }
+  config_parser::parse_ini_line(line, state.current_section, state.data);
 }
 
 [[nodiscard]] inline PamConfig resolve_pam_config(const PamConfigState &state) {
@@ -143,25 +105,21 @@ inline void process_pam_config_line(std::string_view line,
 
   // --- min_uid ---
   if (auto uid_opt = get_value("min_uid")) {
-    const std::string &uid_str = *uid_opt;
-    if (!uid_str.empty() && uid_str[0] != '-') {
-      unsigned int parsed = 0;
-      auto [ptr, ec] = std::from_chars(uid_str.data(), uid_str.data() + uid_str.size(), parsed);
-      if (ec == std::errc{}) {
-        config.min_uid = static_cast<uid_t>(parsed);
-      }
+    if (auto parsed = config_parser::parse_int_strict(*uid_opt, 0)) {
+      config.min_uid = static_cast<uid_t>(*parsed);
     }
   }
 
   // --- require_confirmation ---
   if (auto rc_opt = get_value("require_confirmation")) {
-    const std::string &rc_str = *rc_opt;
-    config.require_confirmation = (rc_str == "true" || rc_str == "1" || rc_str == "yes");
+    if (auto b = config_parser::parse_bool_strict(*rc_opt)) {
+      config.require_confirmation = *b;
+    }
   }
 
   // --- confirmation_exempt_services ---
   if (auto ces_opt = get_value("confirmation_exempt_services")) {
-    config.confirmation_exempt_services = split(unquote(*ces_opt), ',');
+    config.confirmation_exempt_services = split(config_parser::unquote(*ces_opt), ',');
     config.exempt_services_explicit = true;
   }
 
@@ -178,8 +136,9 @@ inline void process_pam_config_line(std::string_view line,
 #ifndef DISABLE_WELCOME_MESSAGE
   // --- show_welcome ---
   if (auto sw_opt = get_value("show_welcome")) {
-    const std::string &sw_str = *sw_opt;
-    config.show_welcome = (sw_str == "true" || sw_str == "1" || sw_str == "yes");
+    if (auto b = config_parser::parse_bool_strict(*sw_opt)) {
+      config.show_welcome = *b;
+    }
   }
 
   // --- welcome_message ---

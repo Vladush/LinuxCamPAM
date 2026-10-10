@@ -1,4 +1,5 @@
 #include "constants.hpp"
+#include "../common/ipc_protocol.hpp"
 
 #include <array>
 #include <cstring>
@@ -50,15 +51,17 @@ std::string send_cmd(const std::string &cmd) {
     return "";
   }
 
-  send(sock, cmd.c_str(), cmd.length(), 0);
-
-  std::array<char, BUFFER_SIZE> buffer = {};
-  ssize_t bytes_read = read(sock, buffer.data(), buffer.size() - 1);
-  close(sock);
-
-  if (bytes_read > 0) {
-    return std::string(buffer.data(), static_cast<size_t>(bytes_read));
+  if (!linuxcampam::protocol::send_message(sock, cmd, 5000)) {
+    close(sock);
+    return "";
   }
+
+  std::string response;
+  if (linuxcampam::protocol::recv_message(sock, response, 5000)) {
+    close(sock);
+    return response;
+  }
+  close(sock);
   return "";
 }
 
