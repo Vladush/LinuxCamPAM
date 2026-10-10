@@ -42,7 +42,6 @@ struct LockState {
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 LockState g_lock_state;
 
-constexpr size_t BUFFER_SIZE = 1024; // Buffer size for incoming UNIX socket messages
 constexpr int SOCKET_PERMS = 0666; // File permissions for the UNIX socket (world-readable/writable)
 constexpr int BACKLOG = 5; // Maximum length of the pending connections queue for the socket
 } // namespace

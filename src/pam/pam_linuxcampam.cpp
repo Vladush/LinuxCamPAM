@@ -40,7 +40,6 @@ void set_empty_authtok_if_unset(pam_handle_t *pamh) {
   }
 }
 
-constexpr size_t BUFFER_SIZE = 128;
 constexpr int TIMEOUT_SEC = 5;
 
 struct SocketDescriptor {
