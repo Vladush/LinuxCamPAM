@@ -57,7 +57,7 @@ ENV TEST_IN_DOCKER=1
 # Build and run tests before packaging
 RUN mkdir build_testing && cd build_testing && \
     cmake .. && \
-    make -j$(nproc) linuxcampam_tests && \
+    make -j$(nproc) linuxcampam_tests pam_integration_tests && \
     ctest --output-on-failure && \
     cd .. && rm -rf build_testing
 

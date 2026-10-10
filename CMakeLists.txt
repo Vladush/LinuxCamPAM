@@ -52,10 +52,15 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(
         -Wall -Wextra -Werror
         -fstack-protector-strong
-        -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
         -Wformat -Wformat-security
         -Werror=format-security
     )
+
+    # Apply _FORTIFY_SOURCE=2 only if not already set by the distro/environment
+    # (e.g. Arch Linux sets _FORTIFY_SOURCE=3 via CXXFLAGS)
+    if(NOT CMAKE_C_FLAGS MATCHES "_FORTIFY_SOURCE" AND NOT CMAKE_CXX_FLAGS MATCHES "_FORTIFY_SOURCE")
+        add_compile_options(-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2)
+    endif()
     # -fPIE is applied per-target to executables only (not the PAM .so module,
     # which needs pure -fPIC to avoid relocation errors with STL internals).
     add_link_options(
@@ -224,6 +229,7 @@ if(TARGET gtest)
         tests/test_auth_logic.cpp
         tests/test_protocol.cpp
         tests/test_pam_logic.cpp
+        tests/test_kde_lockscreen.cpp
         tests/test_config_parsing.cpp
         tests/test_camera.cpp
         tests/test_hardware_manager.cpp
@@ -247,10 +253,41 @@ if(TARGET gtest)
         target_compile_options(linuxcampam_tests PRIVATE -fPIE)
     endif()
     add_test(NAME UnitTests COMMAND linuxcampam_tests)
+
+    set(PAM_IT_DIR ${CMAKE_BINARY_DIR}/pam_it)
+
+    add_library(pam_linuxcampam_it MODULE src/pam/pam_linuxcampam.cpp)
+    target_include_directories(pam_linuxcampam_it PRIVATE
+        include src/common ${PAM_INCLUDE_DIR})
+    target_link_libraries(pam_linuxcampam_it PRIVATE ${PAM_LIBRARY})
+    target_compile_definitions(pam_linuxcampam_it PRIVATE
+        LINUXCAMPAM_TEST_PAM_DIR="${PAM_IT_DIR}"
+        LINUXCAMPAM_TEST_SOCKET_PATH="${PAM_IT_DIR}/socket"
+        LINUXCAMPAM_TEST_CONFIG_PATH="${PAM_IT_DIR}/config.ini")
+
+    add_library(pam_fake_kwallet MODULE tests/pam_it/pam_fake_kwallet.cpp)
+    add_library(pam_fake_unix MODULE tests/pam_it/pam_fake_unix.cpp)
+    set_target_properties(pam_linuxcampam_it pam_fake_kwallet pam_fake_unix
+        PROPERTIES PREFIX "" LIBRARY_OUTPUT_DIRECTORY ${PAM_IT_DIR}/modules)
+    set_target_properties(pam_fake_kwallet PROPERTIES OUTPUT_NAME pam_kwallet5)
+    target_link_libraries(pam_fake_kwallet PRIVATE ${PAM_LIBRARY})
+    target_link_libraries(pam_fake_unix PRIVATE ${PAM_LIBRARY})
+
+    add_executable(pam_integration_tests tests/pam_it/test_kde_flow.cpp)
+    target_link_libraries(pam_integration_tests PRIVATE
+        gtest gtest_main ${PAM_LIBRARY} Threads::Threads)
+    target_compile_definitions(pam_integration_tests PRIVATE
+        PAM_IT_DIR="${PAM_IT_DIR}")
+    add_dependencies(pam_integration_tests
+        pam_linuxcampam_it pam_fake_kwallet pam_fake_unix)
+    add_test(NAME PamIntegration COMMAND pam_integration_tests)
 endif()
 
 # --- Install Targets ---
 include(GNUInstallDirs)
+set(LINUXCAMPAM_SYSTEMD_UNIT_DIR "/lib/systemd/system" CACHE PATH
+    "Directory for the LinuxCamPAM systemd service")
+option(INSTALL_PAM_AUTH_UPDATE_PROFILE "Install the Debian pam-auth-update profile" ON)
 
 install(TARGETS linuxcampamd linuxcampam check_opencl
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -270,15 +307,14 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/models/
     FILES_MATCHING PATTERN "*.onnx"
 )
 
-install(FILES ${CMAKE_SOURCE_DIR}/config/linuxcampam_pam_profile
-    DESTINATION /usr/share/pam-configs
-    RENAME linuxcampam
-)
-
-
-
+if(INSTALL_PAM_AUTH_UPDATE_PROFILE)
+    install(FILES ${CMAKE_SOURCE_DIR}/config/linuxcampam_pam_profile
+        DESTINATION /usr/share/pam-configs
+        RENAME linuxcampam
+    )
+endif()
 install(FILES ${CMAKE_SOURCE_DIR}/scripts/linuxcampam.service
-    DESTINATION /lib/systemd/system
+    DESTINATION ${LINUXCAMPAM_SYSTEMD_UNIT_DIR}
 )
 
 install(PROGRAMS ${CMAKE_SOURCE_DIR}/scripts/setup_config.sh
@@ -309,7 +345,8 @@ set(CPACK_GENERATOR "DEB")
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "libpam0g, libpam-runtime, v4l-utils, libgfortran5, libatlas3-base, libatomic1, libhidapi-hidraw0")
 set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "rocm-opencl-runtime | intel-opencl-icd | nvidia-opencl-icd-340 | nvidia-opencl-icd")
 
-set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_SOURCE_DIR}/debian/postinst")
+set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_SOURCE_DIR}/debian/postinst;${CMAKE_SOURCE_DIR}/debian/prerm;${CMAKE_SOURCE_DIR}/debian/postrm;${CMAKE_SOURCE_DIR}/debian/preinst;${CMAKE_SOURCE_DIR}/debian/conffiles")
+set(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION ON)
 
 # Man pages installation (dynamic generation)
 find_program(PANDOC_EXECUTABLE pandoc)

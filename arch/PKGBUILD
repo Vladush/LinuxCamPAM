@@ -1,0 +1,89 @@
+pkgname=linuxcampam-git
+pkgver=0.9.7.4.r65.gd560924
+pkgrel=1
+pkgdesc="Face unlock for Linux, like Windows Hello"
+arch=('x86_64' 'aarch64' 'riscv64')
+url="https://github.com/Vladush/LinuxCamPAM"
+license=('MIT' 'Apache-2.0')
+depends=('bash' 'glibc' 'gcc-libs' 'pam' 'v4l-utils' 'hidapi' 'systemd'
+         'sudo' 'libjpeg-turbo' 'libpng' 'zlib')
+makedepends=('git' 'cmake' 'ninja' 'nlohmann-json' 'gtest' 'pkgconf' 'unzip')
+optdepends=('linux-enable-ir-emitter: IR illumination on supported cameras'
+            'ocl-icd: OpenCL acceleration with a suitable GPU driver'
+            'curl: download the optional IR emitter installer')
+
+_opencv_ver=4.12.0
+_models_rev=47534e27c9851bb1128ccc0102f1145e27f23f98
+# CI uses a local Git URL to build the checked-out commit, including PR merges.
+_source=${LINUXCAMPAM_SOURCE:-git+https://github.com/Vladush/LinuxCamPAM.git}
+source=("LinuxCamPAM::$_source"
+        "opencv-$_opencv_ver.zip::https://github.com/opencv/opencv/archive/refs/tags/$_opencv_ver.zip"
+        "https://media.githubusercontent.com/media/opencv/opencv_zoo/$_models_rev/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
+        "https://media.githubusercontent.com/media/opencv/opencv_zoo/$_models_rev/models/face_recognition_sface/face_recognition_sface_2021dec.onnx"
+        "yunet-LICENSE::https://raw.githubusercontent.com/opencv/opencv_zoo/$_models_rev/models/face_detection_yunet/LICENSE"
+        "sface-LICENSE::https://raw.githubusercontent.com/opencv/opencv_zoo/$_models_rev/models/face_recognition_sface/LICENSE")
+sha256sums=('SKIP'
+            'fa3faf7581f1fa943c9e670cf57dd6ba1c5b4178f363a188a2c8bff1eb28b7e4'
+            '8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4'
+            '0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79'
+            'c83b8120c50ccbd4c4f96edf53141bdd566ebb8f8e9227e415326aa1b1aba958'
+            'cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30')
+provides=('linuxcampam')
+conflicts=('linuxcampam')
+backup=('etc/linuxcampam/config.ini')
+install='linuxcampam.install'
+
+pkgver() {
+  cd "$srcdir/LinuxCamPAM"
+  git describe --long --tags --match 'v[0-9]*' | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g'
+}
+
+prepare() {
+  install -Dm644 "$srcdir/face_detection_yunet_2023mar.onnx" \
+    "$srcdir/LinuxCamPAM/models/face_detection_yunet_2023mar.onnx"
+  install -Dm644 "$srcdir/face_recognition_sface_2021dec.onnx" \
+    "$srcdir/LinuxCamPAM/models/face_recognition_sface_2021dec.onnx"
+}
+
+build() {
+  cd "$srcdir/LinuxCamPAM"
+
+  # makepkg verifies and extracts sources before this unprivileged build.
+  # Restrict optional backends/codecs so host packages cannot change linkage.
+  SKIP_DEPS=1 OPENCV_VER="$_opencv_ver" \
+    OPENCV_SOURCE_DIR="$srcdir/opencv-$_opencv_ver" \
+    ./scripts/build_opencv.sh \
+      -D WITH_OPENMP=ON -D WITH_LAPACK=OFF \
+      -D WITH_IPP=OFF -D WITH_ITT=OFF -D WITH_TBB=OFF \
+      -D WITH_AVIF=OFF -D WITH_OPENJPEG=OFF -D WITH_WEBP=OFF \
+      -D WITH_TIFF=OFF -D WITH_JASPER=OFF -D WITH_GDCM=OFF \
+      -D WITH_1394=OFF -D WITH_GPHOTO2=OFF -D WITH_VA=OFF \
+      -D BUILD_LIST=core,videoio,imgproc,dnn,objdetect,photo
+
+  cmake -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_INSTALL_LIBDIR=lib \
+    -DLINUXCAMPAM_SYSTEMD_UNIT_DIR=/usr/lib/systemd/system \
+    -DINSTALL_PAM_AUTH_UPDATE_PROFILE=OFF
+  cmake --build build
+}
+
+check() {
+  cd "$srcdir/LinuxCamPAM"
+  # AuthEngineTest requires models in /usr/share/linuxcampam. CI runs the full
+  # suite after package installation; makepkg must not write to /usr here.
+  GTEST_FILTER='-AuthEngineTest.*' TEST_IN_DOCKER=1 \
+    ctest --test-dir build --output-on-failure
+}
+
+package() {
+  cd "$srcdir/LinuxCamPAM"
+  DESTDIR="$pkgdir" cmake --install build
+
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 "$srcdir/yunet-LICENSE" "$pkgdir/usr/share/licenses/$pkgname/yunet-LICENSE"
+  install -Dm644 "$srcdir/sface-LICENSE" "$pkgdir/usr/share/licenses/$pkgname/sface-LICENSE"
+  install -Dm644 "$srcdir/opencv-$_opencv_ver/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/opencv-LICENSE"
+  cp -a opencv_static/share/licenses/opencv4 "$pkgdir/usr/share/licenses/$pkgname/"
+}

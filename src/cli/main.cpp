@@ -1,4 +1,5 @@
 #include "constants.hpp"
+#include "../common/ipc_protocol.hpp"
 
 #include <array>
 #include <cstring>
@@ -26,7 +27,7 @@ std::string get_current_user() {
   return "";
 }
 
-std::string send_cmd(const std::string &cmd) {
+std::string send_cmd(const std::string &cmd, int timeout_ms = 5000) {
   int sock = socket(AF_UNIX, SOCK_STREAM, 0);
   if (sock < 0) {
     std::cerr << "Error creating socket." << '\n';
@@ -50,15 +51,17 @@ std::string send_cmd(const std::string &cmd) {
     return "";
   }
 
-  send(sock, cmd.c_str(), cmd.length(), 0);
-
-  std::array<char, BUFFER_SIZE> buffer = {};
-  ssize_t bytes_read = read(sock, buffer.data(), buffer.size() - 1);
-  close(sock);
-
-  if (bytes_read > 0) {
-    return std::string(buffer.data(), static_cast<size_t>(bytes_read));
+  if (!linuxcampam::protocol::send_message(sock, cmd, timeout_ms)) {
+    close(sock);
+    return "";
   }
+
+  std::string response;
+  if (linuxcampam::protocol::recv_message(sock, response, timeout_ms)) {
+    close(sock);
+    return response;
+  }
+  close(sock);
   return "";
 }
 
@@ -115,7 +118,7 @@ int main(int argc, char *argv[]) {
     std::string user = argv[2];
 
     // First enroll the user
-    std::string resp = send_cmd("ADD_USER " + user);
+    std::string resp = send_cmd("ADD_USER " + user, 60000);
     print_response(resp);
 
     // If successful, prompt for label
@@ -188,12 +191,12 @@ int main(int argc, char *argv[]) {
       if (label.empty()) {
         label = "trained_" + std::to_string(std::time(nullptr));
       }
-      print_response(send_cmd("TRAIN_NEW " + user + " " + label));
+      print_response(send_cmd("TRAIN_NEW " + user + " " + label, 60000));
     } else {
       if (label.empty()) {
         label = "default";
       }
-      print_response(send_cmd("TRAIN_USER " + user + " " + label));
+      print_response(send_cmd("TRAIN_USER " + user + " " + label, 60000));
     }
 
   } else if (op == "test") {
@@ -212,9 +215,9 @@ int main(int argc, char *argv[]) {
     }
 
     if (!user.empty()) {
-      print_response(send_cmd("TEST_AUTH " + user));
+      print_response(send_cmd("TEST_AUTH " + user, 60000));
     } else {
-      print_response(send_cmd("TEST_AUTH"));
+      print_response(send_cmd("TEST_AUTH", 60000));
     }
 
   } else if (op == "list") {

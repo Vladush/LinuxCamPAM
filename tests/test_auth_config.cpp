@@ -134,7 +134,7 @@ log_file = /tmp/linuxcampam.log
   EXPECT_EQ(config.log_file, "/tmp/linuxcampam.log");
 }
 
-TEST_F(AuthConfigTest, FallbackOnInvalidData) {
+TEST_F(AuthConfigTest, FailsOnInvalidData) {
   createConfig(R"(
 [General]
 threshold = invalid_float
@@ -143,11 +143,7 @@ timeout_ms = invalid_int
 lockout_attempts = bad_number
 )");
   Configuration config;
-  ASSERT_TRUE(config.load("config_test.ini"));
-
-  // Should use defaults/ignore invalid
-  EXPECT_FLOAT_EQ(config.threshold, Configuration::DEFAULT_THRESHOLD);
-  EXPECT_EQ(config.lockout_attempts, Configuration::DEFAULT_LOCKOUT_ATTEMPTS);
+  ASSERT_FALSE(config.load("config_test.ini"));
 }
 
 // ----------------------------------------------------
