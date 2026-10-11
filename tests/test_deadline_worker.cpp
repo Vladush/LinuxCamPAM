@@ -100,13 +100,16 @@ TEST(DeadlineWorkerTest, TimeoutAlsoTerminatesDescendants) {
 }
 
 TEST(DeadlineWorkerTest, ActualVerificationWorkerBoundsModelLoadingAndCapture) {
+  const std::filesystem::path models_dir =
 #ifdef LINUXCAMPAM_TEST_MODELS_DIR
-  const std::filesystem::path test_models_dir(LINUXCAMPAM_TEST_MODELS_DIR);
-  if (!std::filesystem::exists(test_models_dir / linuxcampam::DETECTOR_MODEL_FILE) &&
+      LINUXCAMPAM_TEST_MODELS_DIR;
+#else
+      linuxcampam::MODELS_DIR;
+#endif
+  if (!std::filesystem::exists(models_dir / linuxcampam::DETECTOR_MODEL_FILE) &&
       !std::filesystem::exists(std::filesystem::path(linuxcampam::MODELS_DIR) / linuxcampam::DETECTOR_MODEL_FILE)) {
     GTEST_SKIP() << "AI models not found, skipping deadline worker test";
   }
-#endif
   std::string pattern = "/tmp/linuxcampam-worker-test-XXXXXX";
   char *directory = mkdtemp(pattern.data());
   ASSERT_NE(directory, nullptr);
@@ -122,9 +125,7 @@ TEST(DeadlineWorkerTest, ActualVerificationWorkerBoundsModelLoadingAndCapture) {
   const auto config = root / "config.ini";
   { std::ofstream file(config);
     file << "[Paths]\nusers_dir=" << root.string()
-#ifdef LINUXCAMPAM_TEST_MODELS_DIR
-         << "\nmodels_dir=" << LINUXCAMPAM_TEST_MODELS_DIR
-#endif
+         << "\nmodels_dir=" << models_dir.string()
          << "\n[Cameras]\nnames=invalid\n[Camera.invalid]\npath=/dev/video9999\ntype=rgb"
          << "\n[Hardware]\nprovider_priority=CPU\n[Auth]\ntimeout_ms=100\n";
   }

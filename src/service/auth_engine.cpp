@@ -8,6 +8,7 @@
 #include "logger.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <fcntl.h>
 #include <filesystem>
@@ -342,8 +343,11 @@ cv::Mat AuthEngine::captureFrame(ICamera *cam) {
 double AuthEngine::calculateBrightness(const cv::Mat &frame) {
   if (frame.empty())
     return 0.0;
-  cv::Scalar means = cv::mean(frame);
-  return (means[0] + means[1] + means[2]) / linuxcampam::RGB_CHANNELS;
+  const cv::Scalar means = cv::mean(frame);
+  std::array<double, 4> channels{};
+  std::copy(std::begin(means.val), std::end(means.val), channels.begin());
+  return (channels.at(0) + channels.at(1) + channels.at(2)) /
+         linuxcampam::RGB_CHANNELS;
 }
 
 AuthResult AuthEngine::verifyUserCore(std::string_view username,
