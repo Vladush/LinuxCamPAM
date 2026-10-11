@@ -110,6 +110,19 @@ public:
                                 bool success) {
     engine.recordAuthAttempt(user, success);
   }
+  static void setPolicy(AuthEngine &engine, Configuration::AuthPolicy policy) {
+    engine.config.policy = policy;
+  }
+  static void setTimeoutMs(AuthEngine &engine, int timeout_ms) {
+    engine.config.timeout_ms = timeout_ms;
+  }
+  static void clearActiveCameras(AuthEngine &engine) {
+    engine.active_cameras.clear();
+  }
+  static void addActiveCamera(AuthEngine &engine, std::unique_ptr<ICamera> cam,
+                              Configuration::CameraDefinition def) {
+    engine.active_cameras.push_back({std::move(cam), std::move(def)});
+  }
 
   std::unique_ptr<AuthEngine> auth_engine;
 };
@@ -456,4 +469,130 @@ TEST_F(AuthEngineTest, SetLabelWritesFileWithSecurePermissions) {
               std::string::npos)
         << "leftover temp file: " << entry.path();
   }
+}
+
+// --- Fail-closed config and policy tests ---
+
+TEST_F(AuthEngineTest, InitFailsClosedOnMalformedConfig) {
+  std::ofstream bad_cfg("bad_config.ini");
+  bad_cfg << "[Auth]\nthreshold = not_a_float\n";
+  bad_cfg.close();
+  TempConfigFile guard("bad_config.ini");
+
+  EXPECT_FALSE(auth_engine->init("bad_config.ini"))
+      << "AuthEngine::init must fail-closed on malformed config";
+}
+
+TEST_F(AuthEngineTest, VerificationEnforcesTimeoutMs) {
+  auth_engine->setCameraFactory([&](const Configuration::CameraDefinition &) {
+    auto mock = std::make_unique<NiceMock<MockCamera>>();
+    ON_CALL(*mock, capture()).WillByDefault([&]() {
+      std::this_thread::sleep_for(std::chrono::milliseconds(25));
+      return cv::Mat::zeros(MOCK_FRAME_HEIGHT, MOCK_FRAME_WIDTH, CV_8UC3);
+    });
+    return mock;
+  });
+  ASSERT_TRUE(auth_engine->init("test_auth_config.ini"));
+  setTimeoutMs(*auth_engine, 5);
+
+  writeUserWithEmbedding("timeout_user", "default");
+
+  AuthResult res = auth_engine->verifyUserWithDetails("timeout_user");
+  EXPECT_FALSE(res.success);
+  EXPECT_THAT(res.reason, ::testing::HasSubstr("Verification timeout"));
+}
+
+TEST_F(AuthEngineTest, AdaptivePolicyMandatoryCaptureFailure) {
+  auth_engine->setCameraFactory([&](const Configuration::CameraDefinition &) {
+    auto mock = std::make_unique<NiceMock<MockCamera>>();
+    ON_CALL(*mock, capture()).WillByDefault(Return(cv::Mat()));
+    return mock;
+  });
+  ASSERT_TRUE(auth_engine->init("test_auth_config.ini"));
+
+  setPolicy(*auth_engine, Configuration::AuthPolicy::ADAPTIVE);
+  clearActiveCameras(*auth_engine);
+
+  Configuration::CameraDefinition ir_cam;
+  ir_cam.id = "cam_ir";
+  ir_cam.type = "ir";
+  ir_cam.mandatory = true;
+  addActiveCamera(*auth_engine, std::make_unique<NiceMock<MockCamera>>(), ir_cam);
+
+  writeUserWithEmbedding("policy_user", "default");
+
+  AuthResult res = auth_engine->verifyUserWithDetails("policy_user");
+  EXPECT_FALSE(res.success);
+  EXPECT_THAT(res.reason, ::testing::HasSubstr("Mandatory Camera cam_ir failed"));
+}
+
+TEST_F(AuthEngineTest, AdaptivePolicyMandatoryDarkFailure) {
+  ASSERT_TRUE(auth_engine->init("test_auth_config.ini"));
+
+  setPolicy(*auth_engine, Configuration::AuthPolicy::ADAPTIVE);
+  clearActiveCameras(*auth_engine);
+
+  Configuration::CameraDefinition ir_cam;
+  ir_cam.id = "cam_ir";
+  ir_cam.type = "ir";
+  ir_cam.min_brightness = 50;
+  ir_cam.mandatory = true;
+
+  auto mock = std::make_unique<NiceMock<MockCamera>>();
+  cv::Mat black_frame = cv::Mat::zeros(MOCK_FRAME_HEIGHT, MOCK_FRAME_WIDTH, CV_8UC3);
+  ON_CALL(*mock, capture()).WillByDefault(Return(black_frame));
+  addActiveCamera(*auth_engine, std::move(mock), ir_cam);
+
+  writeUserWithEmbedding("policy_user", "default");
+
+  AuthResult res = auth_engine->verifyUserWithDetails("policy_user");
+  EXPECT_FALSE(res.success);
+  EXPECT_THAT(res.reason, ::testing::HasSubstr("Mandatory Camera cam_ir too dark"));
+}
+
+TEST_F(AuthEngineTest, StrictPolicyFailsOnAnyDarkOrCaptureFailure) {
+  ASSERT_TRUE(auth_engine->init("test_auth_config.ini"));
+
+  setPolicy(*auth_engine, Configuration::AuthPolicy::STRICT_ALL);
+  clearActiveCameras(*auth_engine);
+
+  Configuration::CameraDefinition opt_cam;
+  opt_cam.id = "cam_opt";
+  opt_cam.type = "rgb";
+  opt_cam.min_brightness = 50;
+  opt_cam.mandatory = false;
+
+  auto mock = std::make_unique<NiceMock<MockCamera>>();
+  cv::Mat black_frame = cv::Mat::zeros(MOCK_FRAME_HEIGHT, MOCK_FRAME_WIDTH, CV_8UC3);
+  ON_CALL(*mock, capture()).WillByDefault(Return(black_frame));
+  addActiveCamera(*auth_engine, std::move(mock), opt_cam);
+
+  writeUserWithEmbedding("policy_user", "default");
+
+  AuthResult res = auth_engine->verifyUserWithDetails("policy_user");
+  EXPECT_FALSE(res.success);
+  EXPECT_THAT(res.reason, ::testing::HasSubstr("Camera cam_opt too dark"));
+}
+
+TEST_F(AuthEngineTest, LenientPolicyToleratesMandatoryCaptureFailure) {
+  ASSERT_TRUE(auth_engine->init("test_auth_config.ini"));
+
+  setPolicy(*auth_engine, Configuration::AuthPolicy::LENIENT_ANY);
+  clearActiveCameras(*auth_engine);
+
+  Configuration::CameraDefinition ir_cam;
+  ir_cam.id = "cam_ir";
+  ir_cam.type = "ir";
+  ir_cam.mandatory = true;
+
+  auto mock_ir = std::make_unique<NiceMock<MockCamera>>();
+  ON_CALL(*mock_ir, capture()).WillByDefault(Return(cv::Mat())); // Capture fails
+  addActiveCamera(*auth_engine, std::move(mock_ir), ir_cam);
+
+  writeUserWithEmbedding("policy_user", "default");
+
+  // Since IR capture fails and there are no other cameras, participants == 0
+  AuthResult res = auth_engine->verifyUserWithDetails("policy_user");
+  EXPECT_FALSE(res.success);
+  EXPECT_EQ(res.reason, "No cameras participated");
 }

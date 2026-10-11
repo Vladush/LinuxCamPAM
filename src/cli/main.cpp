@@ -1,6 +1,9 @@
 #include "constants.hpp"
 #include "../common/ipc_protocol.hpp"
+#include "kde_lockscreen.hpp"
+#include "pam_config.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <ctime>
@@ -10,6 +13,127 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+
+int run_check_kde(bool brief) {
+  const char *config_path = "/etc/linuxcampam/config.ini";
+#ifdef PAM_CONFIG_PATH
+  config_path = PAM_CONFIG_PATH;
+#endif
+
+  if (access(config_path, F_OK) == 0 && access(config_path, R_OK) != 0) {
+    std::cerr << "Error: Configuration file " << config_path << " is unreadable." << '\n';
+    return 2;
+  }
+
+  PamConfig pam_config = load_pam_config(config_path);
+
+  linuxcampam::kde::Scan etc_scan = linuxcampam::kde::scan_file(linuxcampam::kde::ETC_STACK);
+  linuxcampam::kde::Scan vendor_scan = linuxcampam::kde::scan_file(linuxcampam::kde::VENDOR_STACK);
+  linuxcampam::kde::StackInfo eff = linuxcampam::kde::scan_effective_stack();
+
+  if (etc_scan == linuxcampam::kde::Scan::Missing && vendor_scan == linuxcampam::kde::Scan::Missing) {
+    if (access("/etc/pam.d/kscreenlocker", F_OK) == 0) {
+      if (brief) {
+        std::cout << "KDE lock screen: Non-kde service name (/etc/pam.d/kscreenlocker exists), not supported yet\n";
+      } else {
+        std::cout << "KDE lock screen\n";
+        std::cout << "  Status: Non-kde service name (/etc/pam.d/kscreenlocker exists), not supported yet\n";
+      }
+      return 1;
+    }
+    if (brief) {
+      std::cout << "KDE lock screen: KDE not installed\n";
+    } else {
+      std::cout << "KDE lock screen\n";
+      std::cout << "  Status: KDE not installed\n";
+    }
+    return 0;
+  }
+
+  linuxcampam::kde::Decision dec = linuxcampam::kde::decide(pam_config, eff);
+
+  auto scan_str = [](linuxcampam::kde::Scan s) -> const char * {
+    switch (s) {
+    case linuxcampam::kde::Scan::KwalletAuth: return "KWallet auth rule found";
+    case linuxcampam::kde::Scan::NoKwalletAuth: return "no KWallet auth rule";
+    case linuxcampam::kde::Scan::OtherKwalletAuth: return "unsupported KWallet module";
+    case linuxcampam::kde::Scan::Missing: return "file not found";
+    case linuxcampam::kde::Scan::Unreadable: return "file unreadable";
+    case linuxcampam::kde::Scan::TooLarge: return "file too large";
+    case linuxcampam::kde::Scan::Unsupported: return "unsupported PAM syntax";
+    }
+    return "unknown";
+  };
+
+  std::string mode_str = to_string(pam_config.kde_lockscreen);
+  std::string eff_str = dec.single_enter ? "single_enter" : "legacy";
+  std::string summary_mode;
+  if (pam_config.kde_lockscreen == KdeLockscreenMode::Auto) {
+    summary_mode = "auto -> " + eff_str + " (" + dec.reason + ")";
+  } else {
+    summary_mode = mode_str + " (" + dec.reason + ")";
+  }
+
+  int exit_code = 0;
+  std::string hint;
+
+  if (eff.scan == linuxcampam::kde::Scan::OtherKwalletAuth ||
+      eff.scan == linuxcampam::kde::Scan::Unsupported ||
+      eff.scan == linuxcampam::kde::Scan::TooLarge ||
+      eff.scan == linuxcampam::kde::Scan::Unreadable) {
+    hint = "Unsupported stack: " + std::string(eff.path) + " (" + scan_str(eff.scan) + ")";
+    exit_code = 1;
+  } else if (!pam_config.require_confirmation) {
+    hint = "require_confirmation = false: lock screen scans immediately";
+    exit_code = 1;
+  } else if (dec.single_enter && pam_config.exempt_services_explicit &&
+             std::find(pam_config.confirmation_exempt_services.begin(),
+                       pam_config.confirmation_exempt_services.end(),
+                       "kde") != pam_config.confirmation_exempt_services.end()) {
+    hint = "Explicit confirmation_exempt_services contains 'kde' while mode is single_enter. Remove 'kde' from the list.";
+    exit_code = 1;
+  }
+
+  bool has_override_note = false;
+  if (exit_code == 0 && pam_config.kde_lockscreen == KdeLockscreenMode::Auto &&
+      etc_scan == linuxcampam::kde::Scan::NoKwalletAuth &&
+      vendor_scan == linuxcampam::kde::Scan::KwalletAuth) {
+    has_override_note = true;
+  }
+
+  if (brief) {
+    std::cout << "kde_lockscreen: " << summary_mode << '\n';
+    if (!hint.empty()) {
+      std::cout << "Hint: " << hint << '\n';
+    }
+    if (has_override_note) {
+      std::cout << "Note: local override " << linuxcampam::kde::ETC_STACK << " is no longer needed for single-Enter unlock.\n";
+    }
+  } else {
+    std::cout << "KDE lock screen\n";
+    std::cout << "  Config:          " << config_path << '\n';
+    std::cout << "  kde_lockscreen:  " << summary_mode << '\n';
+    std::cout << "  Confirmation:    "
+              << (pam_config.require_confirmation ? "required" : "not required")
+              << (pam_config.exempt_services_explicit ? " (explicit confirmation_exempt_services)" : " (default)")
+              << '\n';
+    std::cout << "  Empty token:     " << (dec.single_enter ? "on" : "off") << '\n';
+    std::cout << "  Vendor stack:    " << linuxcampam::kde::VENDOR_STACK << " (" << scan_str(vendor_scan) << ")\n";
+    if (etc_scan != linuxcampam::kde::Scan::Missing) {
+      std::cout << "  Local override:  " << linuxcampam::kde::ETC_STACK << " (" << scan_str(etc_scan) << ")\n";
+    }
+    if (!hint.empty()) {
+      std::cout << "Hint: " << hint << '\n';
+    }
+    if (has_override_note) {
+      std::cout << "Note: the local override is no longer needed for single-Enter unlock.\n";
+      std::cout << "  Compare it with the vendor file before removing it:\n";
+      std::cout << "  diff -u " << linuxcampam::kde::VENDOR_STACK << " " << linuxcampam::kde::ETC_STACK << '\n';
+    }
+  }
+
+  return exit_code;
+}
 
 
 std::string get_current_user() {
@@ -88,6 +212,7 @@ void print_help() {
       << "  linuxcampam remove <user> --label <X>   Remove specific embedding\n"
       << "  linuxcampam show-config                 Show active config\n"
       << "  linuxcampam debug [on|off]              Toggle debug logging\n"
+      << "  linuxcampam check-kde [--brief]         Check KDE lock screen setup\n"
       << "  linuxcampam version                     Show version info\n"
       << "  linuxcampam help                        Show this help\n";
 }
@@ -96,7 +221,7 @@ int main(int argc, char *argv[]) {
   if (argc < 2) {
     std::cout
         << "Usage: linuxcampam "
-           "<add|train|test|list|remove|show-config|debug|version|help> [args]"
+           "<add|train|test|list|remove|show-config|debug|check-kde|version|help> [args]"
         << '\n';
     return 1;
   }
@@ -293,6 +418,10 @@ int main(int argc, char *argv[]) {
     } else {
       std::cout << "Daemon Version: " << daemon_ver << '\n';
     }
+
+  } else if (op == "check-kde") {
+    bool brief = argc > 2 && std::string_view{argv[2]} == "--brief";
+    return run_check_kde(brief);
 
   } else if (op == "help" || op == "--help" || op == "-h") {
     print_help();
