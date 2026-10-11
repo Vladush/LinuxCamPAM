@@ -2,6 +2,79 @@
 set -e
 
 CONFIG_FILE="/etc/linuxcampam/config.ini"
+LINUXCAMPAM_CLI=$(command -v linuxcampam || echo /usr/bin/linuxcampam)
+
+configure_kde() (
+    # A subshell scopes EXIT/signal traps to this operation, including set -e failures.
+    local mode=$1 dir tmp="" backup was_immutable=false
+    cleanup_kde() {
+        local status=$?
+        trap - EXIT
+        if [ -n "$tmp" ]; then rm -f -- "$tmp" || status=1; fi
+        if [ "$was_immutable" = true ]; then
+            chattr +i "$CONFIG_FILE" || { echo "[Setup] Cannot restore immutable flag." >&2; status=1; }
+        fi
+        exit "$status"
+    }
+    trap cleanup_kde EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    case "$mode" in
+        auto|single_enter|legacy) ;;
+        *) echo "Usage: $0 --configure-kde auto|single_enter|legacy" >&2
+           return 2 ;;
+    esac
+    [ "$(id -u)" -eq 0 ] || { echo "[Setup] Run as root." >&2; return 1; }
+    [ -f "$CONFIG_FILE" ] || { echo "[Setup] $CONFIG_FILE missing." >&2; return 1; }
+
+    if command -v lsattr >/dev/null &&
+       lsattr "$CONFIG_FILE" 2>/dev/null | cut -c 5 | grep -q i; then
+        was_immutable=true
+        chattr -i "$CONFIG_FILE" ||
+            { echo "[Setup] Cannot clear immutable flag." >&2; return 1; }
+    fi
+
+    dir=$(dirname "$CONFIG_FILE")
+    tmp=$(mktemp "$dir/.config.ini.XXXXXX")
+
+    backup="$CONFIG_FILE.$(date +%Y%m%d_%H%M%S).bak"
+    cp -p "$CONFIG_FILE" "$backup"
+    awk -v mode="$mode" -f - "$CONFIG_FILE" > "$tmp" <<'AWK'
+/^[[:space:]]*\[/ {
+    if (in_sec && !done) { print "kde_lockscreen = " mode; done = 1 }
+    section = $0
+    sub(/[;#].*$/, "", section)
+    gsub(/^[[:space:]]+|[[:space:]]+$/, "", section)
+    in_sec = (section == "[Security]")
+}
+in_sec && /^[[:space:]]*kde_lockscreen[[:space:]]*=/ {
+    if (!done) { print "kde_lockscreen = " mode; done = 1 }
+    next
+}
+{ print }
+END {
+    if (!done) {
+        if (!in_sec) print "\n[Security]"
+        print "kde_lockscreen = " mode
+    }
+}
+AWK
+    chmod --reference="$CONFIG_FILE" "$tmp"
+    chown --reference="$CONFIG_FILE" "$tmp"
+    mv -f "$tmp" "$CONFIG_FILE"
+    echo "[Setup] kde_lockscreen = $mode (backup: $backup)"
+    "$LINUXCAMPAM_CLI" check-kde --brief || true
+)
+
+case "${1:-}" in
+    --check-kde)
+        exec "$LINUXCAMPAM_CLI" check-kde "${@:2}"
+        ;;
+    --configure-kde)
+        configure_kde "${2:-}"
+        exit $?
+        ;;
+esac
 
 FORCE_LOCK=false
 for arg in "$@"; do

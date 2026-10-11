@@ -82,6 +82,8 @@ void PresenceTripwire::poll_loop() noexcept {
             }
         } else if (bytes < 0) {
             log_error("HID read failed, terminating polling thread.");
+            // Revoke a previously reported presence on disconnect/read failure.
+            if (callback_) callback_(false, 0);
             running_ = false;
             break;
         }

@@ -1,0 +1,30 @@
+post_install() {
+    echo "======================================================================"
+    echo " LinuxCamPAM installed successfully!"
+    echo " "
+    echo " 1. Configure your cameras:"
+    echo "    sudo linuxcampam-setup-config"
+    echo " "
+    echo " 2. Enable and start the background daemon:"
+    echo "    sudo systemctl enable --now linuxcampam"
+    echo "    If already running, restart it after changing configuration."
+    echo " "
+    echo " 3. Enroll your face, then test as the enrolled user:"
+    echo "    sudo linuxcampam add <username>"
+    echo "    linuxcampam test"
+    echo " "
+    echo " 4. Configure a single PAM service after the test succeeds."
+    echo "    Keep a root shell open, back up /etc/pam.d/sudo, and follow:"
+    echo "    https://github.com/Vladush/LinuxCamPAM#arch-linux-build-community-add-on"
+    echo "    Preserve password fallback and test it with the daemon stopped."
+    echo " "
+    echo " Remove added PAM rules before uninstalling LinuxCamPAM."
+    echo "======================================================================"
+}
+
+post_upgrade() {
+    if [ -d /run/systemd/system ]; then
+        echo "Restarting LinuxCamPAM if it is running..."
+        systemctl try-restart linuxcampam.service || true
+    fi
+}

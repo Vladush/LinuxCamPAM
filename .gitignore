@@ -60,6 +60,16 @@ obj-*/
 *.dsc
 *.tar.gz
 
+# Arch packaging build outputs and makepkg's local source mirror
+/arch/src/
+/arch/pkg/
+/arch/LinuxCamPAM/
+/arch/*.pkg.tar.*
+/arch/*.zip
+/arch/*.onnx
+/arch/yunet-LICENSE
+/arch/sface-LICENSE
+
 # Models and Data
 models/
 /config.ini

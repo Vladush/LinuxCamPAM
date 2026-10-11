@@ -57,17 +57,15 @@ max_embeddings=20
 }
 
 TEST_F(ConfigParsingTest, HandlesMalformedNumbers) {
-  loadConfig(R"(
+  std::stringstream ss(std::string{R"(
 [Auth]
 threshold=bad_float
 timeout_ms=not_an_int
 max_embeddings=-invalid
-  )");
+  )"});
   
-  // Should retain defaults since parsing failed
-  EXPECT_FLOAT_EQ(config.threshold, Configuration::DEFAULT_THRESHOLD);
-  EXPECT_EQ(config.timeout_ms, Configuration::DEFAULT_TIMEOUT_MS);
-  EXPECT_EQ(config.max_embeddings, Configuration::DEFAULT_MAX_EMBEDDINGS);
+  // Should fail since parsing failed
+  EXPECT_FALSE(config.load(ss, nullptr));
 }
 
 TEST_F(ConfigParsingTest, ProximitySensorSettings) {
@@ -108,9 +106,9 @@ provider_priority=TensorRT, CUDA, CPU
   )");
   
   ASSERT_EQ(config.provider_priority.size(), 3);
-  EXPECT_EQ(config.provider_priority[0], "TensorRT");
-  EXPECT_EQ(config.provider_priority[1], "CUDA");
-  EXPECT_EQ(config.provider_priority[2], "CPU");
+  EXPECT_EQ(config.provider_priority.at(0), "TensorRT");
+  EXPECT_EQ(config.provider_priority.at(1), "CUDA");
+  EXPECT_EQ(config.provider_priority.at(2), "CPU");
 }
 
 TEST_F(ConfigParsingTest, EmptyProviderPriorityUsesDefault) {
@@ -120,8 +118,8 @@ provider_priority=
   )");
   
   ASSERT_EQ(config.provider_priority.size(), 2);
-  EXPECT_EQ(config.provider_priority[0], "OpenCL");
-  EXPECT_EQ(config.provider_priority[1], "CPU");
+  EXPECT_EQ(config.provider_priority.at(0), "OpenCL");
+  EXPECT_EQ(config.provider_priority.at(1), "CPU");
 }
 
 TEST_F(ConfigParsingTest, ExplicitCameraDefinitions) {
@@ -145,19 +143,19 @@ enroll_average_frames=5
   
   ASSERT_EQ(config.camera_defs.size(), 2);
   
-  EXPECT_EQ(config.camera_defs[0].id, "cam1");
-  EXPECT_EQ(config.camera_defs[0].path, "/dev/video1");
-  EXPECT_EQ(config.camera_defs[0].type, "rgb");
-  EXPECT_TRUE(config.camera_defs[0].mandatory);
-  EXPECT_EQ(config.camera_defs[0].min_brightness, 10);
+  EXPECT_EQ(config.camera_defs.at(0).id, "cam1");
+  EXPECT_EQ(config.camera_defs.at(0).path, "/dev/video1");
+  EXPECT_EQ(config.camera_defs.at(0).type, "rgb");
+  EXPECT_TRUE(config.camera_defs.at(0).mandatory);
+  EXPECT_EQ(config.camera_defs.at(0).min_brightness, 10);
   
-  EXPECT_EQ(config.camera_defs[1].id, "cam2");
-  EXPECT_EQ(config.camera_defs[1].path, "/dev/video2");
-  EXPECT_EQ(config.camera_defs[1].type, "ir");
-  EXPECT_FALSE(config.camera_defs[1].mandatory);
-  EXPECT_EQ(config.camera_defs[1].enroll_hdr, "true");
-  EXPECT_EQ(config.camera_defs[1].enroll_averaging, "true");
-  EXPECT_EQ(config.camera_defs[1].enroll_average_frames, 5);
+  EXPECT_EQ(config.camera_defs.at(1).id, "cam2");
+  EXPECT_EQ(config.camera_defs.at(1).path, "/dev/video2");
+  EXPECT_EQ(config.camera_defs.at(1).type, "ir");
+  EXPECT_FALSE(config.camera_defs.at(1).mandatory);
+  EXPECT_EQ(config.camera_defs.at(1).enroll_hdr, "true");
+  EXPECT_EQ(config.camera_defs.at(1).enroll_averaging, "true");
+  EXPECT_EQ(config.camera_defs.at(1).enroll_average_frames, 5);
 }
 
 TEST_F(ConfigParsingTest, ToStringOutputContainsKeyElements) {
@@ -202,4 +200,55 @@ model_keep_alive_sec=120
   EXPECT_FALSE(config.gpu_flush);
   EXPECT_EQ(config.gpu_throttle_ms, 50);
   EXPECT_EQ(config.model_keep_alive_sec, 120);
+}
+
+TEST_F(ConfigParsingTest, RejectsMalformedSyntaxWithoutChangingActiveConfiguration) {
+  loadConfig("[Hardware]\nproximity_enforce=true\n[Auth]\nthreshold=0.8\n");
+  for (const std::string malformed : {"[Hardware\nproximity_enforce=false", "[ ]", "[Hardware]junk",
+                                      "proximity_enforce true", "=false", "name=\"unclosed"}) {
+    SCOPED_TRACE(malformed);
+    std::istringstream input(malformed);
+    EXPECT_FALSE(config.load(input));
+    EXPECT_TRUE(config.proximity_enforce);
+    EXPECT_FLOAT_EQ(config.threshold, 0.8f);
+  }
+}
+
+TEST_F(ConfigParsingTest, ReadFailurePreservesConfiguration) {
+  constexpr float kCustomThreshold = 0.8F;
+  config.threshold = kCustomThreshold;
+  std::istringstream input;
+  input.setstate(std::ios::badbit);
+  EXPECT_FALSE(config.load(input));
+  EXPECT_FLOAT_EQ(config.threshold, kCustomThreshold);
+}
+
+TEST_F(ConfigParsingTest, LateValueErrorPreservesEntireConfiguration) {
+  loadConfig("[Auth]\nthreshold=0.8\n[Hardware]\nproximity_enforce=true\n");
+  std::istringstream input("[Auth]\nthreshold=0.2\n[Cameras]\nnames=x\n[Camera.x]\nmandatory=typo\n");
+  EXPECT_FALSE(config.load(input));
+  EXPECT_FLOAT_EQ(config.threshold, 0.8f);
+  EXPECT_TRUE(config.proximity_enforce);
+}
+
+TEST_F(ConfigParsingTest, ListsTrimBothSidesAndIgnoreEmptyItems) {
+  loadConfig("[Hardware]\nprovider_priority= OpenCL , , CPU \n[Cameras]\nnames= a , , b \n");
+  EXPECT_EQ(config.provider_priority, (std::vector<std::string>{"OpenCL", "CPU"}));
+  ASSERT_EQ(config.camera_defs.size(), 2);
+  EXPECT_EQ(config.camera_defs.at(0).id, "a");
+  EXPECT_EQ(config.camera_defs.at(1).id, "b");
+}
+
+TEST_F(ConfigParsingTest, GpuFlushBooleanSpellings) {
+  for (const std::string value : {"true", "on", "yes", "1", "false", "off", "no", "0"}) {
+    loadConfig("[Performance]\ngpu_flush=" + value + "\n");
+    EXPECT_EQ(config.gpu_flush, value == "true" || value == "on" || value == "yes" || value == "1");
+  }
+}
+
+TEST_F(ConfigParsingTest, AuthenticationDeadlineMustBeBounded) {
+  for (const std::string value : {"0", "-1", "60001", "2147483647"}) {
+    std::istringstream input("[Auth]\ntimeout_ms=" + value);
+    EXPECT_FALSE(config.load(input));
+  }
 }

@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **KDE lock screen**: New `kde_lockscreen` setting (`auto`, `single_enter`, `legacy`). In `single_enter`, press Enter to scan; a recognized face unlocks without a second Enter. `auto` enables this when the KDE PAM stack contains a `pam_kwallet5.so` auth rule.
+- **`linuxcampam check-kde`**: Read-only report of the effective KDE lock-screen behavior; also available as `linuxcampam-setup-config --check-kde`.
+
+### Changed
+
+- On upgrade, systems with the stock Kubuntu KDE PAM stack and no explicit `confirmation_exempt_services` switch to `single_enter`. Set `kde_lockscreen = legacy` to keep the previous behavior.
+
+### Docs
+
+- Corrected the documented default `confirmation_exempt_services` list.
+
 ## [0.9.7.5] - 2026-06-10
 
 ### Added

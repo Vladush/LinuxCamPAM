@@ -57,9 +57,9 @@ Control how cameras behave and set recognition thresholds in the `[Auth]` sectio
 ```ini
 [Auth]
 policy = adaptive
-threshold = 0.363           ; Similarity threshold (lower = stricter). Default ~0.36-0.4.
+threshold = 0.363           ; Similarity threshold (higher = stricter). Default ~0.36-0.4.
 detection_threshold = 0.9   ; Face detection confidence (0.0-1.0).
-timeout_ms = 3000           ; Auth timeout in milliseconds.
+timeout_ms = 3000           ; Verification deadline (1-60000 milliseconds).
 max_embeddings = 5          ; Max face profiles per user (0 = unlimited).
 ```
 
@@ -160,13 +160,32 @@ Protect against brute-force attacks by limiting the number of consecutive failur
 lockout_attempts = 5
 lockout_duration_sec = 300
 require_confirmation = true
-confirmation_exempt_services = gdm-password, swaylock, login, kdm, lightdm, sddm
+confirmation_exempt_services = gdm-password, sddm, lightdm, login, swaylock, i3lock, xscreensaver, kscreenlocker, kde, systemd-user
 ```
 
 - **lockout_attempts**: Number of failed attempts before temporary lockout.
 - **lockout_duration_sec**: Duration of lockout in seconds (default 300s = 5 minutes).
 - **require_confirmation**: If `true` (default), blocks silent privilege escalation by requiring you to press `<Enter>` to invoke the camera, or type a password to seamlessly bypass face authentication altogether.
 - **confirmation_exempt_services**: A comma-separated list of PAM services that bypass the confirmation prompt. These are typically explicit login events where the camera should activate instantly to avoid user fatigue.
+
+#### KDE Lock Screen
+
+KDE Plasma handles facial authentication differently than other environments. To avoid being prompted for your password immediately after your face is scanned, LinuxCamPAM injects an empty token to trick the KWallet PAM module.
+
+```ini
+[Security]
+kde_lockscreen = auto
+```
+
+| Mode | Behavior |
+| --- | --- |
+| `auto` (default) | Analyzes your KDE PAM stack. Uses `single_enter` if a KWallet auth rule is found, otherwise uses `legacy`. |
+| `single_enter` | Forces injection of the empty token. Bypasses the extra KWallet prompt. Requires you to press Enter to initiate a scan (unless explicitly exempted). |
+| `legacy` | Does not inject an empty token. KDE will ask for an empty password after scanning. |
+
+*Upgrade Note:* If you relied on the `kde` service being exempt from confirmation in older versions (where the camera activated immediately on lock), and your stack automatically resolves to `single_enter`, you will now need to press Enter to scan. You can opt out by setting `kde_lockscreen = legacy`.
+
+*Manual Fallback:* If your distribution's PAM stack isn't auto-detected, you can manually remove the `auth optional pam_kwallet5.so` line from `/etc/pam.d/kde`.
 
 ### Advanced Configuration Security
 
@@ -228,3 +247,15 @@ gpu_throttle_ms = 50
 - **gpu_throttle_ms**: Sleep time between heavy GPU operations. Default: `20` (prevents UI lag on integrated graphics).
 
 **Note:** The daemon wipes `~/.cache/opencv` on startup - old cached kernels can cause hangs after Mesa updates.
+
+Authentication runs in a supervised worker process. The configured deadline includes
+model loading, camera capture, and inference. On timeout, the daemon terminates the
+worker and its IR helper processes before accepting another camera operation.
+The next verification starts a fresh worker; lockout counters stay in the daemon.
+PAM waits for the configured deadline plus four seconds for IPC. Walk-away locking
+uses an independent timer and continues during verification, enrollment, or training.
+
+Malformed INI syntax, invalid recognized values, and configuration read errors reject
+the new configuration. A missing configuration file continues to use defaults.
+If an enforced proximity sensor disconnects or returns a read error, authentication
+is denied until presence is reported again (restart the service to reconnect a failed sensor).

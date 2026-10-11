@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <ctime>
 #include <gtest/gtest.h>
 #include <string>
@@ -11,11 +12,9 @@ using json = nlohmann::json;
 bool isValidLabel(const std::string &label) {
   if (label.empty() || label.length() > 32)
     return false;
-  for (char c : label) {
-    if (!std::isalnum(c) && c != '_' && c != '-')
-      return false;
-  }
-  return true;
+  return std::all_of(label.begin(), label.end(), [](char c) {
+    return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-';
+  });
 }
 
 TEST(LabelValidationTest, ValidLabels) {

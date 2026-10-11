@@ -2,8 +2,8 @@
 #include "constants.hpp"
 #include "logger.hpp"
 #include "utils.hpp"
+#include "../common/config_parser.hpp"
 
-#include <charconv>
 #include <fcntl.h>
 #include <fstream>
 #include <iostream>
@@ -15,87 +15,86 @@
 
 namespace {
 
+constexpr int kMaxBrightness = 255;
+constexpr int kMaxConfidence = 100;
+
 // Helper to parse INI stream
 std::unordered_map<std::string, std::string>
 parse_ini_stream(std::istream &input) {
   std::unordered_map<std::string, std::string> result;
   std::string line, current_section;
+  config_parser::IniData data;
+  size_t line_number = 0;
   while (std::getline(input, line)) {
-    // Trim
-    line.erase(0, line.find_first_not_of(" \t"));
-    if (line.empty() || line[0] == ';')
-      continue;
-    auto last = line.find_last_not_of(" \t");
-    if (last != std::string::npos)
-      line.erase(last + 1);
-
-    if (line[0] == '[' && line.back() == ']') {
-      current_section = line.substr(1, line.size() - 2);
-    } else {
-      size_t eq = line.find('=');
-      if (eq != std::string::npos) {
-        std::string key = line.substr(0, eq);
-        key.erase(key.find_last_not_of(" \t") + 1);
-        std::string val = line.substr(eq + 1);
-        val.erase(0, val.find_first_not_of(" \t"));
-        std::string full_key = current_section;
-        full_key += '.';
-        full_key += key;
-        result[full_key] = val;
-      }
+    ++line_number;
+    try {
+      config_parser::parse_ini_line(line, current_section, data);
+    } catch (const std::invalid_argument &error) {
+      throw std::invalid_argument("Line " + std::to_string(line_number) + ": " + error.what());
+    }
+  }
+  if (input.bad() || (input.fail() && !input.eof()))
+    throw std::invalid_argument("Could not read configuration stream");
+  for (const auto& [section, keys] : data) {
+    for (const auto& [k, v] : keys) {
+      std::string full_key = section;
+      if (!full_key.empty()) full_key += '.';
+      full_key += k;
+      result[full_key] = v;
     }
   }
   return result;
 }
 
-// Safe int parsing without exceptions
-inline std::optional<int> parse_int(std::string_view str) {
-  if (str.empty())
-    return std::nullopt;
-  int out = 0;
-  auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), out);
-  if (ec == std::errc{})
-    return out;
-  return std::nullopt;
+inline std::optional<int> parse_int(std::string_view str, int min_val = std::numeric_limits<int>::min(), int max_val = std::numeric_limits<int>::max()) {
+  return config_parser::parse_int_strict(str, min_val, max_val);
 }
 
-// Safe float parsing (from_chars float support varies by compiler)
-inline std::optional<float> parse_float(std::string_view str) {
-  if (str.empty())
-    return std::nullopt;
-#if defined(__cpp_lib_to_chars) && __cpp_lib_to_chars >= 201611L
-  float out = 0.0f;
-  auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), out);
-  if (ec == std::errc{})
-    return out;
-  return std::nullopt;
-#else
-  try {
-    return std::stof(std::string(str));
-  } catch (...) {
-    return std::nullopt;
-  }
-#endif
+inline std::optional<float> parse_float(std::string_view str, float min_val = -std::numeric_limits<float>::infinity(), float max_val = std::numeric_limits<float>::infinity()) {
+  return config_parser::parse_float_strict(str, min_val, max_val);
+}
+
+inline std::optional<bool> parse_bool(std::string_view str) {
+  return config_parser::parse_bool_strict(str);
 }
 
 } // namespace
 
 bool Configuration::load(const fs::path &config_path,
                          const linuxcampam::ICameraBackend *backend) {
-  std::ifstream file(config_path);
-  if (!file.is_open()) {
-    // Loading defaults is considered valid if the file is absent.
-    // Execution proceeds with an empty stream.
+  std::error_code error;
+  const auto status = fs::status(config_path, error);
+  if (error == std::errc::no_such_file_or_directory || (!error && !fs::exists(status))) {
+    // Missing config file is acceptable: load default configuration
     std::stringstream ss;
     return load(ss, backend);
+  }
+  if (error || !fs::is_regular_file(status)) {
+    log_error("Configuration is not a readable regular file: " + config_path.string());
+    return false;
+  }
+  std::ifstream file(config_path);
+  if (!file.is_open()) {
+    log_error("Failed to open configuration file: " + config_path.string());
+    return false;
   }
   return load(file, backend);
 }
 
 bool Configuration::load(std::istream &input,
                          const linuxcampam::ICameraBackend *backend) {
-  parse_ini_into_self(input, backend);
-  return true;
+  Configuration temp;
+  try {
+    temp.parse_ini_into_self(input, backend);
+    *this = std::move(temp);
+    return true;
+  } catch (const std::ios_base::failure &e) {
+    log_error("Configuration read error: " + std::string(e.what()));
+    return false;
+  } catch (const std::invalid_argument &e) {
+    log_error("Configuration error: " + std::string(e.what()));
+    return false;
+  }
 }
 
 void Configuration::parse_ini_into_self(
@@ -105,24 +104,38 @@ void Configuration::parse_ini_into_self(
     return ini.count(key) ? ini.at(key) : def;
   };
 
+  auto get_int = [&](const std::string &key, const std::string &def, int min_val = std::numeric_limits<int>::min(), int max_val = std::numeric_limits<int>::max()) {
+    std::string str = get(key, def);
+    if (auto val = parse_int(str, min_val, max_val)) return *val;
+    throw std::invalid_argument("Invalid integer or out of bounds for " + key + ": " + str);
+  };
+  auto get_float = [&](const std::string &key, const std::string &def, float min_val = -std::numeric_limits<float>::infinity(), float max_val = std::numeric_limits<float>::infinity()) {
+    std::string str = get(key, def);
+    if (auto val = parse_float(str, min_val, max_val)) return *val;
+    throw std::invalid_argument("Invalid float or out of bounds for " + key + ": " + str);
+  };
+  auto get_bool = [&](const std::string &key, const std::string &def) {
+    std::string str = get(key, def);
+    if (auto val = parse_bool(str)) return *val;
+    throw std::invalid_argument("Invalid boolean for " + key + ": " + str);
+  };
+
+
   // Logic ported from AuthEngine::init
   // General & Auth (Support both for backward compatibility, prefer [Auth])
   // General.threshold (Legacy) vs Auth.threshold
-  std::string th_str = get("Auth.threshold");
-  if (th_str.empty())
-    th_str = get("General.threshold", std::to_string(DEFAULT_THRESHOLD));
-  if (auto val = parse_float(th_str)) threshold = *val;
+  threshold = get_float("Auth.threshold",
+                        get("General.threshold", std::to_string(DEFAULT_THRESHOLD)),
+                        0.0f, 1.0f);
 
-  std::string dt_str = get("Auth.detection_threshold");
-  if (dt_str.empty())
-    dt_str = get("General.detection_threshold",
-                 std::to_string(DEFAULT_DETECTION_THRESHOLD));
-  if (auto val = parse_float(dt_str)) detection_threshold = *val;
+  detection_threshold = get_float(
+      "Auth.detection_threshold",
+      get("General.detection_threshold", std::to_string(DEFAULT_DETECTION_THRESHOLD)),
+      0.0f, 1.0f);
 
-  std::string to_str = get("Auth.timeout_ms");
-  if (to_str.empty())
-    to_str = get("General.timeout_ms", std::to_string(DEFAULT_TIMEOUT_MS));
-  if (auto val = parse_int(to_str)) timeout_ms = *val;
+  timeout_ms = get_int("Auth.timeout_ms",
+                       get("General.timeout_ms", std::to_string(DEFAULT_TIMEOUT_MS)),
+                       1, linuxcampam::MAX_AUTH_TIMEOUT_MS);
 
   log_level = get("General.log_level", "info");
   log_file = get("General.log_file", "");
@@ -131,17 +144,20 @@ void Configuration::parse_ini_into_self(
   std::string method = get("Auth.policy");
   if (method.empty()) {
     // Fallback to General
-    method = get("General.auth_method", "adaptive");
-    if (ini.count("General.policy"))
+    method = get("General.auth_method");
+    if (method.empty() && ini.count("General.policy"))
       method = get("General.policy");
   }
 
-  if (method == "strict_all" || method == "2fa" || method == "strict")
+  if (method.empty() || method == "adaptive")
+    policy = AuthPolicy::ADAPTIVE;
+  else if (method == "strict_all" || method == "2fa" || method == "strict")
     policy = AuthPolicy::STRICT_ALL;
   else if (method == "lenient_any" || method == "1fa" || method == "lenient")
     policy = AuthPolicy::LENIENT_ANY;
   else
-    policy = AuthPolicy::ADAPTIVE;
+    throw std::invalid_argument("Invalid auth policy: " + method);
+
 
   // Paths
   if (ini.count("Paths.users_dir"))
@@ -153,52 +169,34 @@ void Configuration::parse_ini_into_self(
 
   // Limits
   // Can be in Auth or General
-  std::string me_str = get("Auth.max_embeddings");
-  if (me_str.empty())
-    me_str =
-        get("General.max_embeddings", std::to_string(DEFAULT_MAX_EMBEDDINGS));
-  if (auto val = parse_int(me_str)) max_embeddings = *val;
+  max_embeddings = get_int(
+      "Auth.max_embeddings",
+      get("General.max_embeddings", std::to_string(DEFAULT_MAX_EMBEDDINGS)), 0);
 
   // Capture Settings (Global)
   if (ini.count("Capture.enroll_hdr"))
     enroll_hdr = get("Capture.enroll_hdr");
   if (ini.count("Capture.enroll_averaging"))
-    enroll_averaging = (get("Capture.enroll_averaging") == "on" ||
-                        get("Capture.enroll_averaging") == "true");
-  if (auto val = parse_int(get("Capture.enroll_average_frames",
-                std::to_string(DEFAULT_ENROLL_AVG_FRAMES))))
-    enroll_average_frames = *val;
+    enroll_averaging = get_bool("Capture.enroll_averaging", "false");
+  enroll_average_frames = get_int("Capture.enroll_average_frames", std::to_string(DEFAULT_ENROLL_AVG_FRAMES));
 
   if (ini.count("Capture.verify_averaging"))
-    verify_averaging = (get("Capture.verify_averaging") == "on" ||
-                        get("Capture.verify_averaging") == "true");
-  if (auto val = parse_int(get("Capture.verify_average_frames",
-                std::to_string(DEFAULT_VERIFY_AVG_FRAMES))))
-    verify_average_frames = *val;
+    verify_averaging = get_bool("Capture.verify_averaging", "false");
+  verify_average_frames = get_int("Capture.verify_average_frames", std::to_string(DEFAULT_VERIFY_AVG_FRAMES));
 
   // Cameras
   std::string cam_names = get("Cameras.names", "");
   if (!cam_names.empty()) {
-    std::stringstream ss(cam_names);
-    std::string id;
-    while (std::getline(ss, id, ',')) {
-      // Trim logic
-      id.erase(0, id.find_first_not_of(" \t"));
-      id.erase(id.find_last_not_of(" \t") + 1);
-      if (id.empty())
-        continue;
-
+    for (const auto &id : config_parser::split_trimmed(cam_names)) {
       CameraDefinition def;
       def.id = id;
       def.path = get("Camera." + id + ".path", "/dev/video0");
       def.type = get("Camera." + id + ".type", "generic");
-      std::string mb_str = get("Camera." + id + ".min_brightness", "0");
-      if (auto val = parse_int(mb_str)) def.min_brightness = *val;
-      def.mandatory = (get("Camera." + id + ".mandatory", "false") == "true");
+      def.min_brightness = get_int("Camera." + id + ".min_brightness", "0", 0, kMaxBrightness);
+      def.mandatory = get_bool("Camera." + id + ".mandatory", "false");
       def.enroll_hdr = get("Camera." + id + ".enroll_hdr", "");
       def.enroll_averaging = get("Camera." + id + ".enroll_averaging", "");
-      std::string eaf_str = get("Camera." + id + ".enroll_average_frames", "0");
-      if (auto val = parse_int(eaf_str)) def.enroll_average_frames = *val;
+      def.enroll_average_frames = get_int("Camera." + id + ".enroll_average_frames", "0");
 
       camera_defs.push_back(def);
     }
@@ -210,10 +208,8 @@ void Configuration::parse_ini_into_self(
       if (!path_ir.empty())
         camera_defs.push_back({"ir", path_ir, "ir", 0, true});
       if (!path_rgb.empty()) {
-        int mb = linuxcampam::DEFAULT_MIN_BRIGHTNESS;
-        std::string hmb_str = get("Hardware.min_brightness",
-                                  std::to_string(linuxcampam::DEFAULT_MIN_BRIGHTNESS));
-        if (auto val = parse_int(hmb_str)) mb = *val;
+        int mb = get_int("Hardware.min_brightness",
+                         std::to_string(linuxcampam::DEFAULT_MIN_BRIGHTNESS), 0, kMaxBrightness);
         camera_defs.push_back({"rgb", path_rgb, "rgb", mb, false});
       }
     } else {
@@ -243,7 +239,7 @@ void Configuration::parse_ini_into_self(
           camera_defs.push_back({"ir", ir_p, "ir", 0, true});
         } else {
           camera_defs.push_back(
-              {"cam0", detected[0].first, "generic", 0, true});
+              {"cam0", detected.front().first, "generic", 0, true});
         }
       } else {
         log_warn("No cameras detected during config load.");
@@ -256,15 +252,7 @@ void Configuration::parse_ini_into_self(
   std::string priority_str = get("Hardware.provider_priority", "");
   log_debug("Raw provider_priority: '" + priority_str + "'");
 
-  if (!priority_str.empty()) {
-    std::stringstream ss(priority_str);
-    std::string segment;
-    while (std::getline(ss, segment, ',')) {
-      segment.erase(0, segment.find_first_not_of(" \t"));
-      if (!segment.empty())
-        provider_priority.push_back(segment);
-    }
-  }
+  provider_priority = config_parser::split_trimmed(priority_str);
   if (provider_priority.empty()) {
     log_debug("Using defaults for provider_priority");
     provider_priority = {"OpenCL", "CPU"};
@@ -279,54 +267,58 @@ void Configuration::parse_ini_into_self(
     proximity_sensor = ProximitySensorMode::ENABLED;
   } else if (prox_str == "false" || prox_str == "off" || prox_str == "disabled") {
     proximity_sensor = ProximitySensorMode::DISABLED;
-  } else {
+  } else if (prox_str == "auto") {
     proximity_sensor = ProximitySensorMode::AUTO;
+  } else {
+    throw std::invalid_argument("Invalid proximity_sensor mode: " + prox_str);
   }
   proximity_sensor_id = get("Hardware.proximity_sensor_id", "ITE8353");
-  proximity_enforce = (get("Hardware.proximity_enforce", "false") == "true");
+  proximity_enforce = get_bool("Hardware.proximity_enforce", "false");
 
   // Proximity Wake/Lock
-  wake_enabled = (get("Proximity.wake_enabled", "true") == "true");
-  always_wake_on_presence_detected = (get("Proximity.always_wake_on_presence_detected", "true") == "true");
-  if (auto val = parse_int(get("Proximity.wake_confidence_threshold", "50"))) wake_confidence_threshold = *val;
-  lock_enabled = (get("Proximity.lock_enabled", "false") == "true");
-  if (auto val = parse_int(get("Proximity.lock_confidence_threshold", "5"))) lock_confidence_threshold = *val;
-  if (auto val = parse_int(get("Proximity.lock_timeout_seconds", "10"))) lock_timeout_seconds = *val;
+  wake_enabled = get_bool("Proximity.wake_enabled", "true");
+  always_wake_on_presence_detected = get_bool("Proximity.always_wake_on_presence_detected", "true");
+  wake_confidence_threshold = get_int("Proximity.wake_confidence_threshold", "50", 0, kMaxConfidence);
+  lock_enabled = get_bool("Proximity.lock_enabled", "false");
+  lock_confidence_threshold = get_int("Proximity.lock_confidence_threshold", "5", 0, kMaxConfidence);
+  lock_timeout_seconds = get_int("Proximity.lock_timeout_seconds", "10", 0);
   lock_command = get("Proximity.lock_command", "loginctl lock-sessions");
 
   // Other settings
-  save_success = (get("Storage.save_success_images") == "true");
-  save_fail = (get("Storage.save_fail_images") == "true");
-  if (auto val = parse_int(get("Performance.model_keep_alive_sec", "0"))) model_keep_alive_sec = *val;
-  if (auto val = parse_int(get("Security.lockout_attempts", "5"))) lockout_attempts = *val;
-  if (auto val = parse_int(get("Security.lockout_duration_sec", "300"))) lockout_duration_sec = *val;
+  if (ini.count("Storage.save_success_images")) save_success = get_bool("Storage.save_success_images", "false");
+  if (ini.count("Storage.save_fail_images")) save_fail = get_bool("Storage.save_fail_images", "false");
+  model_keep_alive_sec = get_int("Performance.model_keep_alive_sec", "0", 0);
+  if (ini.count("Security.lockout_attempts") || ini.count("General.lockout_attempts")) {
+    std::string val_str = get("Security.lockout_attempts", get("General.lockout_attempts"));
+    auto val = parse_int(val_str);
+    if (!val) {
+      throw std::invalid_argument("Invalid integer for lockout_attempts: " + val_str);
+    }
+    lockout_attempts = (*val < 1) ? DEFAULT_LOCKOUT_ATTEMPTS : *val;
+  }
+
+  if (ini.count("Security.lockout_duration_sec") || ini.count("General.lockout_duration_sec")) {
+    std::string val_str = get("Security.lockout_duration_sec", get("General.lockout_duration_sec"));
+    auto val = parse_int(val_str);
+    if (!val) {
+      throw std::invalid_argument("Invalid integer for lockout_duration_sec: " + val_str);
+    }
+    lockout_duration_sec = (*val < 1) ? DEFAULT_LOCKOUT_DURATION_SEC : *val;
+  }
 
   // Minimal UID (shared with PAM module)
   // Int is used for parsing, then cast to uid_t
-  int min_uid_int = linuxcampam::DEFAULT_MIN_UID;
-  // Parse from [Security] section mostly
-  // Note: The PAM module implements specific fallback logic to [General], 
-  // mapping [Security] > First Found > Default. 
-  // Security.min_uid is explicitly prioritized here.
-  std::string uid_str = get("Security.min_uid");
-  if (uid_str.empty()) {
-    uid_str = get("General.min_uid"); // Fallback check
+  if (ini.count("Security.min_uid") || ini.count("General.min_uid")) {
+    std::string uid_str = get("Security.min_uid", get("General.min_uid"));
+    auto val = parse_int(uid_str);
+    if (!val) {
+      throw std::invalid_argument("Invalid integer for min_uid: " + uid_str);
+    }
+    min_uid = (*val < 0) ? linuxcampam::DEFAULT_MIN_UID : static_cast<uid_t>(*val);
   }
 
-  // default string if both empty
-  if (uid_str.empty()) {
-    min_uid_int = linuxcampam::DEFAULT_MIN_UID;
-  } else {
-    if (auto val = parse_int(uid_str)) min_uid_int = *val;
-  }
-
-  // Safety check (similar to PAM module negative check, though parse_int
-  // handles some)
-  if (min_uid_int < 0)
-    min_uid_int = linuxcampam::DEFAULT_MIN_UID;
-  min_uid = static_cast<uid_t>(min_uid_int);
-  gpu_flush = (get("Performance.gpu_flush", "on") == "on");
-  if (auto val = parse_int(get("Performance.gpu_throttle_ms", "20"))) gpu_throttle_ms = *val;
+  gpu_flush = get_bool("Performance.gpu_flush", "true");
+  gpu_throttle_ms = get_int("Performance.gpu_throttle_ms", "20", 0);
 }
 
 std::string Configuration::toString() const {
@@ -398,10 +390,13 @@ std::string Configuration::toString() const {
   ss << "  GPU Flush: " << (gpu_flush ? "On" : "Off") << "\n";
   ss << "  GPU Throttle: " << gpu_throttle_ms << " ms\n";
   ss << "  Provider Priority: ";
-  for (size_t i = 0; i < provider_priority.size(); ++i) {
-    ss << provider_priority[i];
-    if (i < provider_priority.size() - 1)
+  bool first = true;
+  for (const auto &provider : provider_priority) {
+    if (!first) {
       ss << " > ";
+    }
+    ss << provider;
+    first = false;
   }
   ss << "\n";
 

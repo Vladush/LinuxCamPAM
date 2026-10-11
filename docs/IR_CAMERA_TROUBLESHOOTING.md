@@ -80,6 +80,7 @@ xdg-open /var/log/linuxcampam/failed_enroll_cam_ir_username.jpg
 ## IR Emitter Not Activating
 
 If the saved frame is nearly black, your IR lights are not turning on.
+**First, check your physical shutter switch if your laptop has one!** Many laptops have a hardware shutter that disconnects the camera or covers it.
 
 1. Verify `linux-enable-ir-emitter` is installed:
 

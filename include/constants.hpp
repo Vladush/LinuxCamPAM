@@ -9,6 +9,10 @@ inline constexpr const char *SOCKET_PATH = "/run/linuxcampam/socket";
 inline constexpr const char *CONFIG_PATH = "/etc/linuxcampam/config.ini";
 inline constexpr const char *USERS_DIR = "/etc/linuxcampam/users";
 inline constexpr const char *MODELS_DIR = "/usr/share/linuxcampam/models";
+inline constexpr const char *DETECTOR_MODEL_FILE =
+    "face_detection_yunet_2023mar.onnx";
+inline constexpr const char *RECOGNIZER_MODEL_FILE =
+    "face_recognition_sface_2021dec.onnx";
 inline constexpr const char *IR_EMITTER_PATH =
     "/usr/local/bin/linux-enable-ir-emitter";
 
@@ -16,6 +20,10 @@ inline constexpr size_t MAX_USERNAME_LENGTH = 32;
 inline constexpr int SECURE_FILE_MODE = 0600;
 inline constexpr double RGB_CHANNELS = 3.0;
 inline constexpr uid_t DEFAULT_MIN_UID = 1000;
+
+inline constexpr int DEFAULT_AUTH_TIMEOUT_MS = 3000;
+inline constexpr int MAX_AUTH_TIMEOUT_MS = 60000;
+inline constexpr int AUTH_IPC_MARGIN_MS = 4000;
 
 // Camera & Auth constants
 inline constexpr int CAMERA_WARMUP_FRAMES = 10;

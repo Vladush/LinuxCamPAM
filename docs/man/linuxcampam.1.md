@@ -52,6 +52,9 @@ linuxcampam - Command line interface for LinuxCamPAM face authentication system
 **show-config**
 :   Display the currently active configuration merged from defaults and config file.
 
+**check-kde** [*--brief*]
+:   Read-only report of the effective KDE lock-screen behavior. It scans the configuration and PAM stack to determine if the `single_enter` token injection applies.
+
 **debug** [*on*|*off*]
 :   Toggle debug logging in the daemon at runtime.
 

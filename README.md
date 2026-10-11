@@ -36,7 +36,7 @@ Since open-sourcing, I've put effort into making it hardware-agnostic and well-d
 - **Zero-Interaction Login**: Automatically wakes your displays and logs you in the moment you sit down, then automatically locks the OS when you walk away. (See [Threat Model](docs/THREAT_MODEL_AND_RISK_ASSESSMENT.md) for related security considerations, including walk-by unlocks and physical coercion).
 - **Universal Confirmation & Password Fallback**: Prevent silent privilege escalation via active user intent confirmation (`<Enter>`) for sensitive PAM actions like `sudo` or `su`, with an instant bypass for legacy passwords.
 - **Multi-Embedding Support**: Store multiple face embeddings per user for different lighting (`linuxcampam list`, `train --new`).
-- **PAM Integration**: Standard PAM module for Debian/Ubuntu.
+- **PAM Integration**: Standard PAM module for Debian/Ubuntu. (See the [Configuration Guide](docs/CONFIGURATION.md) for KDE lock screen support).
 - **Security First**: [Threat Model & Risk Assessment](docs/THREAT_MODEL_AND_RISK_ASSESSMENT.md) included.
 
 ## System Requirements
@@ -65,6 +65,8 @@ sudo apt install ./linuxcampam_*.deb
 That's it! `apt` handles all dependencies for you.
 
 ### Option B: Build from Source (Quickest System Build)
+
+This installer targets Kubuntu, Ubuntu, and Debian. For Arch Linux, use the [makepkg self-build instructions](#arch-linux-build-community-add-on) below.
 
 1. **Install Build Tools**:
 
@@ -112,14 +114,6 @@ cmake ..
 cpack -G DEB
 ```
 
-### Build Options (CMake)
-
-When building from source, you can customize the compilation by passing variables to `cmake`.
-
-| CMake Option | Default | Description |
-| :--- | :--- | :--- |
-| `-DDISABLE_WELCOME_MESSAGE=ON` | `OFF` | Completely strips the welcome message logic from the compiled PAM module and executable. This provides maximum stealth and security, ignoring any INI or PAM arguments. |
-
 Then install the generated package:
 
 ```bash
@@ -128,8 +122,83 @@ sudo apt install ./linuxcampam_*.deb
 
 The package installation will automatically backup your PAM config, configure the cameras, and enable the module.
 
+### Build Options (CMake)
+
+When building from source, you can customize the compilation by passing variables to `cmake`.
+
+| CMake Option | Default | Description |
+| :--- | :--- | :--- |
+| `-DDISABLE_WELCOME_MESSAGE=ON` | `OFF` | Completely strips the welcome message logic from the compiled PAM module and executable. This provides maximum stealth and security, ignoring any INI or PAM arguments. |
+
 > [!TIP]
 > **Visual Guide**: detailed flowcharts for installation and enrollment are available in the [User Flows Guide](docs/USER_FLOWS.md).
+
+### Arch Linux Build (Community Add-on)
+
+Kubuntu, Ubuntu, Debian, and their source-build workflows remain the primary targets. Arch Linux has an additional `makepkg` route that builds from source and lets pacman manage installation, upgrades, and removal. CI checks the package on Arch Linux x86_64; camera and PAM authentication still need testing on your hardware. Other architectures and derivatives are not verified by that job.
+
+First perform a full system upgrade, then install the build tools and obtain the recipe:
+
+```bash
+sudo pacman -Syu
+sudo pacman -S --needed base-devel git
+git clone https://github.com/Vladush/LinuxCamPAM.git
+cd LinuxCamPAM/arch
+makepkg -si
+```
+
+Run `makepkg` as your normal user; it requests elevated privileges to install dependencies and the resulting package. The `linuxcampam-git` recipe builds the latest upstream default branch, rather than changes in your local checkout. It builds static OpenCV and includes the face models. Arch users should use this route instead of `scripts/install.sh`, which configures Debian-family PAM integration.
+
+**Post-Installation (Arch Linux):**
+The package leaves initial service activation and PAM configuration to you. Complete these steps in order:
+
+1. **Configure your cameras:**
+
+   ```bash
+   sudo linuxcampam-setup-config
+   ```
+
+2. **Enable and start the daemon:**
+
+   ```bash
+   sudo systemctl enable --now linuxcampam
+   ```
+
+   If it was already running when you changed camera settings, run `sudo systemctl restart linuxcampam` to load them.
+
+3. **Enroll and test your own account:**
+
+   ```bash
+   sudo linuxcampam add "$USER"
+   linuxcampam test
+   ```
+
+   Continue only after the test reports `HW_OK | AUTH_SUCCESS`.
+
+4. **Enable face authentication for one PAM service:**
+
+   Start with `sudo` and keep the shared `/etc/pam.d/system-auth` unchanged. Open a root shell with `sudo -i` and leave it open while testing. From that shell, back up the current configuration:
+
+   ```bash
+   cp -a /etc/pam.d/sudo /etc/pam.d/sudo.linuxcampam.bak
+   ```
+
+   For the default password-only `sudo` stack, insert these three lines immediately before its existing `auth include system-auth` line:
+
+   ```text
+   auth requisite pam_faillock.so preauth
+   auth [success=ok default=1] pam_linuxcampam.so
+   auth sufficient pam_faillock.so authsucc
+   auth include system-auth
+   ```
+
+   The final line above is the existing password fallback: keep it, along with all `account` and `session` rules. Face authentication checks the lockout first, clears the failure count on success, and skips `authsucc` on failure to reach the password stack. Adapt customized MFA or systemd-homed stacks separately; this example assumes the default password-only stack. See [PAM control semantics](https://man.archlinux.org/man/pam.d.5.en) and [pam_faillock](https://man.archlinux.org/man/pam_faillock.8.en).
+
+5. **Verify both face authentication and password fallback:**
+
+   In a second terminal, run `sudo -k` followed by `sudo -v` to test face authentication without a cached sudo credential. From the retained root shell, run `systemctl stop linuxcampam`, then repeat `sudo -k` and `sudo -v` in the second terminal to verify password authentication. Start the daemon again with `systemctl start linuxcampam` from the root shell.
+
+   If either path fails, restore the backup from the retained root shell with `cp -a /etc/pam.d/sudo.linuxcampam.bak /etc/pam.d/sudo`. Keep that shell open until both paths work. Remove the added PAM rules before uninstalling the package. Configure other services individually after validating `sudo`; KDE lock-screen behavior is covered in the [Configuration Guide](docs/CONFIGURATION.md).
 
 ### Build Dependencies & Compatibility
 
@@ -139,14 +208,20 @@ The package installation will automatically backup your PAM config, configure th
 
 These are required to **compile** the project from source (Options B & C).
 
-| Package                      | Purpose                                     |
-| :--------------------------- | :------------------------------------------ |
-| `cmake`, `build-essential`   | Build system                                |
-| `libpam0g-dev`               | PAM module development headers              |
-| `libudev-dev`                | Required for HIDAPI proximity sensor [2]    |
-| `v4l-utils`                  | Camera detection tools (also a runtime dep) |
-| `curl` / `wget`              | Downloading models and dependencies         |
-| `ninja-build` *(optional)*   | Faster builds (recommended)                 |
+| Debian/Ubuntu Package        | Arch Linux Package    | Purpose                                     |
+| :--------------------------- | :-------------------- | :------------------------------------------ |
+| `cmake`, `build-essential`   | `cmake`, `base-devel` | Build system                                |
+| `libpam0g-dev`               | `pam`                 | PAM module development headers              |
+| `libudev-dev`                | `systemd`             | Required for HIDAPI proximity sensor [2]    |
+| `v4l-utils`                  | `v4l-utils`           | Camera detection tools (also a runtime dep) |
+| `curl` / `wget`              | `wget`                | Downloading models and dependencies         |
+| `ninja-build` *(optional)*   | `ninja`               | Faster builds (recommended)                 |
+| `libjsoncpp-dev`             | `jsoncpp`             | JSON configuration parsing                  |
+| `nlohmann-json3-dev`         | `nlohmann-json`       | Modern JSON C++ library                     |
+| `libhidapi-dev`              | `hidapi`              | Proximity sensor communication              |
+| `libgmock-dev`               | `gtest`               | Testing framework                           |
+| `pkg-config`                 | `pkgconf`             | Library configuration                       |
+| `clang`                      | `clang`               | C/C++ compiler alternative                  |
 
 > [2] **libudev-dev Troubleshooting**: This is a hard dependency for `hidapi` (via `pkg-config`). On Ubuntu/Debian, the package is `libudev-dev`. On RedHat/Fedora/CentOS-based distributions, it is typically named `systemd-devel` or `libudev-devel`. If CMake fails on `PkgConfig::HIDAPI`, ensure these headers are installed.
 >
@@ -179,10 +254,11 @@ The configuration file is at `/etc/linuxcampam/config.ini`.
 
 > **Need help choosing a config?** Check the [Configuration Decision Tree](docs/USER_FLOWS.md#2-configuration-helper-which-setup-is-right-for-me).
 
-The installer runs a smart detection script (`linuxcampam-setup-config`) to auto-configure your cameras. You can re-run this at any time:
+The Debian/Ubuntu installer runs a smart detection script (`linuxcampam-setup-config`) to auto-configure your cameras. Arch users run it during the manual setup above. You can re-run it at any time, then restart the daemon to load the new settings:
 
 ```bash
 sudo linuxcampam-setup-config
+sudo systemctl restart linuxcampam
 ```
 
 *(Note: To lock the configuration non-interactively in automated deployments, append the `--lock` flag).*
@@ -196,7 +272,7 @@ For advanced policies (e.g., Mandatory IR + Optional RGB), see the [Configuratio
 **Enroll a User:**
 
 ```bash
-linuxcampam add <username>
+sudo linuxcampam add <username>
 ```
 
 **Train (Update) User Model:**
