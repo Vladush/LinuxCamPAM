@@ -257,7 +257,8 @@ if(TARGET gtest)
     target_include_directories(deadline_worker_fixture PRIVATE src include)
     target_compile_definitions(linuxcampam_tests PRIVATE
         DEADLINE_WORKER_FIXTURE="$<TARGET_FILE:deadline_worker_fixture>"
-        LINUXCAMPAMD_EXECUTABLE="$<TARGET_FILE:linuxcampamd>")
+        LINUXCAMPAMD_EXECUTABLE="$<TARGET_FILE:linuxcampamd>"
+        LINUXCAMPAM_TEST_MODELS_DIR="${CMAKE_SOURCE_DIR}/models")
     add_dependencies(linuxcampam_tests deadline_worker_fixture linuxcampamd)
     
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")

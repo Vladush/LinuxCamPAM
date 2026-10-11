@@ -9,6 +9,10 @@ inline constexpr const char *SOCKET_PATH = "/run/linuxcampam/socket";
 inline constexpr const char *CONFIG_PATH = "/etc/linuxcampam/config.ini";
 inline constexpr const char *USERS_DIR = "/etc/linuxcampam/users";
 inline constexpr const char *MODELS_DIR = "/usr/share/linuxcampam/models";
+inline constexpr const char *DETECTOR_MODEL_FILE =
+    "face_detection_yunet_2023mar.onnx";
+inline constexpr const char *RECOGNIZER_MODEL_FILE =
+    "face_recognition_sface_2021dec.onnx";
 inline constexpr const char *IR_EMITTER_PATH =
     "/usr/local/bin/linux-enable-ir-emitter";
 
