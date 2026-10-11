@@ -32,7 +32,7 @@ TEST_F(AuthConfigTest, UsesDefaultsWhenConfigMissing) {
 
   // Verify Provider Priority Default (Should contain OpenCL)
   ASSERT_FALSE(config.provider_priority.empty());
-  EXPECT_EQ(config.provider_priority[0], "OpenCL");
+  EXPECT_EQ(config.provider_priority.at(0), "OpenCL");
 }
 
 TEST_F(AuthConfigTest, ParsesValidValues) {
@@ -71,8 +71,8 @@ model_keep_alive_sec = 120
 
   // Hardware
   ASSERT_EQ(config.provider_priority.size(), 4);
-  EXPECT_EQ(config.provider_priority[0], "CUDA");
-  EXPECT_EQ(config.provider_priority[1], "OpenVINO");
+  EXPECT_EQ(config.provider_priority.at(0), "CUDA");
+  EXPECT_EQ(config.provider_priority.at(1), "OpenVINO");
 
   // Security
   EXPECT_EQ(config.lockout_attempts, 3);
@@ -161,8 +161,9 @@ TEST(SecurityTest, UsernameSanitizationAlgorithm) {
 }
 
 TEST_F(AuthConfigTest, RejectsDirectoryAsConfiguration) {
+  constexpr float kCustomThreshold = 0.8F;
   Configuration config;
-  config.threshold = 0.8f;
+  config.threshold = kCustomThreshold;
   EXPECT_FALSE(config.load(std::filesystem::current_path()));
-  EXPECT_FLOAT_EQ(config.threshold, 0.8f);
+  EXPECT_FLOAT_EQ(config.threshold, kCustomThreshold);
 }

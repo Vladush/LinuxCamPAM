@@ -33,7 +33,7 @@ struct ScriptedConversation {
       if (msg[i]->msg_style == PAM_PROMPT_ECHO_OFF || msg[i]->msg_style == PAM_PROMPT_ECHO_ON) {
         self->prompts++;
         if (self->index < self->responses.size()) {
-          const auto &r = self->responses[self->index++];
+          const auto &r = self->responses.at(self->index++);
           if (r == "ABORT") {
             free(responses); // NOLINT
             return PAM_CONV_ERR;
@@ -80,14 +80,16 @@ public:
   int get_requests() const { return requests; }
 
 private:
+  static constexpr int kIpcTimeoutMs = 2000;
+
   void run() {
     while (running) {
       int client = accept(sock, nullptr, nullptr);
       if (client >= 0) {
         requests++;
         std::string req;
-        if (linuxcampam::protocol::recv_message(client, req, 2000)) {
-          linuxcampam::protocol::send_message(client, response, 2000);
+        if (linuxcampam::protocol::recv_message(client, req, kIpcTimeoutMs)) {
+          linuxcampam::protocol::send_message(client, response, kIpcTimeoutMs);
         }
         close(client);
       }

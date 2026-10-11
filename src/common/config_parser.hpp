@@ -43,9 +43,10 @@ inline std::string_view strip_comments_and_trim(std::string_view sv) {
   bool in_quotes = false;
   size_t end_idx = sv.size();
   for (size_t i = 0; i < sv.size(); ++i) {
-    if (sv[i] == '"') {
+    const char c = sv.at(i);
+    if (c == '"') {
       in_quotes = !in_quotes;
-    } else if (!in_quotes && (sv[i] == ';' || sv[i] == '#')) {
+    } else if (!in_quotes && (c == ';' || c == '#')) {
       end_idx = i;
       break;
     }

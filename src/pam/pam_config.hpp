@@ -5,14 +5,9 @@
 
 #include <algorithm>
 #include <cerrno>
-#include <array>
-#include <charconv>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
-#include <cstring>
 #include <map>
-#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -166,7 +161,8 @@ inline void process_pam_config_line(std::string_view line,
       process_pam_config_line(line, state);
       line.clear();
     } else {
-      if (line.size() >= 64 * 1024) throw std::invalid_argument("Configuration line too long");
+      constexpr size_t kMaxConfigLineLength = 64ULL * 1024ULL;
+      if (line.size() >= kMaxConfigLineLength) throw std::invalid_argument("Configuration line too long");
       line += static_cast<char>(c);
     }
   }
