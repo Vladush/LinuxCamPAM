@@ -154,7 +154,7 @@ target_link_libraries(linuxcampamd PRIVATE service_core)
 
 # CLI Tool
 add_executable(linuxcampam src/cli/main.cpp)
-target_include_directories(linuxcampam PRIVATE include)
+target_include_directories(linuxcampam PRIVATE include src/pam src/common)
 target_link_libraries(linuxcampam PRIVATE stdc++fs)
 
 # Diagnostic Tool

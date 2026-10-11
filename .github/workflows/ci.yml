@@ -97,6 +97,9 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+      - name: Validate CPack Debian packaging lifecycle
+        run: ./tests/test_debian_lifecycle.sh
+
       - name: Build package
         run: |
           dpkg-buildpackage -b -uc -us

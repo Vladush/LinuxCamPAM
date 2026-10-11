@@ -52,20 +52,25 @@ inline std::optional<bool> parse_bool(std::string_view str) {
 
 bool Configuration::load(const fs::path &config_path,
                          const linuxcampam::ICameraBackend *backend) {
-  std::ifstream file(config_path);
-  if (!file.is_open()) {
-    // Loading defaults is considered valid if the file is absent.
-    // Execution proceeds with an empty stream.
+  if (!fs::exists(config_path)) {
+    // Missing config file is acceptable: load default configuration
     std::stringstream ss;
     return load(ss, backend);
+  }
+  std::ifstream file(config_path);
+  if (!file.is_open()) {
+    log_error("Failed to open configuration file: " + config_path.string());
+    return false;
   }
   return load(file, backend);
 }
 
 bool Configuration::load(std::istream &input,
                          const linuxcampam::ICameraBackend *backend) {
+  Configuration temp;
   try {
-    parse_ini_into_self(input, backend);
+    temp.parse_ini_into_self(input, backend);
+    *this = std::move(temp);
     return true;
   } catch (const std::invalid_argument &e) {
     log_error("Configuration error: " + std::string(e.what()));
@@ -192,10 +197,8 @@ void Configuration::parse_ini_into_self(
       if (!path_ir.empty())
         camera_defs.push_back({"ir", path_ir, "ir", 0, true});
       if (!path_rgb.empty()) {
-        int mb = linuxcampam::DEFAULT_MIN_BRIGHTNESS;
-        std::string hmb_str = get("Hardware.min_brightness",
-                                  std::to_string(linuxcampam::DEFAULT_MIN_BRIGHTNESS));
-        if (auto val = parse_int(hmb_str)) mb = *val;
+        int mb = get_int("Hardware.min_brightness",
+                         std::to_string(linuxcampam::DEFAULT_MIN_BRIGHTNESS), 0, 255);
         camera_defs.push_back({"rgb", path_rgb, "rgb", mb, false});
       }
     } else {
@@ -282,35 +285,37 @@ void Configuration::parse_ini_into_self(
   if (ini.count("Storage.save_success_images")) save_success = get_bool("Storage.save_success_images", "false");
   if (ini.count("Storage.save_fail_images")) save_fail = get_bool("Storage.save_fail_images", "false");
   model_keep_alive_sec = get_int("Performance.model_keep_alive_sec", "0", 0);
-  lockout_attempts = get_int("Security.lockout_attempts", get("General.lockout_attempts", "5"), 1);
-  lockout_duration_sec = get_int("Security.lockout_duration_sec", get("General.lockout_duration_sec", "300"), 1);
+  if (ini.count("Security.lockout_attempts") || ini.count("General.lockout_attempts")) {
+    std::string val_str = get("Security.lockout_attempts", get("General.lockout_attempts"));
+    auto val = parse_int(val_str);
+    if (!val) {
+      throw std::invalid_argument("Invalid integer for lockout_attempts: " + val_str);
+    }
+    lockout_attempts = (*val < 1) ? DEFAULT_LOCKOUT_ATTEMPTS : *val;
+  }
+
+  if (ini.count("Security.lockout_duration_sec") || ini.count("General.lockout_duration_sec")) {
+    std::string val_str = get("Security.lockout_duration_sec", get("General.lockout_duration_sec"));
+    auto val = parse_int(val_str);
+    if (!val) {
+      throw std::invalid_argument("Invalid integer for lockout_duration_sec: " + val_str);
+    }
+    lockout_duration_sec = (*val < 1) ? DEFAULT_LOCKOUT_DURATION_SEC : *val;
+  }
 
   // Minimal UID (shared with PAM module)
   // Int is used for parsing, then cast to uid_t
-  int min_uid_int = linuxcampam::DEFAULT_MIN_UID;
-  // Parse from [Security] section mostly
-  // Note: The PAM module implements specific fallback logic to [General], 
-  // mapping [Security] > First Found > Default. 
-  // Security.min_uid is explicitly prioritized here.
-  std::string uid_str = get("Security.min_uid");
-  if (uid_str.empty()) {
-    uid_str = get("General.min_uid"); // Fallback check
+  if (ini.count("Security.min_uid") || ini.count("General.min_uid")) {
+    std::string uid_str = get("Security.min_uid", get("General.min_uid"));
+    auto val = parse_int(uid_str);
+    if (!val) {
+      throw std::invalid_argument("Invalid integer for min_uid: " + uid_str);
+    }
+    min_uid = (*val < 0) ? linuxcampam::DEFAULT_MIN_UID : static_cast<uid_t>(*val);
   }
 
-  // default string if both empty
-  if (uid_str.empty()) {
-    min_uid_int = linuxcampam::DEFAULT_MIN_UID;
-  } else {
-    if (auto val = parse_int(uid_str)) min_uid_int = *val;
-  }
-
-  // Safety check (similar to PAM module negative check, though parse_int
-  // handles some)
-  if (min_uid_int < 0)
-    min_uid_int = linuxcampam::DEFAULT_MIN_UID;
-  min_uid = static_cast<uid_t>(min_uid_int);
-  gpu_flush = (get("Performance.gpu_flush", "on") == "on");
-  if (auto val = parse_int(get("Performance.gpu_throttle_ms", "20"))) gpu_throttle_ms = *val;
+  gpu_flush = get_bool("Performance.gpu_flush", "true");
+  gpu_throttle_ms = get_int("Performance.gpu_throttle_ms", "20", 0);
 }
 
 std::string Configuration::toString() const {

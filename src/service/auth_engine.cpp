@@ -100,8 +100,9 @@ void AuthEngine::setCameraFactory(CameraFactory factory) {
 
 bool AuthEngine::init(const fs::path &config_path) {
   if (!config.load(config_path)) {
-    log_warn("Failed to load config from " + config_path.string() +
-             ". Using defaults.");
+    log_error("Failed to load config from " + config_path.string() +
+              ". Refusing to start with invalid configuration.");
+    return false;
   }
 
   // Initialize last activity
@@ -380,9 +381,29 @@ AuthResult AuthEngine::verifyUserCore(std::string_view username,
   log_info("Verifying user " + std::string(username) + " with policy " +
            std::to_string(static_cast<int>(config.policy)));
 
+  auto start_time = std::chrono::steady_clock::now();
+  auto check_timeout = [&]() -> bool {
+    if (config.timeout_ms <= 0) return false;
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start_time).count();
+    return elapsed >= config.timeout_ms;
+  };
+
   for (auto &ac : active_cameras) {
+    if (check_timeout()) {
+      log_warn("Verification timed out.");
+      result.reason = "Verification timeout";
+      return result;
+    }
+
     std::string id = ac.config.id;
     cv::Mat frame = captureFrame(ac.cam.get());
+
+    if (check_timeout()) {
+      log_warn("Verification timed out after capture.");
+      result.reason = "Verification timeout";
+      return result;
+    }
 
     if (frame.empty()) {
       if (callback)
@@ -453,6 +474,11 @@ AuthResult AuthEngine::verifyUserCore(std::string_view username,
     std::vector<float> curr_emb_vec;
     cv::Mat aligned_face;
     int num_faces = generateEmbedding(frame, curr_emb_vec, aligned_face);
+    if (check_timeout()) {
+      log_warn("Verification timed out after embedding generation.");
+      result.reason = "Verification timeout";
+      return result;
+    }
 
     if (num_faces >= 1) {
       if (num_faces > 1) {

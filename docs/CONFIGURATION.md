@@ -57,7 +57,7 @@ Control how cameras behave and set recognition thresholds in the `[Auth]` sectio
 ```ini
 [Auth]
 policy = adaptive
-threshold = 0.363           ; Similarity threshold (lower = stricter). Default ~0.36-0.4.
+threshold = 0.363           ; Similarity threshold (higher = stricter). Default ~0.36-0.4.
 detection_threshold = 0.9   ; Face detection confidence (0.0-1.0).
 timeout_ms = 3000           ; Auth timeout in milliseconds.
 max_embeddings = 5          ; Max face profiles per user (0 = unlimited).

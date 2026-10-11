@@ -363,6 +363,11 @@ int main(int argc, const char *const argv[]) {
   // Syslog is enabled early to capture hardware initialization logs
   Logger::enableSyslog("linuxcampamd");
 
+  // Fail-secure: if proximity is enforced, do not assume presence before sensor initializes
+  if (cfg.proximity_enforce) {
+    g_proximity_present.store(false);
+  }
+
   // Proximity Sensor Integration Lifecycle
   // Declare VirtualKeyboard first so it outlives tripwire.
   // This ensures the polling thread is fully joined before the fd is closed.
@@ -520,31 +525,6 @@ int main(int argc, const char *const argv[]) {
 
     int activity = select(server_fd.get() + 1, &readfds, NULL, NULL, &timeout);
 
-    if ((activity < 0) && (errno != EINTR)) {
-      // Error
-    } else if (activity == 0) {
-      // Timeout: perform maintenance
-      (void)engine.performMaintenance();
-
-      // Check Lock Timeout
-      if (engine.getConfig().lock_enabled) {
-        std::lock_guard<std::mutex> lock(g_lock_state.mtx);
-        if (g_lock_state.absence_timer_active && !g_lock_state.was_away) {
-          auto now = std::chrono::steady_clock::now();
-          auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - g_lock_state.absence_start).count();
-          if (duration >= engine.getConfig().lock_timeout_seconds) {
-            log_info("Lock timeout reached (" + std::to_string(duration) + "s), locking screen...");
-            int ret = linuxcampam::execute_command_spawn(engine.getConfig().lock_command);
-            if (ret != 0) {
-              log_warn("Lock command returned non-zero exit code: " + std::to_string(ret));
-            }
-            g_lock_state.was_away = true;
-            g_lock_state.absence_timer_active = false;
-          }
-        }
-      }
-    }
-
     if (g_running && activity > 0 && FD_ISSET(server_fd.get(), &readfds)) {
       int new_socket = 0;
       int addrlen = sizeof(address);
@@ -556,6 +536,26 @@ int main(int argc, const char *const argv[]) {
       if (new_socket >= 0) {
         // Blocking execution is utilized; the camera enforces single-access exclusively.
         handle_client(new_socket, engine);
+      }
+    }
+
+    // Always evaluate maintenance and walk-away lock timeout regardless of socket activity
+    (void)engine.performMaintenance();
+
+    if (engine.getConfig().lock_enabled) {
+      std::lock_guard<std::mutex> lock(g_lock_state.mtx);
+      if (g_lock_state.absence_timer_active && !g_lock_state.was_away) {
+        auto now = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - g_lock_state.absence_start).count();
+        if (duration >= engine.getConfig().lock_timeout_seconds) {
+          log_info("Lock timeout reached (" + std::to_string(duration) + "s), locking screen...");
+          int ret = linuxcampam::execute_command_spawn(engine.getConfig().lock_command);
+          if (ret != 0) {
+            log_warn("Lock command returned non-zero exit code: " + std::to_string(ret));
+          }
+          g_lock_state.was_away = true;
+          g_lock_state.absence_timer_active = false;
+        }
       }
     }
   }
