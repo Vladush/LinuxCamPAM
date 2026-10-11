@@ -59,7 +59,7 @@ Control how cameras behave and set recognition thresholds in the `[Auth]` sectio
 policy = adaptive
 threshold = 0.363           ; Similarity threshold (higher = stricter). Default ~0.36-0.4.
 detection_threshold = 0.9   ; Face detection confidence (0.0-1.0).
-timeout_ms = 3000           ; Auth timeout in milliseconds.
+timeout_ms = 3000           ; Verification deadline (1-60000 milliseconds).
 max_embeddings = 5          ; Max face profiles per user (0 = unlimited).
 ```
 
@@ -247,3 +247,15 @@ gpu_throttle_ms = 50
 - **gpu_throttle_ms**: Sleep time between heavy GPU operations. Default: `20` (prevents UI lag on integrated graphics).
 
 **Note:** The daemon wipes `~/.cache/opencv` on startup - old cached kernels can cause hangs after Mesa updates.
+
+Authentication runs in a supervised worker process. The configured deadline includes
+model loading, camera capture, and inference. On timeout, the daemon terminates the
+worker and its IR helper processes before accepting another camera operation.
+The next verification starts a fresh worker; lockout counters stay in the daemon.
+PAM waits for the configured deadline plus four seconds for IPC. Walk-away locking
+uses an independent timer and continues during verification, enrollment, or training.
+
+Malformed INI syntax, invalid recognized values, and configuration read errors reject
+the new configuration. A missing configuration file continues to use defaults.
+If an enforced proximity sensor disconnects or returns a read error, authentication
+is denied until presence is reported again (restart the service to reconnect a failed sensor).

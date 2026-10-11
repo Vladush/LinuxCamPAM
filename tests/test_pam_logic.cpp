@@ -241,3 +241,14 @@ TEST_F(PamConfigTest, DefaultExemptListContents) {
   EXPECT_EQ(list[8], "kde");
   EXPECT_EQ(list[9], "systemd-user");
 }
+
+TEST_F(PamConfigTest, RejectsMalformedSyntax) {
+  EXPECT_THROW(loadConfig("[Security\nrequire_confirmation=false"), std::invalid_argument);
+}
+
+TEST_F(PamConfigTest, AuthTimeoutMatchesDaemonPrecedence) {
+  EXPECT_EQ(loadConfig("[General]\ntimeout_ms=7000\n[Auth]\ntimeout_ms=10000").auth_timeout_ms, 10000);
+  EXPECT_EQ(loadConfig("[Auth]\ntimeout_ms=10000\n[General]\ntimeout_ms=7000").auth_timeout_ms, 10000);
+  EXPECT_EQ(loadConfig("[General]\ntimeout_ms=invalid\n[Auth]\ntimeout_ms=9000").auth_timeout_ms, 9000);
+  EXPECT_THROW(loadConfig("[Auth]\ntimeout_ms=0"), std::invalid_argument);
+}

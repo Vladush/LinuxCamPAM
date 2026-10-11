@@ -18,11 +18,12 @@ if [ -f /etc/arch-release ]; then
         systemd \
         hidapi \
         gtest \
-        pkgconf
+        pkgconf \
+        python
 elif command -v apt-get >/dev/null 2>&1; then
     echo "Detected Debian/Ubuntu. Using apt-get..."
     sudo apt-get update
-    sudo apt-get install -y \
+    sudo apt-get install -y python3 \
         build-essential \
         cmake \
         libpam0g-dev \

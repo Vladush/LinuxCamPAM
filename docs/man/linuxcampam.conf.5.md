@@ -38,15 +38,17 @@ The file is in standard INI format. Sections and keys are case-insensitive.
 
 **threshold** = *FLOAT*
 :   Similarity threshold for face matching (0.0 - 1.0).
-    Lower is stricter. (Default: `0.363`).
+    Higher is stricter. (Default: `0.363`).
 
 **detection_threshold** = *FLOAT*
 :   Confidence threshold for face detection (0.0 - 1.0).
     (Default: `0.9`).
 
 **timeout_ms** = *INT*
-:   Timeout in milliseconds to wait for a successful match.
-    (Default: `3000`).
+:   Verification deadline in milliseconds, including model loading, capture, and inference.
+    Valid range: `1` to `60000`; default: `3000`.
+    The daemon terminates a timed-out verification worker and its IR helper processes.
+    PAM waits for this deadline plus a short IPC allowance.
 
 **policy** = *MODE*
 :   Authentication policy.

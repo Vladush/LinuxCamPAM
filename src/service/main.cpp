@@ -1,5 +1,7 @@
 
 #include "auth_engine.hpp"
+#include "deadline_worker.hpp"
+#include "presence_actions.hpp"
 #include "constants.hpp"
 #include "ipc_protocol.hpp"
 #include "json.hpp"
@@ -14,6 +16,8 @@
 #include <chrono>
 #include <csignal>
 #include <filesystem>
+#include <fcntl.h>
+#include <sys/prctl.h>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -33,15 +37,6 @@ std::atomic<bool> g_running(true);
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 std::atomic<bool> g_proximity_present(true); // Default to true so auth works if sensor is disabled
 
-struct LockState {
-  std::mutex mtx;
-  bool was_away = true;
-  bool absence_timer_active = false;
-  std::chrono::steady_clock::time_point absence_start;
-};
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-LockState g_lock_state;
-
 constexpr int SOCKET_PERMS = 0666; // File permissions for the UNIX socket (world-readable/writable)
 constexpr int BACKLOG = 5; // Maximum length of the pending connections queue for the socket
 } // namespace
@@ -50,10 +45,6 @@ void signal_handler(int signum) {
   log_info("Received signal " + std::to_string(signum) + ", stopping...");
   g_running = false;
 }
-
-struct Config {
-  std::string socket_path = linuxcampam::SOCKET_PATH;
-};
 
 void handle_client(int fd, AuthEngine &engine) {
   linuxcampam::FileDescriptor client_fd(fd);
@@ -282,7 +273,63 @@ void handle_client(int fd, AuthEngine &engine) {
   linuxcampam::protocol::send_message(client_fd.get(), response, 2000);
 }
 
+static void configure_logging(const Configuration &config) {
+  if (config.log_level == "debug") {
+    Logger::setLevel(LogLevel::DEBUG);
+  } else if (config.log_level == "info") {
+    Logger::setLevel(LogLevel::INFO);
+  } else if (config.log_level == "warn" || config.log_level == "warning") {
+    Logger::setLevel(LogLevel::WARN);
+  } else if (config.log_level == "error") {
+    Logger::setLevel(LogLevel::ERROR);
+  }
+
+  if (!config.log_file.empty()) {
+    Logger::setLogFile(config.log_file);
+  }
+
+  // Syslog is enabled early to capture hardware initialization logs
+  Logger::enableSyslog("linuxcampamd");
+}
+
+// Private worker entry point. Exec, rather than fork-and-run, avoids inherited
+// OpenCV/HID thread locks. The supervisor owns the authentication deadline.
+static int verification_worker(const char *config_path, std::string_view supervisor) {
+  if (std::to_string(getppid()) != supervisor || prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 ||
+      std::to_string(getppid()) != supervisor) return 1;
+  if (fcntl(DeadlineWorker::CHANNEL_FD, F_SETFD, FD_CLOEXEC) < 0) return 1;
+  AuthEngine engine;
+  if (!engine.init(config_path, false)) return 1;
+  configure_logging(engine.getConfig());
+  for (;;) {
+    pollfd pfd{DeadlineWorker::CHANNEL_FD, POLLIN, 0};
+    int ready = poll(&pfd, 1, 1000);
+    if (ready < 0 && errno == EINTR) continue;
+    if (ready < 0) return 1;
+    if (ready == 0) { (void)engine.performMaintenance(); continue; }
+    std::string request;
+    if (!linuxcampam::protocol::recv_message(DeadlineWorker::CHANNEL_FD, request, 2000)) return 0;
+    try {
+      auto data = json::parse(request);
+      const auto user = data.at("user").get<std::string>();
+      const bool diagnostic = data.at("diagnostic").get<bool>();
+      Logger::setLevel(static_cast<LogLevel>(data.at("log_level").get<int>()));
+      AuthResult result;
+      // The supervisor also tracks failures, so a restart cannot reset lockout.
+      if (diagnostic) result = engine.verifyUserWithDetails(user);
+      else { result.success = engine.verifyUser(user); }
+      json response = {{"success", result.success}, {"reason", result.reason}, {"score", result.best_score}};
+      if (!linuxcampam::protocol::send_message(DeadlineWorker::CHANNEL_FD, response.dump(), 2000)) return 0;
+    } catch (const std::exception &error) {
+      log_error(std::string("Verification worker failed: ") + error.what());
+      return 1;
+    }
+  }
+}
+
 int main(int argc, const char *const argv[]) {
+  if (argc == 4 && std::string_view(argv[1]) == "--verification-worker")
+    return verification_worker(argv[2], argv[3]);
   (void)signal(SIGINT, signal_handler);
   (void)signal(SIGTERM, signal_handler);
 
@@ -337,31 +384,31 @@ int main(int argc, const char *const argv[]) {
     }
   }
 
+  DeadlineWorker verification({fs::read_symlink("/proc/self/exe").string(),
+                               "--verification-worker", fs::absolute(config_path).string(), std::to_string(getpid())});
   AuthEngine engine;
   // Initialize Engine
-  if (!engine.init(config_path)) {
+  if (!engine.init(config_path, false)) {
     log_error("AuthEngine init failed, shutting down.");
     return 1;
   }
 
   // Apply log settings from config
   const auto& cfg = engine.getConfig();
-  if (cfg.log_level == "debug") {
-    Logger::setLevel(LogLevel::DEBUG);
-  } else if (cfg.log_level == "info") {
-    Logger::setLevel(LogLevel::INFO);
-  } else if (cfg.log_level == "warn" || cfg.log_level == "warning") {
-    Logger::setLevel(LogLevel::WARN);
-  } else if (cfg.log_level == "error") {
-    Logger::setLevel(LogLevel::ERROR);
-  }
-
-  if (!cfg.log_file.empty()) {
-    Logger::setLogFile(cfg.log_file);
-  }
-
-  // Syslog is enabled early to capture hardware initialization logs
-  Logger::enableSyslog("linuxcampamd");
+  int active_client = -1;
+  engine.setVerificationRunner([&](std::string_view user, bool diagnostic) -> AuthResult {
+    json request = {{"user", user}, {"diagnostic", diagnostic},
+                    {"log_level", static_cast<int>(Logger::getLevel())}};
+    auto response = verification.request(request.dump(), cfg.timeout_ms, active_client);
+    if (!response) return {false, "Verification timeout or worker failure", 0.0f};
+    auto result = json::parse(*response);
+    // Recheck enforcement: a sensor failure during capture must revoke success too.
+    if (cfg.proximity_enforce && !g_proximity_present.load())
+      return {false, "Proximity sensor reports no human present", 0.0f};
+    return {result.at("success").get<bool>(), result.at("reason").get<std::string>(),
+            result.at("score").get<float>()};
+  });
+  configure_logging(cfg);
 
   // Fail-secure: if proximity is enforced, do not assume presence before sensor initializes
   if (cfg.proximity_enforce) {
@@ -372,13 +419,20 @@ int main(int argc, const char *const argv[]) {
   // Declare VirtualKeyboard first so it outlives tripwire.
   // This ensures the polling thread is fully joined before the fd is closed.
   VirtualKeyboard vkb;
+  PresenceActions presence_actions(cfg, [&] {
+    if (!vkb.emit_wakeup()) log_warn("Failed to emit wake event via VirtualKeyboard");
+  }, [&] {
+    log_info("Walk-away deadline reached, locking screen...");
+    const int status = linuxcampam::execute_command_spawn(cfg.lock_command);
+    if (status != 0) log_warn("Lock command failed: " + std::to_string(status));
+  });
   std::optional<HardwareManager> hw_manager;
   SensorFactory sensor_factory;
   PresenceTripwire tripwire(sensor_factory);
   ScopedWorker proximity_init_worker;
 
   if (cfg.proximity_sensor == Configuration::ProximitySensorMode::AUTO || cfg.proximity_sensor == Configuration::ProximitySensorMode::ENABLED) {
-    proximity_init_worker = ScopedWorker([&cfg, &hw_manager, &tripwire, &vkb]() {
+    proximity_init_worker = ScopedWorker([&cfg, &hw_manager, &tripwire, &presence_actions]() {
       std::string hw_id = cfg.proximity_sensor_id;
       std::string i2c_addr;
       std::error_code ec;
@@ -409,62 +463,13 @@ int main(int argc, const char *const argv[]) {
         hw_manager.emplace(i2c_addr);
         if (hw_manager->seize_sensor()) {
           if (std::optional<std::string> hidraw_node = hw_manager->get_hidraw_node(); hidraw_node) {
-            if (!tripwire.start(*hidraw_node, HardwareId(hw_id), [&cfg, &vkb](bool present, int confidence) {
-              static bool last_state = false;
-              static int last_confidence = 0;
-
-              bool just_returned = (present && !last_state);
-
+            if (!tripwire.start(*hidraw_node, HardwareId(hw_id), [&presence_actions](bool present, int confidence) {
               g_proximity_present.store(present);
-              if (present != last_state) {
-                if (present) {
-                  log_info("Presence detected start at " + std::to_string(confidence) + "% confidence");
-                } else {
-                  log_info("Presence detected stop (last seen at " + std::to_string(last_confidence) + "% confidence)");
-                }
-                last_state = present;
-              }
-              if (present) {
-                last_confidence = confidence;
-              }
-
-              std::lock_guard<std::mutex> lock(g_lock_state.mtx);
-
-              // Wake Logic
-              if (present && cfg.wake_enabled && confidence >= cfg.wake_confidence_threshold) {
-                if (g_lock_state.was_away || (cfg.always_wake_on_presence_detected && just_returned)) {
-                  log_info("Wake threshold reached, waking screen...");
-                  if (!vkb.emit_wakeup()) {
-                    log_warn("Failed to emit wake event via VirtualKeyboard");
-                  }
-                  g_lock_state.was_away = false;
-                }
-              }
-
-              // Lock Logic
-              if (cfg.lock_enabled) {
-                if (confidence < cfg.lock_confidence_threshold || !present) {
-                  if (!g_lock_state.was_away && !g_lock_state.absence_timer_active) {
-                    g_lock_state.absence_start = std::chrono::steady_clock::now();
-                    g_lock_state.absence_timer_active = true;
-                  }
-                } else {
-                  g_lock_state.absence_timer_active = false;
-                }
-              } else {
-                if (confidence < cfg.lock_confidence_threshold || !present) {
-                  g_lock_state.was_away = true;
-                }
-              }
-
+              presence_actions.observe(present, confidence);
             })) {
               log_warn("Failed to start PresenceTripwire.");
             } else {
               log_info("Proximity sensor started successfully on " + *hidraw_node);
-              // If successfully started and enforcing, initialize state
-              if (cfg.proximity_enforce) {
-                g_proximity_present.store(false); 
-              }
             }
           } else if (cfg.proximity_sensor == Configuration::ProximitySensorMode::ENABLED) {
             log_warn("Proximity sensor set to enabled, but hidraw node could not be resolved.");
@@ -479,7 +484,7 @@ int main(int argc, const char *const argv[]) {
   }
 
   // Socket Setup
-  linuxcampam::FileDescriptor server_fd(socket(AF_UNIX, SOCK_STREAM, 0));
+  linuxcampam::FileDescriptor server_fd(socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0));
   struct sockaddr_un address = {};
 
   if (!server_fd.isValid()) {
@@ -530,36 +535,23 @@ int main(int argc, const char *const argv[]) {
       int addrlen = sizeof(address);
       // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
       new_socket =
-          accept(server_fd.get(), reinterpret_cast<struct sockaddr *>(&address),
-                 reinterpret_cast<socklen_t *>(&addrlen));
+          accept4(server_fd.get(), reinterpret_cast<struct sockaddr *>(&address),
+                  reinterpret_cast<socklen_t *>(&addrlen), SOCK_CLOEXEC);
       // NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
       if (new_socket >= 0) {
         // Blocking execution is utilized; the camera enforces single-access exclusively.
+        active_client = new_socket;
         handle_client(new_socket, engine);
+        active_client = -1;
       }
     }
 
     // Always evaluate maintenance and walk-away lock timeout regardless of socket activity
     (void)engine.performMaintenance();
 
-    if (engine.getConfig().lock_enabled) {
-      std::lock_guard<std::mutex> lock(g_lock_state.mtx);
-      if (g_lock_state.absence_timer_active && !g_lock_state.was_away) {
-        auto now = std::chrono::steady_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - g_lock_state.absence_start).count();
-        if (duration >= engine.getConfig().lock_timeout_seconds) {
-          log_info("Lock timeout reached (" + std::to_string(duration) + "s), locking screen...");
-          int ret = linuxcampam::execute_command_spawn(engine.getConfig().lock_command);
-          if (ret != 0) {
-            log_warn("Lock command returned non-zero exit code: " + std::to_string(ret));
-          }
-          g_lock_state.was_away = true;
-          g_lock_state.absence_timer_active = false;
-        }
-      }
-    }
   }
 
+  proximity_init_worker.join();
   tripwire.stop();
   // hw_manager will automatically release the sensor upon destruction
 

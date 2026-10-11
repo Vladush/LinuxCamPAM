@@ -47,7 +47,10 @@ public:
   AuthEngine(AuthEngine &&) = delete;
   AuthEngine &operator=(AuthEngine &&) = delete;
 
-  [[nodiscard]] bool init(const fs::path &config_path);
+  [[nodiscard]] bool init(const fs::path &config_path, bool preload_models = true);
+
+  using VerificationRunner = std::function<AuthResult(std::string_view, bool)>;
+  void setVerificationRunner(VerificationRunner runner) { verification_runner_ = std::move(runner); }
 
   // Operations
   [[nodiscard]] bool verifyUser(std::string_view username);
@@ -96,6 +99,8 @@ private:
 
   Configuration config;
   CameraFactory camera_factory_;
+  VerificationRunner verification_runner_;
+  AuthResult verifyAndLog(std::string_view username, bool diagnostic);
 
   cv::Ptr<cv::FaceDetectorYN> detector;
   cv::Ptr<cv::FaceRecognizerSF> recognizer;

@@ -7,6 +7,7 @@
 #include <charconv>
 #include <limits>
 #include <stdexcept>
+#include <vector>
 
 namespace config_parser {
 
@@ -26,6 +27,18 @@ inline std::string_view unquote(std::string_view s) {
   return s;
 }
 
+inline std::vector<std::string> split_trimmed(std::string_view input, char delimiter = ',') {
+  std::vector<std::string> result;
+  while (!input.empty()) {
+    auto end = input.find(delimiter);
+    auto item = trim(input.substr(0, end));
+    if (!item.empty()) result.emplace_back(item);
+    if (end == std::string_view::npos) break;
+    input.remove_prefix(end + 1);
+  }
+  return result;
+}
+
 inline std::string_view strip_comments_and_trim(std::string_view sv) {
   bool in_quotes = false;
   size_t end_idx = sv.size();
@@ -37,6 +50,7 @@ inline std::string_view strip_comments_and_trim(std::string_view sv) {
       break;
     }
   }
+  if (in_quotes) throw std::invalid_argument("Unterminated quoted value");
   return trim(sv.substr(0, end_idx));
 }
 
@@ -44,20 +58,23 @@ inline void parse_ini_line(std::string_view line, std::string& current_section, 
   std::string_view sv = strip_comments_and_trim(line);
   if (sv.empty()) return;
 
-  if (sv.front() == '[' && sv.back() == ']') {
+  if (sv.front() == '[') {
+    if (sv.back() != ']' || sv.find(']') != sv.size() - 1 ||
+        sv.find('[', 1) != std::string_view::npos || trim(sv.substr(1, sv.size() - 2)).empty())
+      throw std::invalid_argument("Malformed section header");
     current_section = std::string(trim(sv.substr(1, sv.size() - 2)));
     return;
   }
 
   auto eq_pos = sv.find('=');
-  if (eq_pos == std::string_view::npos) return;
+  if (eq_pos == std::string_view::npos) throw std::invalid_argument("Expected key=value");
 
   std::string_view key = trim(sv.substr(0, eq_pos));
   std::string_view val = unquote(trim(sv.substr(eq_pos + 1)));
 
-  if (!key.empty()) {
-    data[current_section][std::string(key)] = std::string(val);
-  }
+  if (key.empty() || key.find_first_of("[] \t") != std::string_view::npos)
+    throw std::invalid_argument("Invalid configuration key");
+  data[current_section][std::string(key)] = std::string(val);
 }
 
 inline std::optional<bool> parse_bool_strict(std::string_view val) {

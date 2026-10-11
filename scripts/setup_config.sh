@@ -4,8 +4,21 @@ set -e
 CONFIG_FILE="/etc/linuxcampam/config.ini"
 LINUXCAMPAM_CLI=$(command -v linuxcampam || echo /usr/bin/linuxcampam)
 
-configure_kde() {
-    local mode=$1 dir tmp backup was_immutable=false
+configure_kde() (
+    # A subshell scopes EXIT/signal traps to this operation, including set -e failures.
+    local mode=$1 dir tmp="" backup was_immutable=false
+    cleanup_kde() {
+        local status=$?
+        trap - EXIT
+        if [ -n "$tmp" ]; then rm -f -- "$tmp" || status=1; fi
+        if [ "$was_immutable" = true ]; then
+            chattr +i "$CONFIG_FILE" || { echo "[Setup] Cannot restore immutable flag." >&2; status=1; }
+        fi
+        exit "$status"
+    }
+    trap cleanup_kde EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
     case "$mode" in
         auto|single_enter|legacy) ;;
         *) echo "Usage: $0 --configure-kde auto|single_enter|legacy" >&2
@@ -16,21 +29,23 @@ configure_kde() {
 
     if command -v lsattr >/dev/null &&
        lsattr "$CONFIG_FILE" 2>/dev/null | cut -c 5 | grep -q i; then
+        was_immutable=true
         chattr -i "$CONFIG_FILE" ||
             { echo "[Setup] Cannot clear immutable flag." >&2; return 1; }
-        was_immutable=true
     fi
 
     dir=$(dirname "$CONFIG_FILE")
     tmp=$(mktemp "$dir/.config.ini.XXXXXX")
-    trap 'rm -f "$tmp"; [ "$was_immutable" = true ] && chattr +i "$CONFIG_FILE"' RETURN INT TERM
 
     backup="$CONFIG_FILE.$(date +%Y%m%d_%H%M%S).bak"
     cp -p "$CONFIG_FILE" "$backup"
     awk -v mode="$mode" -f - "$CONFIG_FILE" > "$tmp" <<'AWK'
-/^\[/ {
+/^[[:space:]]*\[/ {
     if (in_sec && !done) { print "kde_lockscreen = " mode; done = 1 }
-    in_sec = ($0 ~ /^\[Security\][[:space:]]*$/)
+    section = $0
+    sub(/[;#].*$/, "", section)
+    gsub(/^[[:space:]]+|[[:space:]]+$/, "", section)
+    in_sec = (section == "[Security]")
 }
 in_sec && /^[[:space:]]*kde_lockscreen[[:space:]]*=/ {
     if (!done) { print "kde_lockscreen = " mode; done = 1 }
@@ -49,7 +64,7 @@ AWK
     mv -f "$tmp" "$CONFIG_FILE"
     echo "[Setup] kde_lockscreen = $mode (backup: $backup)"
     "$LINUXCAMPAM_CLI" check-kde --brief || true
-}
+)
 
 case "${1:-}" in
     --check-kde)

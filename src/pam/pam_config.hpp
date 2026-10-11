@@ -1,8 +1,10 @@
 #pragma once
 #include "constants.hpp"
+#include "../common/resources.hpp"
 #include "../common/config_parser.hpp"
 
 #include <algorithm>
+#include <cerrno>
 #include <array>
 #include <charconv>
 #include <cstdint>
@@ -19,6 +21,7 @@
 enum class KdeLockscreenMode : std::uint8_t { Auto, SingleEnter, Legacy };
 
 struct PamConfig {
+  int auth_timeout_ms = linuxcampam::DEFAULT_AUTH_TIMEOUT_MS;
   uid_t min_uid = linuxcampam::DEFAULT_MIN_UID;
   bool require_confirmation = true;
   std::vector<std::string> confirmation_exempt_services = {
@@ -57,23 +60,6 @@ parse_kde_lockscreen(std::string_view value) {
   return "legacy";
 }
 
-[[nodiscard]] inline std::vector<std::string> split(std::string_view str, char delimiter) {
-  std::vector<std::string> result;
-  size_t start = 0;
-  while (start < str.size()) {
-    auto end = str.find(delimiter, start);
-    if (end == std::string_view::npos) {
-      end = str.size();
-    }
-    auto token = config_parser::trim(str.substr(start, end - start));
-    if (!token.empty()) {
-      result.emplace_back(token);
-    }
-    start = end + 1;
-  }
-  return result;
-}
-
 inline void process_pam_config_line(std::string_view line,
                                     PamConfigState &state) {
   config_parser::parse_ini_line(line, state.current_section, state.data);
@@ -103,6 +89,18 @@ inline void process_pam_config_line(std::string_view line,
     return std::nullopt;
   };
 
+  // Match daemon precedence for the authentication deadline.
+  for (const char *section : {"Auth", "General"}) {
+    auto it = state.data.find(section);
+    if (it == state.data.end()) continue;
+    auto timeout = it->second.find("timeout_ms");
+    if (timeout == it->second.end()) continue;
+    auto value = config_parser::parse_int_strict(timeout->second, 1, linuxcampam::MAX_AUTH_TIMEOUT_MS);
+    if (!value) throw std::invalid_argument("Invalid authentication timeout");
+    config.auth_timeout_ms = *value;
+    break;
+  }
+
   // --- min_uid ---
   if (auto uid_opt = get_value("min_uid")) {
     if (auto parsed = config_parser::parse_int_strict(*uid_opt, 0)) {
@@ -119,7 +117,7 @@ inline void process_pam_config_line(std::string_view line,
 
   // --- confirmation_exempt_services ---
   if (auto ces_opt = get_value("confirmation_exempt_services")) {
-    config.confirmation_exempt_services = split(config_parser::unquote(*ces_opt), ',');
+    config.confirmation_exempt_services = config_parser::split_trimmed(*ces_opt, ',');
     config.exempt_services_explicit = true;
   }
 
@@ -143,11 +141,7 @@ inline void process_pam_config_line(std::string_view line,
 
   // --- welcome_message ---
   if (auto wm_opt = get_value("welcome_message")) {
-    std::string wm_str = *wm_opt;
-    if (wm_str.size() >= 2 && wm_str.front() == '"' && wm_str.back() == '"') {
-      wm_str = wm_str.substr(1, wm_str.size() - 2);
-    }
-    config.welcome_message = std::move(wm_str);
+    config.welcome_message = *wm_opt;
   }
 #endif
 
@@ -158,26 +152,26 @@ inline void process_pam_config_line(std::string_view line,
 [[nodiscard]] inline PamConfig load_pam_config(const char *path) {
   PamConfigState state;
 
-  struct FileCloser {
-    void operator()(FILE *f) const {
-      if (f) {
-        (void)std::fclose(f); // NOLINT
-      }
-    }
-  };
-
-  std::unique_ptr<FILE, FileCloser> f(std::fopen(path, "r")); // NOLINT
+  linuxcampam::FileHandle f(std::fopen(path, "re"));
 
   if (!f) {
+    if (errno != ENOENT) throw std::invalid_argument("Cannot open PAM configuration");
     return resolve_pam_config(state);
   }
 
-  constexpr size_t CONFIG_BUF_SIZE = 1024;
-  std::array<char, CONFIG_BUF_SIZE> buffer{};
-
-  while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), f.get())) {
-    process_pam_config_line(buffer.data(), state);
+  // Accumulate complete lines so long exemption lists are never parsed in pieces.
+  std::string line;
+  for (int c = std::fgetc(f.get()); c != EOF; c = std::fgetc(f.get())) {
+    if (c == '\n') {
+      process_pam_config_line(line, state);
+      line.clear();
+    } else {
+      if (line.size() >= 64 * 1024) throw std::invalid_argument("Configuration line too long");
+      line += static_cast<char>(c);
+    }
   }
+  if (std::ferror(f.get())) throw std::invalid_argument("Cannot read PAM configuration");
+  if (!line.empty()) process_pam_config_line(line, state);
 
   return resolve_pam_config(state);
 }

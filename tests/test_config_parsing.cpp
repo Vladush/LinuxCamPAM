@@ -201,3 +201,53 @@ model_keep_alive_sec=120
   EXPECT_EQ(config.gpu_throttle_ms, 50);
   EXPECT_EQ(config.model_keep_alive_sec, 120);
 }
+
+TEST_F(ConfigParsingTest, RejectsMalformedSyntaxWithoutChangingActiveConfiguration) {
+  loadConfig("[Hardware]\nproximity_enforce=true\n[Auth]\nthreshold=0.8\n");
+  for (const std::string malformed : {"[Hardware\nproximity_enforce=false", "[ ]", "[Hardware]junk",
+                                      "proximity_enforce true", "=false", "name=\"unclosed"}) {
+    SCOPED_TRACE(malformed);
+    std::istringstream input(malformed);
+    EXPECT_FALSE(config.load(input));
+    EXPECT_TRUE(config.proximity_enforce);
+    EXPECT_FLOAT_EQ(config.threshold, 0.8f);
+  }
+}
+
+TEST_F(ConfigParsingTest, ReadFailurePreservesConfiguration) {
+  config.threshold = 0.8f;
+  std::istringstream input;
+  input.setstate(std::ios::badbit);
+  EXPECT_FALSE(config.load(input));
+  EXPECT_FLOAT_EQ(config.threshold, 0.8f);
+}
+
+TEST_F(ConfigParsingTest, LateValueErrorPreservesEntireConfiguration) {
+  loadConfig("[Auth]\nthreshold=0.8\n[Hardware]\nproximity_enforce=true\n");
+  std::istringstream input("[Auth]\nthreshold=0.2\n[Cameras]\nnames=x\n[Camera.x]\nmandatory=typo\n");
+  EXPECT_FALSE(config.load(input));
+  EXPECT_FLOAT_EQ(config.threshold, 0.8f);
+  EXPECT_TRUE(config.proximity_enforce);
+}
+
+TEST_F(ConfigParsingTest, ListsTrimBothSidesAndIgnoreEmptyItems) {
+  loadConfig("[Hardware]\nprovider_priority= OpenCL , , CPU \n[Cameras]\nnames= a , , b \n");
+  EXPECT_EQ(config.provider_priority, (std::vector<std::string>{"OpenCL", "CPU"}));
+  ASSERT_EQ(config.camera_defs.size(), 2);
+  EXPECT_EQ(config.camera_defs[0].id, "a");
+  EXPECT_EQ(config.camera_defs[1].id, "b");
+}
+
+TEST_F(ConfigParsingTest, GpuFlushBooleanSpellings) {
+  for (const std::string value : {"true", "on", "yes", "1", "false", "off", "no", "0"}) {
+    loadConfig("[Performance]\ngpu_flush=" + value + "\n");
+    EXPECT_EQ(config.gpu_flush, value == "true" || value == "on" || value == "yes" || value == "1");
+  }
+}
+
+TEST_F(ConfigParsingTest, AuthenticationDeadlineMustBeBounded) {
+  for (const std::string value : {"0", "-1", "60001", "2147483647"}) {
+    std::istringstream input("[Auth]\ntimeout_ms=" + value);
+    EXPECT_FALSE(config.load(input));
+  }
+}

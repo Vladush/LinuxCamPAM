@@ -129,6 +129,7 @@ set_target_properties(pam_linuxcampam PROPERTIES PREFIX "") # pam_ modules often
 # Service Core Library (Shared between Service and Tests)
 add_library(service_core STATIC
     src/service/auth_engine.cpp
+    src/service/deadline_worker.cpp
     src/service/camera.cpp
     src/service/config.cpp
     src/service/utils.cpp
@@ -171,6 +172,8 @@ endif()
 # --- Testing ---
 # --- Testing ---
 enable_testing()
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME SetupConfig COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_setup_config.py)
 
 include(FetchContent)
 # Handle DOWNLOAD_EXTRACT_TIMESTAMP for CMake 3.24+
@@ -237,6 +240,8 @@ if(TARGET gtest)
         tests/test_ite8353_parser.cpp
         tests/test_sensor_factory.cpp
         tests/test_scoped_worker.cpp
+        tests/test_presence_actions.cpp
+        tests/test_deadline_worker.cpp
     )
     
     # The tests link against the service_core library to test internal logic without
@@ -248,6 +253,12 @@ if(TARGET gtest)
 
     # Expose private lockout methods for testing.
     target_compile_definitions(linuxcampam_tests PRIVATE UNIT_TESTING)
+    add_executable(deadline_worker_fixture tests/deadline_worker_fixture.cpp)
+    target_include_directories(deadline_worker_fixture PRIVATE src include)
+    target_compile_definitions(linuxcampam_tests PRIVATE
+        DEADLINE_WORKER_FIXTURE="$<TARGET_FILE:deadline_worker_fixture>"
+        LINUXCAMPAMD_EXECUTABLE="$<TARGET_FILE:linuxcampamd>")
+    add_dependencies(linuxcampam_tests deadline_worker_fixture linuxcampamd)
     
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(linuxcampam_tests PRIVATE -fPIE)
@@ -345,7 +356,7 @@ set(CPACK_GENERATOR "DEB")
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "libpam0g, libpam-runtime, v4l-utils, libgfortran5, libatlas3-base, libatomic1, libhidapi-hidraw0")
 set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "rocm-opencl-runtime | intel-opencl-icd | nvidia-opencl-icd-340 | nvidia-opencl-icd")
 
-set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_SOURCE_DIR}/debian/postinst;${CMAKE_SOURCE_DIR}/debian/prerm;${CMAKE_SOURCE_DIR}/debian/postrm;${CMAKE_SOURCE_DIR}/debian/preinst;${CMAKE_SOURCE_DIR}/debian/conffiles")
+set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_SOURCE_DIR}/debian/postinst;${CMAKE_SOURCE_DIR}/debian/prerm;${CMAKE_SOURCE_DIR}/debian/postrm;${CMAKE_SOURCE_DIR}/debian/preinst;${CMAKE_SOURCE_DIR}/packaging/cpack/conffiles")
 set(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION ON)
 
 # Man pages installation (dynamic generation)
