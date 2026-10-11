@@ -4,7 +4,6 @@
 #include <array>
 #include <cerrno>
 #include <cstdio>
-#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>

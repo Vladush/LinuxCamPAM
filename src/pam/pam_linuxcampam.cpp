@@ -6,18 +6,15 @@
 #include "kde_lockscreen.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cstring>
 #include <pwd.h>
 #include <security/pam_ext.h>
 #include <security/pam_modules.h>
 #include <string>
-#include <vector>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <syslog.h>
 #include <unistd.h>
-#include <utility>
 
 namespace {
 namespace kde = linuxcampam::kde;
@@ -43,10 +40,10 @@ void set_empty_authtok_if_unset(pam_handle_t *pamh) {
 }
 
 struct SyslogManager {
-  SyslogManager() {
+  SyslogManager() noexcept {
     openlog("LinuxCamPAM", LOG_PID | LOG_NDELAY, LOG_AUTHPRIV);
   }
-  ~SyslogManager() { closelog(); }
+  ~SyslogManager() noexcept { closelog(); }
   SyslogManager(const SyslogManager &) = delete;
   SyslogManager &operator=(const SyslogManager &) = delete;
   SyslogManager(SyslogManager &&) = delete;

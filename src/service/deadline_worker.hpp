@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../common/resources.hpp"
+#include <chrono>
 #include <optional>
 #include <string>
 #include <vector>
@@ -15,8 +16,14 @@ public:
   ~DeadlineWorker();
   DeadlineWorker(const DeadlineWorker &) = delete;
   DeadlineWorker &operator=(const DeadlineWorker &) = delete;
-  [[nodiscard]] std::optional<std::string> request(const std::string &message, int timeout_ms,
-                                                  int client_fd = -1);
+  DeadlineWorker(DeadlineWorker &&) = delete;
+  DeadlineWorker &operator=(DeadlineWorker &&) = delete;
+  [[nodiscard]] std::optional<std::string> request(const std::string &message,
+                                                   std::chrono::milliseconds timeout,
+                                                   int client_fd = -1);
+  [[nodiscard]] std::optional<std::string> request(const std::string &message, int timeout_ms) {
+    return request(message, std::chrono::milliseconds(timeout_ms), -1);
+  }
 private:
   bool start();
   void stop();

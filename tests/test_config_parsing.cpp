@@ -106,9 +106,9 @@ provider_priority=TensorRT, CUDA, CPU
   )");
   
   ASSERT_EQ(config.provider_priority.size(), 3);
-  EXPECT_EQ(config.provider_priority[0], "TensorRT");
-  EXPECT_EQ(config.provider_priority[1], "CUDA");
-  EXPECT_EQ(config.provider_priority[2], "CPU");
+  EXPECT_EQ(config.provider_priority.at(0), "TensorRT");
+  EXPECT_EQ(config.provider_priority.at(1), "CUDA");
+  EXPECT_EQ(config.provider_priority.at(2), "CPU");
 }
 
 TEST_F(ConfigParsingTest, EmptyProviderPriorityUsesDefault) {
@@ -118,8 +118,8 @@ provider_priority=
   )");
   
   ASSERT_EQ(config.provider_priority.size(), 2);
-  EXPECT_EQ(config.provider_priority[0], "OpenCL");
-  EXPECT_EQ(config.provider_priority[1], "CPU");
+  EXPECT_EQ(config.provider_priority.at(0), "OpenCL");
+  EXPECT_EQ(config.provider_priority.at(1), "CPU");
 }
 
 TEST_F(ConfigParsingTest, ExplicitCameraDefinitions) {
@@ -143,19 +143,19 @@ enroll_average_frames=5
   
   ASSERT_EQ(config.camera_defs.size(), 2);
   
-  EXPECT_EQ(config.camera_defs[0].id, "cam1");
-  EXPECT_EQ(config.camera_defs[0].path, "/dev/video1");
-  EXPECT_EQ(config.camera_defs[0].type, "rgb");
-  EXPECT_TRUE(config.camera_defs[0].mandatory);
-  EXPECT_EQ(config.camera_defs[0].min_brightness, 10);
+  EXPECT_EQ(config.camera_defs.at(0).id, "cam1");
+  EXPECT_EQ(config.camera_defs.at(0).path, "/dev/video1");
+  EXPECT_EQ(config.camera_defs.at(0).type, "rgb");
+  EXPECT_TRUE(config.camera_defs.at(0).mandatory);
+  EXPECT_EQ(config.camera_defs.at(0).min_brightness, 10);
   
-  EXPECT_EQ(config.camera_defs[1].id, "cam2");
-  EXPECT_EQ(config.camera_defs[1].path, "/dev/video2");
-  EXPECT_EQ(config.camera_defs[1].type, "ir");
-  EXPECT_FALSE(config.camera_defs[1].mandatory);
-  EXPECT_EQ(config.camera_defs[1].enroll_hdr, "true");
-  EXPECT_EQ(config.camera_defs[1].enroll_averaging, "true");
-  EXPECT_EQ(config.camera_defs[1].enroll_average_frames, 5);
+  EXPECT_EQ(config.camera_defs.at(1).id, "cam2");
+  EXPECT_EQ(config.camera_defs.at(1).path, "/dev/video2");
+  EXPECT_EQ(config.camera_defs.at(1).type, "ir");
+  EXPECT_FALSE(config.camera_defs.at(1).mandatory);
+  EXPECT_EQ(config.camera_defs.at(1).enroll_hdr, "true");
+  EXPECT_EQ(config.camera_defs.at(1).enroll_averaging, "true");
+  EXPECT_EQ(config.camera_defs.at(1).enroll_average_frames, 5);
 }
 
 TEST_F(ConfigParsingTest, ToStringOutputContainsKeyElements) {
@@ -215,11 +215,12 @@ TEST_F(ConfigParsingTest, RejectsMalformedSyntaxWithoutChangingActiveConfigurati
 }
 
 TEST_F(ConfigParsingTest, ReadFailurePreservesConfiguration) {
-  config.threshold = 0.8f;
+  constexpr float kCustomThreshold = 0.8F;
+  config.threshold = kCustomThreshold;
   std::istringstream input;
   input.setstate(std::ios::badbit);
   EXPECT_FALSE(config.load(input));
-  EXPECT_FLOAT_EQ(config.threshold, 0.8f);
+  EXPECT_FLOAT_EQ(config.threshold, kCustomThreshold);
 }
 
 TEST_F(ConfigParsingTest, LateValueErrorPreservesEntireConfiguration) {
@@ -234,8 +235,8 @@ TEST_F(ConfigParsingTest, ListsTrimBothSidesAndIgnoreEmptyItems) {
   loadConfig("[Hardware]\nprovider_priority= OpenCL , , CPU \n[Cameras]\nnames= a , , b \n");
   EXPECT_EQ(config.provider_priority, (std::vector<std::string>{"OpenCL", "CPU"}));
   ASSERT_EQ(config.camera_defs.size(), 2);
-  EXPECT_EQ(config.camera_defs[0].id, "a");
-  EXPECT_EQ(config.camera_defs[1].id, "b");
+  EXPECT_EQ(config.camera_defs.at(0).id, "a");
+  EXPECT_EQ(config.camera_defs.at(1).id, "b");
 }
 
 TEST_F(ConfigParsingTest, GpuFlushBooleanSpellings) {

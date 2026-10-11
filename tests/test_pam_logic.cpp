@@ -142,7 +142,7 @@ TEST_F(PamConfigTest, RequireConfirmationDefaults) {
   auto config = loadConfig("");
   EXPECT_TRUE(config.require_confirmation);
   EXPECT_EQ(config.confirmation_exempt_services.size(), 10);
-  EXPECT_EQ(config.confirmation_exempt_services[0], "gdm-password");
+  EXPECT_EQ(config.confirmation_exempt_services.at(0), "gdm-password");
 }
 
 TEST_F(PamConfigTest, RequireConfirmationParsing) {
@@ -153,8 +153,8 @@ confirmation_exempt_services = sshd,su
 )");
   EXPECT_FALSE(config.require_confirmation);
   ASSERT_EQ(config.confirmation_exempt_services.size(), 2);
-  EXPECT_EQ(config.confirmation_exempt_services[0], "sshd");
-  EXPECT_EQ(config.confirmation_exempt_services[1], "su");
+  EXPECT_EQ(config.confirmation_exempt_services.at(0), "sshd");
+  EXPECT_EQ(config.confirmation_exempt_services.at(1), "su");
 }
 
 TEST_F(PamConfigTest, RequireConfirmationPrecedence) {
@@ -168,8 +168,8 @@ confirmation_exempt_services = sudo,login
 )");
   EXPECT_FALSE(config.require_confirmation);
   ASSERT_EQ(config.confirmation_exempt_services.size(), 2);
-  EXPECT_EQ(config.confirmation_exempt_services[0], "sudo");
-  EXPECT_EQ(config.confirmation_exempt_services[1], "login");
+  EXPECT_EQ(config.confirmation_exempt_services.at(0), "sudo");
+  EXPECT_EQ(config.confirmation_exempt_services.at(1), "login");
 }
 
 TEST_F(PamConfigTest, KdeLockscreenDefaultsToAuto) {
@@ -230,16 +230,16 @@ TEST_F(PamConfigTest, DefaultExemptListContents) {
   auto config = loadConfig("");
   const auto& list = config.confirmation_exempt_services;
   ASSERT_EQ(list.size(), 10);
-  EXPECT_EQ(list[0], "gdm-password");
-  EXPECT_EQ(list[1], "sddm");
-  EXPECT_EQ(list[2], "lightdm");
-  EXPECT_EQ(list[3], "login");
-  EXPECT_EQ(list[4], "swaylock");
-  EXPECT_EQ(list[5], "i3lock");
-  EXPECT_EQ(list[6], "xscreensaver");
-  EXPECT_EQ(list[7], "kscreenlocker");
-  EXPECT_EQ(list[8], "kde");
-  EXPECT_EQ(list[9], "systemd-user");
+  EXPECT_EQ(list.at(0), "gdm-password");
+  EXPECT_EQ(list.at(1), "sddm");
+  EXPECT_EQ(list.at(2), "lightdm");
+  EXPECT_EQ(list.at(3), "login");
+  EXPECT_EQ(list.at(4), "swaylock");
+  EXPECT_EQ(list.at(5), "i3lock");
+  EXPECT_EQ(list.at(6), "xscreensaver");
+  EXPECT_EQ(list.at(7), "kscreenlocker");
+  EXPECT_EQ(list.at(8), "kde");
+  EXPECT_EQ(list.at(9), "systemd-user");
 }
 
 TEST_F(PamConfigTest, RejectsMalformedSyntax) {

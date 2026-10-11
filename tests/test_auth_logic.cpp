@@ -76,7 +76,7 @@ public:
     std::string vec = "[";
     for (int k = 0; k < MOCK_EMBEDDING_SIZE; ++k)
       vec += (k == 0 ? "0.1" : ", 0.1");
-    vec += "]";
+    vec += ']';
     return vec;
   }
 
@@ -116,15 +116,17 @@ public:
   static void setTimeoutMs(AuthEngine &engine, int timeout_ms) {
     engine.config.timeout_ms = timeout_ms;
   }
-  static void useModels(AuthEngine &engine, cv::Ptr<cv::FaceDetectorYN> detector,
-                        cv::Ptr<cv::FaceRecognizerSF> recognizer) {
-    engine.detector = std::move(detector);
-    engine.recognizer = std::move(recognizer);
+  static void useModels(AuthEngine &engine, const cv::Ptr<cv::FaceDetectorYN> &detector,
+                        const cv::Ptr<cv::FaceRecognizerSF> &recognizer) {
+    constexpr float kDefaultThreshold = 0.5F;
+    constexpr int kHighLockoutAttempts = 10000;
+    engine.detector = detector;
+    engine.recognizer = recognizer;
     engine.config.users_dir = "/tmp/linuxcampam_test_users";
     engine.config.gpu_throttle_ms = 0;
     engine.config.gpu_flush = false;
-    engine.config.threshold = 0.5f;
-    engine.config.lockout_attempts = 10000;
+    engine.config.threshold = kDefaultThreshold;
+    engine.config.lockout_attempts = kHighLockoutAttempts;
   }
   static void clearActiveCameras(AuthEngine &engine) {
     engine.active_cameras.clear();
@@ -243,14 +245,14 @@ TEST_F(AuthEngineTest, SetLabelPromotesPendingEmbedding) {
   verify_file >> j;
   EXPECT_FALSE(j.contains("_pending_rgb"));
   ASSERT_TRUE(j.contains("embeddings_rgb"));
-  ASSERT_EQ(j["embeddings_rgb"].size(), 1);
-  EXPECT_EQ(j["embeddings_rgb"][0]["label"], "my_label");
+  ASSERT_EQ(j.at("embeddings_rgb").size(), 1);
+  EXPECT_EQ(j.at("embeddings_rgb").at(0).at("label"), "my_label");
 
   // Verify embedding data survived the round-trip
-  auto stored = j["embeddings_rgb"][0]["data"].get<std::vector<float>>();
+  auto stored = j.at("embeddings_rgb").at(0).at("data").get<std::vector<float>>();
   ASSERT_EQ(stored.size(), MOCK_EMBEDDING_SIZE);
   for (int k = 0; k < MOCK_EMBEDDING_SIZE; ++k) {
-    EXPECT_FLOAT_EQ(stored[k], 0.1f);
+    EXPECT_FLOAT_EQ(stored.at(k), 0.1f);
   }
 }
 
@@ -283,8 +285,8 @@ TEST_F(AuthEngineTest, RemoveEmbeddingDeletesCorrectLabel) {
   std::ifstream verify_file("/tmp/linuxcampam_test_users/test_user.json");
   nlohmann::json j;
   verify_file >> j;
-  ASSERT_EQ(j["embeddings_rgb"].size(), 1);
-  EXPECT_EQ(j["embeddings_rgb"][0]["label"], "label_to_keep");
+  ASSERT_EQ(j.at("embeddings_rgb").size(), 1);
+  EXPECT_EQ(j.at("embeddings_rgb").at(0).at("label"), "label_to_keep");
 }
 
 TEST_F(AuthEngineTest, RemoveEmbeddingReturnsFalseForNonexistentLabel) {
@@ -494,16 +496,18 @@ TEST_F(AuthEngineTest, InitFailsClosedOnMalformedConfig) {
 }
 
 TEST_F(AuthEngineTest, VerificationEnforcesTimeoutMs) {
+  constexpr int kSleepDelayMs = 25;
+  constexpr int kShortTimeoutMs = 5;
   auth_engine->setCameraFactory([&](const Configuration::CameraDefinition &) {
     auto mock = std::make_unique<NiceMock<MockCamera>>();
     ON_CALL(*mock, capture()).WillByDefault([&]() {
-      std::this_thread::sleep_for(std::chrono::milliseconds(25));
+      std::this_thread::sleep_for(std::chrono::milliseconds(kSleepDelayMs));
       return cv::Mat::zeros(MOCK_FRAME_HEIGHT, MOCK_FRAME_WIDTH, CV_8UC3);
     });
     return mock;
   });
   ASSERT_TRUE(auth_engine->init("test_auth_config.ini"));
-  setTimeoutMs(*auth_engine, 5);
+  setTimeoutMs(*auth_engine, kShortTimeoutMs);
 
   writeUserWithEmbedding("timeout_user", "default");
 
@@ -537,6 +541,7 @@ TEST_F(AuthEngineTest, AdaptivePolicyMandatoryCaptureFailure) {
 }
 
 TEST_F(AuthEngineTest, AdaptivePolicyMandatoryDarkFailure) {
+  constexpr int kMinBrightnessThreshold = 50;
   ASSERT_TRUE(auth_engine->init("test_auth_config.ini"));
 
   setPolicy(*auth_engine, Configuration::AuthPolicy::ADAPTIVE);
@@ -545,7 +550,7 @@ TEST_F(AuthEngineTest, AdaptivePolicyMandatoryDarkFailure) {
   Configuration::CameraDefinition ir_cam;
   ir_cam.id = "cam_ir";
   ir_cam.type = "ir";
-  ir_cam.min_brightness = 50;
+  ir_cam.min_brightness = kMinBrightnessThreshold;
   ir_cam.mandatory = true;
 
   auto mock = std::make_unique<NiceMock<MockCamera>>();
@@ -561,6 +566,7 @@ TEST_F(AuthEngineTest, AdaptivePolicyMandatoryDarkFailure) {
 }
 
 TEST_F(AuthEngineTest, StrictPolicyFailsOnAnyDarkOrCaptureFailure) {
+  constexpr int kMinBrightnessThreshold = 50;
   ASSERT_TRUE(auth_engine->init("test_auth_config.ini"));
 
   setPolicy(*auth_engine, Configuration::AuthPolicy::STRICT_ALL);
@@ -569,7 +575,7 @@ TEST_F(AuthEngineTest, StrictPolicyFailsOnAnyDarkOrCaptureFailure) {
   Configuration::CameraDefinition opt_cam;
   opt_cam.id = "cam_opt";
   opt_cam.type = "rgb";
-  opt_cam.min_brightness = 50;
+  opt_cam.min_brightness = kMinBrightnessThreshold;
   opt_cam.mandatory = false;
 
   auto mock = std::make_unique<NiceMock<MockCamera>>();
@@ -611,17 +617,23 @@ TEST_F(AuthEngineTest, LenientPolicyToleratesMandatoryCaptureFailure) {
 // detection/matching pipeline, including successful results, without face photos.
 class PolicyDetector : public cv::FaceDetectorYN {
 public:
+  static constexpr int kInputDim = 8;
+  static constexpr float kScoreThreshold = 0.9F;
+  static constexpr float kNmsThreshold = 0.3F;
+  static constexpr uchar kNoFacePixel = 140;
+  static constexpr int kFaceFeatureCols = 15;
+
   void setInputSize(const cv::Size &) override {}
-  cv::Size getInputSize() override { return {8, 8}; }
+  cv::Size getInputSize() override { return {kInputDim, kInputDim}; }
   void setScoreThreshold(float) override {}
-  float getScoreThreshold() override { return 0.9f; }
+  float getScoreThreshold() override { return kScoreThreshold; }
   void setNMSThreshold(float) override {}
-  float getNMSThreshold() override { return 0.3f; }
+  float getNMSThreshold() override { return kNmsThreshold; }
   void setTopK(int) override {}
   int getTopK() override { return 1; }
   int detect(cv::InputArray image, cv::OutputArray faces) override {
-    if (image.getMat().at<cv::Vec3b>(0, 0)[0] == 140) { faces.release(); return 0; }
-    cv::Mat face = cv::Mat::ones(1, 15, CV_32F);
+    if (*image.getMat().ptr<uchar>(0, 0) == kNoFacePixel) { faces.release(); return 0; }
+    cv::Mat face = cv::Mat::ones(1, kFaceFeatureCols, CV_32F);
     face.copyTo(faces);
     return 1;
   }
@@ -629,57 +641,70 @@ public:
 
 class PolicyRecognizer : public cv::FaceRecognizerSF {
 public:
+  static constexpr double kMatchScore = 0.9;
+  static constexpr double kMismatchScore = 0.1;
+  static constexpr float kMatchPixel = 100.0F;
+
   void alignCrop(cv::InputArray source, cv::InputArray, cv::OutputArray aligned) const override {
     source.getMat().copyTo(aligned);
   }
   void feature(cv::InputArray aligned, cv::OutputArray feature) override {
-    cv::Mat value(1, 1, CV_32F, cv::Scalar(aligned.getMat().at<cv::Vec3b>(0, 0)[0]));
+    cv::Mat value(1, 1, CV_32F, cv::Scalar(*aligned.getMat().ptr<uchar>(0, 0)));
     value.copyTo(feature);
   }
   double match(cv::InputArray value, cv::InputArray, int) const override {
-    return value.getMat().at<float>(0, 0) == 100.0f ? 0.9 : 0.1;
+    return value.getMat().at<float>(0, 0) == kMatchPixel ? kMatchScore : kMismatchScore;
   }
 };
 
 TEST_F(AuthEngineTest, MultiCameraPolicyOutcomeMatrix) {
-  enum Outcome { Match, Mismatch, NoFace, MissingEmbedding, Dark, CaptureFailure };
+  enum class Outcome : std::uint8_t { Match, Mismatch, NoFace, MissingEmbedding, Dark, CaptureFailure };
   using Policy = Configuration::AuthPolicy;
+  constexpr int kMinBrightness = 50;
+  constexpr int kDarkValue = 0;
+  constexpr int kNoFaceValue = 140;
+  constexpr int kMismatchValue = 120;
+  constexpr int kMatchValue = 100;
+  constexpr float kEmbeddingVal = 0.1F;
+
   for (const auto policy : {Policy::STRICT_ALL, Policy::ADAPTIVE, Policy::LENIENT_ANY}) {
     for (int required = 0; required < 4; ++required) {
-      for (int first = Match; first <= CaptureFailure; ++first) {
-        for (int second = Match; second <= CaptureFailure; ++second) {
+      for (int first = static_cast<int>(Outcome::Match); first <= static_cast<int>(Outcome::CaptureFailure); ++first) {
+        for (int second = static_cast<int>(Outcome::Match); second <= static_cast<int>(Outcome::CaptureFailure); ++second) {
           SCOPED_TRACE(::testing::Message() << "policy=" << static_cast<int>(policy)
                        << " required=" << required << " outcomes=" << first << "," << second);
           AuthEngine engine;
           useModels(engine, cv::makePtr<PolicyDetector>(), cv::makePtr<PolicyRecognizer>());
           setPolicy(engine, policy);
           nlohmann::json data;
-          const int outcomes[] = {first, second};
+          const std::array<Outcome, 2> outcomes{static_cast<Outcome>(first), static_cast<Outcome>(second)};
           bool any_match = false;
           bool all_acceptable = true;
-          for (int i = 0; i < 2; ++i) {
+          for (size_t i = 0; i < outcomes.size(); ++i) {
             const bool mandatory = (required & (1 << i)) != 0;
-            const int outcome = outcomes[i];
+            const Outcome outcome = outcomes.at(i);
             Configuration::CameraDefinition camera;
             camera.id = i == 0 ? "rgb" : "ir";
             camera.type = camera.id;
             camera.mandatory = mandatory;
-            camera.min_brightness = 50;
+            camera.min_brightness = kMinBrightness;
             auto mock = std::make_unique<NiceMock<MockCamera>>();
             cv::Mat frame;
-            if (outcome != CaptureFailure) {
-              int value = outcome == Dark ? 0 : outcome == NoFace ? 140 : outcome == Mismatch ? 120 : 100;
-              frame = cv::Mat(8, 8, CV_8UC3, cv::Scalar::all(value));
+            if (outcome != Outcome::CaptureFailure) {
+              int value = outcome == Outcome::Dark ? kDarkValue
+                        : outcome == Outcome::NoFace ? kNoFaceValue
+                        : outcome == Outcome::Mismatch ? kMismatchValue : kMatchValue;
+              frame = cv::Mat(PolicyDetector::kInputDim, PolicyDetector::kInputDim, CV_8UC3, cv::Scalar::all(value));
             }
             ON_CALL(*mock, capture()).WillByDefault(Return(frame));
             addActiveCamera(engine, std::move(mock), camera);
-            if (outcome != MissingEmbedding)
-              data["embeddings_" + camera.type] = {{{"label", "default"}, {"data", {0.1f}}}};
-            any_match = any_match || outcome == Match;
+            if (outcome != Outcome::MissingEmbedding)
+              data.emplace("embeddings_" + camera.type, nlohmann::json::array({{{"label", "default"}, {"data", {kEmbeddingVal}}}}));
+            any_match = any_match || outcome == Outcome::Match;
             // Adaptive permits unavailable optional cameras; a participating
             // camera's mismatch/no-face/missing template still vetoes it.
-            const bool optional_unavailable = !mandatory && (outcome == Dark || outcome == CaptureFailure);
-            all_acceptable = all_acceptable && (outcome == Match ||
+            const bool optional_unavailable = !mandatory && (outcome == Outcome::Dark || outcome == Outcome::CaptureFailure);
+            all_acceptable = all_acceptable && (outcome == Outcome::Match ||
                 (policy == Policy::ADAPTIVE && optional_unavailable));
           }
           { std::ofstream file("/tmp/linuxcampam_test_users/matrix.json"); file << data; }

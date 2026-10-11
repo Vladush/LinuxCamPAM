@@ -11,14 +11,11 @@
 #include "PresenceTripwire.hpp"
 #include "VirtualKeyboard.hpp"
 
-#include <array>
 #include <atomic>
-#include <chrono>
 #include <csignal>
 #include <filesystem>
 #include <fcntl.h>
 #include <sys/prctl.h>
-#include <mutex>
 #include <optional>
 #include <string>
 #include <pwd.h>
@@ -39,6 +36,8 @@ std::atomic<bool> g_proximity_present(true); // Default to true so auth works if
 
 constexpr int SOCKET_PERMS = 0666; // File permissions for the UNIX socket (world-readable/writable)
 constexpr int BACKLOG = 5; // Maximum length of the pending connections queue for the socket
+constexpr int kClientIpcTimeoutMs = 2000;
+constexpr int kWorkerPollIntervalMs = 1000;
 } // namespace
 
 void signal_handler(int signum) {
@@ -49,7 +48,7 @@ void signal_handler(int signum) {
 void handle_client(int fd, AuthEngine &engine) {
   linuxcampam::FileDescriptor client_fd(fd);
   std::string request;
-  if (!linuxcampam::protocol::recv_message(client_fd.get(), request, 2000)) {
+  if (!linuxcampam::protocol::recv_message(client_fd.get(), request, kClientIpcTimeoutMs)) {
     return;
   }
 
@@ -87,7 +86,7 @@ void handle_client(int fd, AuthEngine &engine) {
     case Command::AUTH_REQUEST: {
       if (req.args.empty())
         break;
-      if (!check_permission(req.args[0])) {
+      if (!check_permission(req.args.front())) {
         // Enforce SO_PEERCRED validation. Unprivileged cross-user requests are dropped
         // to prevent local DoS attacks from tying up the camera hardware.
         response = "AUTH_FAIL";
@@ -100,18 +99,18 @@ void handle_client(int fd, AuthEngine &engine) {
         break;
       }
 
-      bool success = engine.verifyUser(req.args[0]);
+      bool success = engine.verifyUser(req.args.front());
       response = success ? "AUTH_SUCCESS" : "AUTH_FAIL";
       break;
     }
     case Command::ADD_USER: {
       if (req.args.empty())
         break;
-      if (!check_permission(req.args[0])) {
+      if (!check_permission(req.args.front())) {
         response = "ERROR Permission Denied";
         break;
       }
-      auto Result = engine.enrollUser(req.args[0]);
+      auto Result = engine.enrollUser(req.args.front());
       response =
           Result.first ? "ENROLL_SUCCESS" : ("ENROLL_FAIL " + Result.second);
       break;
@@ -119,12 +118,12 @@ void handle_client(int fd, AuthEngine &engine) {
     case Command::TRAIN_USER: {
       if (req.args.empty())
         break;
-      if (!check_permission(req.args[0])) {
+      if (!check_permission(req.args.front())) {
         response = "ERROR Permission Denied";
         break;
       }
-      std::string label = (req.args.size() > 1) ? req.args[1] : "default";
-      bool success = engine.trainUser(req.args[0], label, false);
+      std::string label = (req.args.size() > 1) ? req.args.at(1) : "default";
+      bool success = engine.trainUser(req.args.front(), label, false);
       response = success ? "TRAIN_SUCCESS" : "TRAIN_FAIL";
       break;
     }
@@ -141,7 +140,7 @@ void handle_client(int fd, AuthEngine &engine) {
       break;
     }
     case Command::TEST_AUTH: {
-      std::string user = req.args.empty() ? "" : req.args[0];
+      std::string user = req.args.empty() ? "" : req.args.front();
       if (!user.empty()) {
         if (!check_permission(user)) {
           response = "ERROR Permission Denied";
@@ -163,11 +162,11 @@ void handle_client(int fd, AuthEngine &engine) {
       if (req.args.size() < 2) {
         response = "ERROR Missing user or label";
       } else {
-        if (!check_permission(req.args[0])) {
+        if (!check_permission(req.args.front())) {
           response = "ERROR Permission Denied";
           break;
         }
-        bool success = engine.setLabel(req.args[0], req.args[1]);
+        bool success = engine.setLabel(req.args.front(), req.args.at(1));
         response = success ? "LABEL_SET" : "LABEL_FAIL";
       }
       break;
@@ -176,12 +175,12 @@ void handle_client(int fd, AuthEngine &engine) {
       if (req.args.empty()) {
         response = "ERROR Missing user";
       } else {
-        if (!check_permission(req.args[0])) {
+        if (!check_permission(req.args.front())) {
           response = "ERROR Permission Denied";
           break;
         }
-        std::string label = (req.args.size() > 1) ? req.args[1] : "default";
-        bool success = engine.trainUser(req.args[0], label, true);
+        std::string label = (req.args.size() > 1) ? req.args.at(1) : "default";
+        bool success = engine.trainUser(req.args.front(), label, true);
         response = success ? "TRAIN_SUCCESS" : "TRAIN_FAIL";
       }
       break;
@@ -191,11 +190,11 @@ void handle_client(int fd, AuthEngine &engine) {
       if (req.args.empty()) {
         response = "ERROR Missing user";
       } else {
-        if (!check_permission(req.args[0])) {
+        if (!check_permission(req.args.front())) {
           response = "ERROR Permission Denied";
           break;
         }
-        auto labels = engine.listEmbeddings(req.args[0]);
+        auto labels = engine.listEmbeddings(req.args.front());
         if (labels.empty()) {
           response = "No embeddings found";
         } else {
@@ -211,11 +210,11 @@ void handle_client(int fd, AuthEngine &engine) {
       if (req.args.size() < 2) {
         response = "ERROR Missing user or label";
       } else {
-        if (!check_permission(req.args[0])) {
+        if (!check_permission(req.args.front())) {
           response = "ERROR Permission Denied";
           break;
         }
-        bool success = engine.removeEmbedding(req.args[0], req.args[1]);
+        bool success = engine.removeEmbedding(req.args.front(), req.args.at(1));
         response = success ? "REMOVED" : "REMOVE_FAIL";
       }
       break;
@@ -231,7 +230,7 @@ void handle_client(int fd, AuthEngine &engine) {
         response = "ERROR Permission Denied";
         break;
       }
-      std::string levelStr = req.args[0];
+      std::string levelStr = req.args.front();
       if (levelStr == "DEBUG") {
         Logger::setLevel(LogLevel::DEBUG);
         response = "LOG_LEVEL_DEBUG";
@@ -270,7 +269,7 @@ void handle_client(int fd, AuthEngine &engine) {
     response = "ERROR Unknown Exception";
   }
 
-  linuxcampam::protocol::send_message(client_fd.get(), response, 2000);
+  linuxcampam::protocol::send_message(client_fd.get(), response, kClientIpcTimeoutMs);
 }
 
 static void configure_logging(const Configuration &config) {
@@ -303,12 +302,12 @@ static int verification_worker(const char *config_path, std::string_view supervi
   configure_logging(engine.getConfig());
   for (;;) {
     pollfd pfd{DeadlineWorker::CHANNEL_FD, POLLIN, 0};
-    int ready = poll(&pfd, 1, 1000);
+    int ready = poll(&pfd, 1, kWorkerPollIntervalMs);
     if (ready < 0 && errno == EINTR) continue;
     if (ready < 0) return 1;
     if (ready == 0) { (void)engine.performMaintenance(); continue; }
     std::string request;
-    if (!linuxcampam::protocol::recv_message(DeadlineWorker::CHANNEL_FD, request, 2000)) return 0;
+    if (!linuxcampam::protocol::recv_message(DeadlineWorker::CHANNEL_FD, request, kClientIpcTimeoutMs)) return 0;
     try {
       auto data = json::parse(request);
       const auto user = data.at("user").get<std::string>();
@@ -319,7 +318,7 @@ static int verification_worker(const char *config_path, std::string_view supervi
       if (diagnostic) result = engine.verifyUserWithDetails(user);
       else { result.success = engine.verifyUser(user); }
       json response = {{"success", result.success}, {"reason", result.reason}, {"score", result.best_score}};
-      if (!linuxcampam::protocol::send_message(DeadlineWorker::CHANNEL_FD, response.dump(), 2000)) return 0;
+      if (!linuxcampam::protocol::send_message(DeadlineWorker::CHANNEL_FD, response.dump(), kClientIpcTimeoutMs)) return 0;
     } catch (const std::exception &error) {
       log_error(std::string("Verification worker failed: ") + error.what());
       return 1;
@@ -399,7 +398,7 @@ int main(int argc, const char *const argv[]) {
   engine.setVerificationRunner([&](std::string_view user, bool diagnostic) -> AuthResult {
     json request = {{"user", user}, {"diagnostic", diagnostic},
                     {"log_level", static_cast<int>(Logger::getLevel())}};
-    auto response = verification.request(request.dump(), cfg.timeout_ms, active_client);
+    auto response = verification.request(request.dump(), std::chrono::milliseconds(cfg.timeout_ms), active_client);
     if (!response) return {false, "Verification timeout or worker failure", 0.0f};
     auto result = json::parse(*response);
     // Recheck enforcement: a sensor failure during capture must revoke success too.
