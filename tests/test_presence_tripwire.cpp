@@ -137,17 +137,32 @@ TEST_F(PresenceTripwireTest, PollLoopFiresCallbackOnPresence) {
 
 TEST_F(PresenceTripwireTest, PollLoopAbortsOnHidError) {
   ParsingFactory factory;
-  std::atomic<bool> callback_called{false};
-
   auto ops = makePassthroughOps();
   ops.read_timeout = [](hid_device*, uint8_t*, size_t, int) -> int { return -1; };
+  std::promise<bool> report;
+  auto future = report.get_future();
+  PresenceTripwire tripwire(factory, std::move(ops));
+  ASSERT_TRUE(tripwire.start("/dev/fake", HardwareId("ValidId"),
+      [&](bool present, int) { report.set_value(present); }));
+  ASSERT_EQ(future.wait_for(std::chrono::seconds(2)), std::future_status::ready);
+  EXPECT_FALSE(future.get());
+  tripwire.stop();
+}
 
-  // Use scope to ensure thread joins
-  {
-    PresenceTripwire tripwire(factory, std::move(ops));
-    ASSERT_TRUE(tripwire.start("/dev/fake", HardwareId("ValidId"),
-      [&](bool, int) { callback_called = true; }));
-  }
-
-  EXPECT_FALSE(callback_called);
+TEST_F(PresenceTripwireTest, ReadErrorRevokesPreviouslyReportedPresence) {
+  ParsingFactory factory;
+  auto ops = makePassthroughOps();
+  int reads = 0;
+  ops.read_timeout = [&](hid_device*, uint8_t*, size_t, int) { return reads++ == 0 ? 1 : -1; };
+  std::promise<void> revoked;
+  auto future = revoked.get_future();
+  std::vector<bool> reports;
+  PresenceTripwire tripwire(factory, std::move(ops));
+  ASSERT_TRUE(tripwire.start("/dev/fake", HardwareId("ValidId"), [&](bool present, int) {
+    reports.push_back(present);
+    if (!present) revoked.set_value();
+  }));
+  ASSERT_EQ(future.wait_for(std::chrono::seconds(2)), std::future_status::ready);
+  tripwire.stop();
+  EXPECT_EQ(reports, (std::vector<bool>{true, false}));
 }

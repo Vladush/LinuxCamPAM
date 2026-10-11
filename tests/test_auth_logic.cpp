@@ -76,7 +76,7 @@ public:
     std::string vec = "[";
     for (int k = 0; k < MOCK_EMBEDDING_SIZE; ++k)
       vec += (k == 0 ? "0.1" : ", 0.1");
-    vec += "]";
+    vec += ']';
     return vec;
   }
 
@@ -109,6 +109,31 @@ public:
   static void recordAuthAttempt(AuthEngine &engine, std::string_view user,
                                 bool success) {
     engine.recordAuthAttempt(user, success);
+  }
+  static void setPolicy(AuthEngine &engine, Configuration::AuthPolicy policy) {
+    engine.config.policy = policy;
+  }
+  static void setTimeoutMs(AuthEngine &engine, int timeout_ms) {
+    engine.config.timeout_ms = timeout_ms;
+  }
+  static void useModels(AuthEngine &engine, const cv::Ptr<cv::FaceDetectorYN> &detector,
+                        const cv::Ptr<cv::FaceRecognizerSF> &recognizer) {
+    constexpr float kDefaultThreshold = 0.5F;
+    constexpr int kHighLockoutAttempts = 10000;
+    engine.detector = detector;
+    engine.recognizer = recognizer;
+    engine.config.users_dir = "/tmp/linuxcampam_test_users";
+    engine.config.gpu_throttle_ms = 0;
+    engine.config.gpu_flush = false;
+    engine.config.threshold = kDefaultThreshold;
+    engine.config.lockout_attempts = kHighLockoutAttempts;
+  }
+  static void clearActiveCameras(AuthEngine &engine) {
+    engine.active_cameras.clear();
+  }
+  static void addActiveCamera(AuthEngine &engine, std::unique_ptr<ICamera> cam,
+                              Configuration::CameraDefinition def) {
+    engine.active_cameras.push_back({std::move(cam), std::move(def)});
   }
 
   std::unique_ptr<AuthEngine> auth_engine;
@@ -220,14 +245,14 @@ TEST_F(AuthEngineTest, SetLabelPromotesPendingEmbedding) {
   verify_file >> j;
   EXPECT_FALSE(j.contains("_pending_rgb"));
   ASSERT_TRUE(j.contains("embeddings_rgb"));
-  ASSERT_EQ(j["embeddings_rgb"].size(), 1);
-  EXPECT_EQ(j["embeddings_rgb"][0]["label"], "my_label");
+  ASSERT_EQ(j.at("embeddings_rgb").size(), 1);
+  EXPECT_EQ(j.at("embeddings_rgb").at(0).at("label"), "my_label");
 
   // Verify embedding data survived the round-trip
-  auto stored = j["embeddings_rgb"][0]["data"].get<std::vector<float>>();
+  auto stored = j.at("embeddings_rgb").at(0).at("data").get<std::vector<float>>();
   ASSERT_EQ(stored.size(), MOCK_EMBEDDING_SIZE);
   for (int k = 0; k < MOCK_EMBEDDING_SIZE; ++k) {
-    EXPECT_FLOAT_EQ(stored[k], 0.1f);
+    EXPECT_FLOAT_EQ(stored.at(k), 0.1f);
   }
 }
 
@@ -260,8 +285,8 @@ TEST_F(AuthEngineTest, RemoveEmbeddingDeletesCorrectLabel) {
   std::ifstream verify_file("/tmp/linuxcampam_test_users/test_user.json");
   nlohmann::json j;
   verify_file >> j;
-  ASSERT_EQ(j["embeddings_rgb"].size(), 1);
-  EXPECT_EQ(j["embeddings_rgb"][0]["label"], "label_to_keep");
+  ASSERT_EQ(j.at("embeddings_rgb").size(), 1);
+  EXPECT_EQ(j.at("embeddings_rgb").at(0).at("label"), "label_to_keep");
 }
 
 TEST_F(AuthEngineTest, RemoveEmbeddingReturnsFalseForNonexistentLabel) {
@@ -366,7 +391,7 @@ TEST_F(AuthEngineTest, SuccessfulAttemptResetsCounter) {
   EXPECT_FALSE(isUserLockedOut(*auth_engine, "charlie"));
 }
 
-TEST_F(AuthEngineTest, LockoutDisabledWhenAttemptsIsZero) {
+TEST_F(AuthEngineTest, LockoutBoundsValidation) {
   TempConfigFile guard("/tmp/test_no_lockout.ini");
   {
     std::ofstream cfg(guard.path);
@@ -382,11 +407,11 @@ TEST_F(AuthEngineTest, LockoutDisabledWhenAttemptsIsZero) {
   });
   ASSERT_TRUE(engine.init(guard.path));
 
-  constexpr int EXCESS_FAILURES = 100;
-  for (int i = 0; i < EXCESS_FAILURES; ++i)
+  constexpr int DEFAULT_FAILURES = 5;
+  for (int i = 0; i < DEFAULT_FAILURES; ++i)
     recordAuthAttempt(engine, "dave", false);
 
-  EXPECT_FALSE(isUserLockedOut(engine, "dave"));
+  EXPECT_TRUE(isUserLockedOut(engine, "dave"));
 }
 
 TEST_F(AuthEngineTest, LockoutExpiresAfterDuration) {
@@ -456,4 +481,249 @@ TEST_F(AuthEngineTest, SetLabelWritesFileWithSecurePermissions) {
               std::string::npos)
         << "leftover temp file: " << entry.path();
   }
+}
+
+// --- Fail-closed config and policy tests ---
+
+TEST_F(AuthEngineTest, InitFailsClosedOnMalformedConfig) {
+  std::ofstream bad_cfg("bad_config.ini");
+  bad_cfg << "[Auth]\nthreshold = not_a_float\n";
+  bad_cfg.close();
+  TempConfigFile guard("bad_config.ini");
+
+  EXPECT_FALSE(auth_engine->init("bad_config.ini"))
+      << "AuthEngine::init must fail-closed on malformed config";
+}
+
+TEST_F(AuthEngineTest, VerificationEnforcesTimeoutMs) {
+  constexpr int kSleepDelayMs = 25;
+  constexpr int kShortTimeoutMs = 5;
+  auth_engine->setCameraFactory([&](const Configuration::CameraDefinition &) {
+    auto mock = std::make_unique<NiceMock<MockCamera>>();
+    ON_CALL(*mock, capture()).WillByDefault([&]() {
+      std::this_thread::sleep_for(std::chrono::milliseconds(kSleepDelayMs));
+      return cv::Mat::zeros(MOCK_FRAME_HEIGHT, MOCK_FRAME_WIDTH, CV_8UC3);
+    });
+    return mock;
+  });
+  ASSERT_TRUE(auth_engine->init("test_auth_config.ini"));
+  setTimeoutMs(*auth_engine, kShortTimeoutMs);
+
+  writeUserWithEmbedding("timeout_user", "default");
+
+  AuthResult res = auth_engine->verifyUserWithDetails("timeout_user");
+  EXPECT_FALSE(res.success);
+  EXPECT_THAT(res.reason, ::testing::HasSubstr("Verification timeout"));
+}
+
+TEST_F(AuthEngineTest, AdaptivePolicyMandatoryCaptureFailure) {
+  auth_engine->setCameraFactory([&](const Configuration::CameraDefinition &) {
+    auto mock = std::make_unique<NiceMock<MockCamera>>();
+    ON_CALL(*mock, capture()).WillByDefault(Return(cv::Mat()));
+    return mock;
+  });
+  ASSERT_TRUE(auth_engine->init("test_auth_config.ini"));
+
+  setPolicy(*auth_engine, Configuration::AuthPolicy::ADAPTIVE);
+  clearActiveCameras(*auth_engine);
+
+  Configuration::CameraDefinition ir_cam;
+  ir_cam.id = "cam_ir";
+  ir_cam.type = "ir";
+  ir_cam.mandatory = true;
+  addActiveCamera(*auth_engine, std::make_unique<NiceMock<MockCamera>>(), ir_cam);
+
+  writeUserWithEmbedding("policy_user", "default");
+
+  AuthResult res = auth_engine->verifyUserWithDetails("policy_user");
+  EXPECT_FALSE(res.success);
+  EXPECT_THAT(res.reason, ::testing::HasSubstr("Mandatory Camera cam_ir failed"));
+}
+
+TEST_F(AuthEngineTest, AdaptivePolicyMandatoryDarkFailure) {
+  constexpr int kMinBrightnessThreshold = 50;
+  ASSERT_TRUE(auth_engine->init("test_auth_config.ini"));
+
+  setPolicy(*auth_engine, Configuration::AuthPolicy::ADAPTIVE);
+  clearActiveCameras(*auth_engine);
+
+  Configuration::CameraDefinition ir_cam;
+  ir_cam.id = "cam_ir";
+  ir_cam.type = "ir";
+  ir_cam.min_brightness = kMinBrightnessThreshold;
+  ir_cam.mandatory = true;
+
+  auto mock = std::make_unique<NiceMock<MockCamera>>();
+  cv::Mat black_frame = cv::Mat::zeros(MOCK_FRAME_HEIGHT, MOCK_FRAME_WIDTH, CV_8UC3);
+  ON_CALL(*mock, capture()).WillByDefault(Return(black_frame));
+  addActiveCamera(*auth_engine, std::move(mock), ir_cam);
+
+  writeUserWithEmbedding("policy_user", "default");
+
+  AuthResult res = auth_engine->verifyUserWithDetails("policy_user");
+  EXPECT_FALSE(res.success);
+  EXPECT_THAT(res.reason, ::testing::HasSubstr("Mandatory Camera cam_ir too dark"));
+}
+
+TEST_F(AuthEngineTest, StrictPolicyFailsOnAnyDarkOrCaptureFailure) {
+  constexpr int kMinBrightnessThreshold = 50;
+  ASSERT_TRUE(auth_engine->init("test_auth_config.ini"));
+
+  setPolicy(*auth_engine, Configuration::AuthPolicy::STRICT_ALL);
+  clearActiveCameras(*auth_engine);
+
+  Configuration::CameraDefinition opt_cam;
+  opt_cam.id = "cam_opt";
+  opt_cam.type = "rgb";
+  opt_cam.min_brightness = kMinBrightnessThreshold;
+  opt_cam.mandatory = false;
+
+  auto mock = std::make_unique<NiceMock<MockCamera>>();
+  cv::Mat black_frame = cv::Mat::zeros(MOCK_FRAME_HEIGHT, MOCK_FRAME_WIDTH, CV_8UC3);
+  ON_CALL(*mock, capture()).WillByDefault(Return(black_frame));
+  addActiveCamera(*auth_engine, std::move(mock), opt_cam);
+
+  writeUserWithEmbedding("policy_user", "default");
+
+  AuthResult res = auth_engine->verifyUserWithDetails("policy_user");
+  EXPECT_FALSE(res.success);
+  EXPECT_THAT(res.reason, ::testing::HasSubstr("Camera cam_opt too dark"));
+}
+
+TEST_F(AuthEngineTest, LenientPolicyToleratesMandatoryCaptureFailure) {
+  ASSERT_TRUE(auth_engine->init("test_auth_config.ini"));
+
+  setPolicy(*auth_engine, Configuration::AuthPolicy::LENIENT_ANY);
+  clearActiveCameras(*auth_engine);
+
+  Configuration::CameraDefinition ir_cam;
+  ir_cam.id = "cam_ir";
+  ir_cam.type = "ir";
+  ir_cam.mandatory = true;
+
+  auto mock_ir = std::make_unique<NiceMock<MockCamera>>();
+  ON_CALL(*mock_ir, capture()).WillByDefault(Return(cv::Mat())); // Capture fails
+  addActiveCamera(*auth_engine, std::move(mock_ir), ir_cam);
+
+  writeUserWithEmbedding("policy_user", "default");
+
+  // Since IR capture fails and there are no other cameras, participants == 0
+  AuthResult res = auth_engine->verifyUserWithDetails("policy_user");
+  EXPECT_FALSE(res.success);
+  EXPECT_EQ(res.reason, "No cameras participated");
+}
+
+// Inference doubles let policy tests exercise the real capture/brightness/data/
+// detection/matching pipeline, including successful results, without face photos.
+class PolicyDetector : public cv::FaceDetectorYN {
+public:
+  static constexpr int kInputDim = 8;
+  static constexpr float kScoreThreshold = 0.9F;
+  static constexpr float kNmsThreshold = 0.3F;
+  static constexpr uchar kNoFacePixel = 140;
+  static constexpr int kFaceFeatureCols = 15;
+
+  void setInputSize(const cv::Size &) override {}
+  cv::Size getInputSize() override { return {kInputDim, kInputDim}; }
+  void setScoreThreshold(float) override {}
+  float getScoreThreshold() override { return kScoreThreshold; }
+  void setNMSThreshold(float) override {}
+  float getNMSThreshold() override { return kNmsThreshold; }
+  void setTopK(int) override {}
+  int getTopK() override { return 1; }
+  int detect(cv::InputArray image, cv::OutputArray faces) override {
+    if (*image.getMat().ptr<uchar>(0, 0) == kNoFacePixel) { faces.release(); return 0; }
+    cv::Mat face = cv::Mat::ones(1, kFaceFeatureCols, CV_32F);
+    face.copyTo(faces);
+    return 1;
+  }
+};
+
+class PolicyRecognizer : public cv::FaceRecognizerSF {
+public:
+  static constexpr double kMatchScore = 0.9;
+  static constexpr double kMismatchScore = 0.1;
+  static constexpr float kMatchPixel = 100.0F;
+
+  void alignCrop(cv::InputArray source, cv::InputArray, cv::OutputArray aligned) const override {
+    source.getMat().copyTo(aligned);
+  }
+  void feature(cv::InputArray aligned, cv::OutputArray feature) override {
+    cv::Mat value(1, 1, CV_32F, cv::Scalar(*aligned.getMat().ptr<uchar>(0, 0)));
+    value.copyTo(feature);
+  }
+  double match(cv::InputArray value, cv::InputArray, int) const override {
+    return value.getMat().at<float>(0, 0) == kMatchPixel ? kMatchScore : kMismatchScore;
+  }
+};
+
+TEST_F(AuthEngineTest, MultiCameraPolicyOutcomeMatrix) {
+  enum class Outcome : std::uint8_t { Match, Mismatch, NoFace, MissingEmbedding, Dark, CaptureFailure };
+  using Policy = Configuration::AuthPolicy;
+  constexpr int kMinBrightness = 50;
+  constexpr int kDarkValue = 0;
+  constexpr int kNoFaceValue = 140;
+  constexpr int kMismatchValue = 120;
+  constexpr int kMatchValue = 100;
+  constexpr float kEmbeddingVal = 0.1F;
+
+  for (const auto policy : {Policy::STRICT_ALL, Policy::ADAPTIVE, Policy::LENIENT_ANY}) {
+    for (int required = 0; required < 4; ++required) {
+      for (int first = static_cast<int>(Outcome::Match); first <= static_cast<int>(Outcome::CaptureFailure); ++first) {
+        for (int second = static_cast<int>(Outcome::Match); second <= static_cast<int>(Outcome::CaptureFailure); ++second) {
+          SCOPED_TRACE(::testing::Message() << "policy=" << static_cast<int>(policy)
+                       << " required=" << required << " outcomes=" << first << "," << second);
+          AuthEngine engine;
+          useModels(engine, cv::makePtr<PolicyDetector>(), cv::makePtr<PolicyRecognizer>());
+          setPolicy(engine, policy);
+          nlohmann::json data;
+          const std::array<Outcome, 2> outcomes{static_cast<Outcome>(first), static_cast<Outcome>(second)};
+          bool any_match = false;
+          bool all_acceptable = true;
+          for (size_t i = 0; i < outcomes.size(); ++i) {
+            const bool mandatory = (required & (1 << i)) != 0;
+            const Outcome outcome = outcomes.at(i);
+            Configuration::CameraDefinition camera;
+            camera.id = i == 0 ? "rgb" : "ir";
+            camera.type = camera.id;
+            camera.mandatory = mandatory;
+            camera.min_brightness = kMinBrightness;
+            auto mock = std::make_unique<NiceMock<MockCamera>>();
+            cv::Mat frame;
+            if (outcome != Outcome::CaptureFailure) {
+              int value = outcome == Outcome::Dark ? kDarkValue
+                        : outcome == Outcome::NoFace ? kNoFaceValue
+                        : outcome == Outcome::Mismatch ? kMismatchValue : kMatchValue;
+              frame = cv::Mat(PolicyDetector::kInputDim, PolicyDetector::kInputDim, CV_8UC3, cv::Scalar::all(value));
+            }
+            ON_CALL(*mock, capture()).WillByDefault(Return(frame));
+            addActiveCamera(engine, std::move(mock), camera);
+            if (outcome != Outcome::MissingEmbedding)
+              data.emplace("embeddings_" + camera.type, nlohmann::json::array({{{"label", "default"}, {"data", {kEmbeddingVal}}}}));
+            any_match = any_match || outcome == Outcome::Match;
+            // Adaptive permits unavailable optional cameras; a participating
+            // camera's mismatch/no-face/missing template still vetoes it.
+            const bool optional_unavailable = !mandatory && (outcome == Outcome::Dark || outcome == Outcome::CaptureFailure);
+            all_acceptable = all_acceptable && (outcome == Outcome::Match ||
+                (policy == Policy::ADAPTIVE && optional_unavailable));
+          }
+          { std::ofstream file("/tmp/linuxcampam_test_users/matrix.json"); file << data; }
+          const bool expected = any_match && (policy == Policy::LENIENT_ANY || all_acceptable);
+          EXPECT_EQ(engine.verifyUserWithDetails("matrix").success, expected);
+        }
+      }
+    }
+  }
+}
+
+TEST_F(AuthEngineTest, WorkerTimeoutsCannotResetSupervisorLockout) {
+  ASSERT_TRUE(auth_engine->init("test_auth_config.ini", false));
+  int calls = 0;
+  auth_engine->setVerificationRunner([&](std::string_view, bool) {
+    ++calls;
+    return AuthResult{false, "Verification timeout", 0.0f};
+  });
+  for (int i = 0; i < 3; ++i) EXPECT_FALSE(auth_engine->verifyUser("worker_user"));
+  EXPECT_EQ(auth_engine->verifyUserWithDetails("worker_user").reason, "User locked out");
+  EXPECT_EQ(calls, 3);
 }

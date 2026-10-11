@@ -1,9 +1,17 @@
 #pragma once
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <unistd.h>
+#include <poll.h>
+#include <time.h>
+#include <string.h>
 
 namespace linuxcampam {
 namespace protocol {
@@ -116,6 +124,90 @@ struct Request {
     return req;
   }
 };
+
+constexpr uint8_t PROTOCOL_VERSION = 1;
+constexpr int64_t kMsPerSec = 1000;
+constexpr int64_t kNsPerMs = 1000000;
+constexpr int kDefaultIpcTimeoutMs = 2000;
+constexpr size_t kHeaderSize = 5;
+constexpr uint32_t kMaxFrameSize = 1024 * 1024;
+
+inline int64_t _now_ms() {
+    struct timespec ts{};
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return static_cast<int64_t>(ts.tv_sec) * kMsPerSec + ts.tv_nsec / kNsPerMs;
+}
+
+inline bool send_message(int fd, const std::string& msg, int timeout_ms = kDefaultIpcTimeoutMs) {
+    int64_t deadline = _now_ms() + timeout_ms;
+    std::array<char, kHeaderSize> header{};
+    header.at(0) = static_cast<char>(PROTOCOL_VERSION);
+    uint32_t len = static_cast<uint32_t>(msg.size());
+    memcpy(header.data() + 1, &len, sizeof(len));
+
+    int flags = MSG_DONTWAIT;
+#ifdef MSG_NOSIGNAL
+    flags |= MSG_NOSIGNAL;
+#endif
+
+    auto send_all = [&](const char* buf, size_t length) {
+        size_t sent = 0;
+        while (sent < length) {
+            int64_t current = _now_ms();
+            if (current >= deadline) return false;
+            struct pollfd pfd = {fd, POLLOUT, 0};
+            int timeout = static_cast<int>(std::max<int64_t>(0, deadline - current));
+            int ret = poll(&pfd, 1, timeout);
+            if (ret <= 0) return false;
+            ssize_t n = send(fd, buf + sent, length - sent, flags);
+            if (n < 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) continue;
+                return false;
+            }
+            if (n == 0) return false;
+            sent += static_cast<size_t>(n);
+        }
+        return true;
+    };
+
+    if (!send_all(header.data(), header.size())) return false;
+    return send_all(msg.data(), len);
+}
+
+inline bool recv_message(int fd, std::string& out_msg, int timeout_ms = kDefaultIpcTimeoutMs) {
+    int64_t deadline = _now_ms() + timeout_ms;
+    auto recv_all = [&](char* buf, size_t length) {
+        size_t received = 0;
+        while (received < length) {
+            int64_t current = _now_ms();
+            if (current >= deadline) return false;
+            struct pollfd pfd = {fd, POLLIN, 0};
+            int timeout = static_cast<int>(std::max<int64_t>(0, deadline - current));
+            int ret = poll(&pfd, 1, timeout);
+            if (ret <= 0) return false;
+            ssize_t n = recv(fd, buf + received, length - received, MSG_DONTWAIT);
+            if (n < 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) continue;
+                return false;
+            }
+            if (n == 0) return false;
+            received += static_cast<size_t>(n);
+        }
+        return true;
+    };
+
+    std::array<char, kHeaderSize> header{};
+    if (!recv_all(header.data(), header.size())) return false;
+
+    if (static_cast<uint8_t>(header.at(0)) != PROTOCOL_VERSION) return false;
+    uint32_t len = 0;
+    memcpy(&len, header.data() + 1, sizeof(len));
+
+    if (len > kMaxFrameSize) return false;
+
+    out_msg.resize(len);
+    return recv_all(out_msg.data(), len);
+}
 
 } // namespace protocol
 } // namespace linuxcampam

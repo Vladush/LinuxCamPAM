@@ -1,4 +1,6 @@
 #pragma once
+#include "../common/resources.hpp"
+#include "../common/user_lookup.hpp"
 
 #include <chrono>
 #include <cstdint>
@@ -10,41 +12,6 @@
 #include <filesystem>
 #include <optional>
 namespace linuxcampam {
-
-struct FileDescriptor {
-  int fd = -1;
-
-  explicit FileDescriptor(int f) : fd(f) {}
-  ~FileDescriptor() {
-    if (fd >= 0) {
-      close(fd);
-    }
-  }
-
-  // Disable copy
-  FileDescriptor(const FileDescriptor &) = delete;
-  FileDescriptor &operator=(const FileDescriptor &) = delete;
-
-  // Allow move
-  FileDescriptor(FileDescriptor &&other) noexcept : fd(other.fd) {
-    other.fd = -1;
-  }
-  FileDescriptor &operator=(FileDescriptor &&other) noexcept {
-    if (this != &other) {
-      if (fd >= 0) {
-        close(fd);
-      }
-      fd = other.fd;
-      other.fd = -1;
-    }
-    return *this;
-  }
-
-  [[nodiscard]] int get() const { return fd; }
-  [[nodiscard]] int release() { return std::exchange(fd, -1); }
-  [[nodiscard]] bool isValid() const { return fd >= 0; }
-  operator int() const { return fd; }
-};
 
 // Camera Utilities
 
@@ -107,6 +74,5 @@ poll_remaining_ms(std::chrono::steady_clock::time_point deadline,
 // Security Utils
 [[nodiscard]] bool isValidUsername(std::string_view username);
 [[nodiscard]] std::optional<std::filesystem::path> getHomeDir(uid_t uid);
-[[nodiscard]] std::optional<uid_t> getUidForUsername(std::string_view username);
 
 } // namespace linuxcampam

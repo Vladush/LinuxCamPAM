@@ -76,7 +76,11 @@ if [ "$1" = "configure" ]; then
         systemctl enable linuxcampam.service || true
         systemctl restart linuxcampam.service || true
     fi
-    
+
+    if [ -x /usr/bin/linuxcampam ]; then
+        /usr/bin/linuxcampam check-kde --brief || true
+    fi
+
     echo "LinuxCamPAM installed."
     echo "1. Edit config at /etc/linuxcampam/config.ini (OPTIONAL)"
     if [ -d /run/systemd/system ]; then

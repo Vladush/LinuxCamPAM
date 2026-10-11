@@ -1,4 +1,5 @@
 #include "json.hpp"
+#include <algorithm>
 #include <cmath>
 #include <gtest/gtest.h>
 #include <limits>
@@ -144,11 +145,9 @@ TEST(SecurityTest, EmbeddingNaNAndInfValues) {
 bool isValidEmbedding(const std::vector<float> &emb) {
   if (emb.size() != kEmbeddingDim)
     return false;
-  for (float v : emb) {
-    if (std::isnan(v) || std::isinf(v))
-      return false;
-  }
-  return true;
+  return std::none_of(emb.begin(), emb.end(), [](float v) {
+    return std::isnan(v) || std::isinf(v);
+  });
 }
 
 TEST(SecurityTest, EmbeddingValidation) {
