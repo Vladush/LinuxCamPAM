@@ -1,3 +1,5 @@
+#include "../common/socket_client.hpp"
+#include "../common/user_lookup.hpp"
 #include "constants.hpp"
 #include "ipc_protocol.hpp"
 #include "pam_config.hpp"
@@ -39,32 +41,6 @@ void set_empty_authtok_if_unset(pam_handle_t *pamh) {
     syslog(LOG_WARNING, "Could not set empty PAM_AUTHTOK for kde");
   }
 }
-
-constexpr int TIMEOUT_SEC = 5;
-
-struct SocketDescriptor {
-  int fd = -1;
-  explicit SocketDescriptor(int f) : fd(f) {}
-  ~SocketDescriptor() {
-    if (fd >= 0) {
-      close(fd);
-    }
-  }
-  SocketDescriptor(const SocketDescriptor &) = delete;
-  SocketDescriptor &operator=(const SocketDescriptor &) = delete;
-  SocketDescriptor(SocketDescriptor &&other) noexcept : fd(std::exchange(other.fd, -1)) {}
-  SocketDescriptor &operator=(SocketDescriptor &&other) noexcept {
-    if (this != &other) {
-      if (fd >= 0) {
-        close(fd);
-      }
-      fd = std::exchange(other.fd, -1);
-    }
-    return *this;
-  }
-  [[nodiscard]] int get() const { return fd; }
-  [[nodiscard]] bool isValid() const { return fd >= 0; }
-};
 
 struct SyslogManager {
   SyslogManager() {
@@ -164,19 +140,13 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
     }
 #endif
 
-    struct passwd pwd = {};
-    struct passwd *result = nullptr;
-    constexpr long DEFAULT_PW_BUF_SIZE = 16384;
-    long bufsize = sysconf(_SC_GETPW_R_SIZE_MAX);
-    if (bufsize == -1) bufsize = DEFAULT_PW_BUF_SIZE;
-    std::vector<char> buffer(bufsize);
-
-    if (getpwnam_r(user, &pwd, buffer.data(), buffer.size(), &result) == 0 && result != nullptr) {
+    const auto uid = linuxcampam::getUidForUsername(user);
+    if (uid) {
       // If min_uid is 0, the check is disabled.
       // Otherwise, skip authentication for any user with UID < min_uid.
-      if (config.min_uid > 0 && result->pw_uid < config.min_uid) {
+      if (config.min_uid > 0 && *uid < config.min_uid) {
         syslog(LOG_INFO, "Skipping auth for system user: %s (UID %d < %d)",
-               user, result->pw_uid, config.min_uid);
+               user, *uid, config.min_uid);
         return PAM_IGNORE;
       }
     } else {
@@ -234,36 +204,10 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
       }
     }
 
-    SocketDescriptor sock(socket(AF_UNIX, SOCK_STREAM, 0));
+    const int response_timeout_ms = config.auth_timeout_ms + linuxcampam::AUTH_IPC_MARGIN_MS;
+    auto sock = linuxcampam::connectUnixSocket(PAM_SOCKET_PATH, response_timeout_ms);
     if (!sock.isValid()) {
-      syslog(LOG_ERR, "Failed to create socket: %m");
-      return PAM_AUTHINFO_UNAVAIL;
-    }
-
-    struct sockaddr_un addr = {};
-    addr.sun_family = AF_UNIX;
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-array-to-pointer-decay)
-    (void)std::snprintf(addr.sun_path, sizeof(addr.sun_path), "%s",
-                        PAM_SOCKET_PATH);
-
-    // Set timeout (exceeds detection timeout of 3s)
-    // to avoid aborting while the camera is still looking.
-    struct timeval tv = {};
-    tv.tv_sec = TIMEOUT_SEC;
-    tv.tv_usec = 0;
-    // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
-    setsockopt(sock.get(), SOL_SOCKET, SO_RCVTIMEO,
-               reinterpret_cast<const char *>(&tv), sizeof tv);
-    setsockopt(sock.get(), SOL_SOCKET, SO_SNDTIMEO,
-               reinterpret_cast<const char *>(&tv), sizeof tv);
-    // NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
-
-    // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
-    if (connect(sock.get(), reinterpret_cast<struct sockaddr *>(&addr),
-                sizeof(addr)) == -1) {
-      // NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
-      syslog(LOG_INFO, "Could not connect to linuxcampamd socket - service may "
-                       "not be running");
+      syslog(LOG_INFO, "Could not connect to linuxcampamd: %m");
       return PAM_AUTHINFO_UNAVAIL;
     }
 
@@ -272,13 +216,13 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
         linuxcampam::protocol::Command::AUTH_REQUEST, {user}};
     std::string reqStr = req.serialize();
 
-    if (!linuxcampam::protocol::send_message(sock.get(), reqStr, 5000)) {
+    if (!linuxcampam::protocol::send_message(sock.get(), reqStr, response_timeout_ms)) {
       syslog(LOG_ERR, "Failed to send auth request: %m");
       return PAM_AUTHINFO_UNAVAIL;
     }
 
     std::string resp;
-    if (linuxcampam::protocol::recv_message(sock.get(), resp, 5000)) {
+    if (linuxcampam::protocol::recv_message(sock.get(), resp, response_timeout_ms)) {
       if (resp.find("AUTH_SUCCESS") != std::string::npos) {
         if (kde_mode.single_enter) {
           set_empty_authtok_if_unset(pamh);

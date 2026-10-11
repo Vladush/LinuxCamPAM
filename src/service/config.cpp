@@ -22,9 +22,17 @@ parse_ini_stream(std::istream &input) {
   std::unordered_map<std::string, std::string> result;
   std::string line, current_section;
   config_parser::IniData data;
+  size_t line_number = 0;
   while (std::getline(input, line)) {
-    config_parser::parse_ini_line(line, current_section, data);
+    ++line_number;
+    try {
+      config_parser::parse_ini_line(line, current_section, data);
+    } catch (const std::invalid_argument &error) {
+      throw std::invalid_argument("Line " + std::to_string(line_number) + ": " + error.what());
+    }
   }
+  if (input.bad() || (input.fail() && !input.eof()))
+    throw std::invalid_argument("Could not read configuration stream");
   for (const auto& [section, keys] : data) {
     for (const auto& [k, v] : keys) {
       std::string full_key = section;
@@ -52,10 +60,16 @@ inline std::optional<bool> parse_bool(std::string_view str) {
 
 bool Configuration::load(const fs::path &config_path,
                          const linuxcampam::ICameraBackend *backend) {
-  if (!fs::exists(config_path)) {
+  std::error_code error;
+  const auto status = fs::status(config_path, error);
+  if (error == std::errc::no_such_file_or_directory || (!error && !fs::exists(status))) {
     // Missing config file is acceptable: load default configuration
     std::stringstream ss;
     return load(ss, backend);
+  }
+  if (error || !fs::is_regular_file(status)) {
+    log_error("Configuration is not a readable regular file: " + config_path.string());
+    return false;
   }
   std::ifstream file(config_path);
   if (!file.is_open()) {
@@ -72,6 +86,9 @@ bool Configuration::load(std::istream &input,
     temp.parse_ini_into_self(input, backend);
     *this = std::move(temp);
     return true;
+  } catch (const std::ios_base::failure &e) {
+    log_error("Configuration read error: " + std::string(e.what()));
+    return false;
   } catch (const std::invalid_argument &e) {
     log_error("Configuration error: " + std::string(e.what()));
     return false;
@@ -116,7 +133,7 @@ void Configuration::parse_ini_into_self(
 
   timeout_ms = get_int("Auth.timeout_ms",
                        get("General.timeout_ms", std::to_string(DEFAULT_TIMEOUT_MS)),
-                       0);
+                       1, linuxcampam::MAX_AUTH_TIMEOUT_MS);
 
   log_level = get("General.log_level", "info");
   log_file = get("General.log_file", "");
@@ -168,20 +185,12 @@ void Configuration::parse_ini_into_self(
   // Cameras
   std::string cam_names = get("Cameras.names", "");
   if (!cam_names.empty()) {
-    std::stringstream ss(cam_names);
-    std::string id;
-    while (std::getline(ss, id, ',')) {
-      // Trim logic
-      id.erase(0, id.find_first_not_of(" \t"));
-      id.erase(id.find_last_not_of(" \t") + 1);
-      if (id.empty())
-        continue;
-
+    for (const auto &id : config_parser::split_trimmed(cam_names)) {
       CameraDefinition def;
       def.id = id;
       def.path = get("Camera." + id + ".path", "/dev/video0");
       def.type = get("Camera." + id + ".type", "generic");
-      def.min_brightness = get_int("Camera." + id + ".min_brightness", "0");
+      def.min_brightness = get_int("Camera." + id + ".min_brightness", "0", 0, 255);
       def.mandatory = get_bool("Camera." + id + ".mandatory", "false");
       def.enroll_hdr = get("Camera." + id + ".enroll_hdr", "");
       def.enroll_averaging = get("Camera." + id + ".enroll_averaging", "");
@@ -241,15 +250,7 @@ void Configuration::parse_ini_into_self(
   std::string priority_str = get("Hardware.provider_priority", "");
   log_debug("Raw provider_priority: '" + priority_str + "'");
 
-  if (!priority_str.empty()) {
-    std::stringstream ss(priority_str);
-    std::string segment;
-    while (std::getline(ss, segment, ',')) {
-      segment.erase(0, segment.find_first_not_of(" \t"));
-      if (!segment.empty())
-        provider_priority.push_back(segment);
-    }
-  }
+  provider_priority = config_parser::split_trimmed(priority_str);
   if (provider_priority.empty()) {
     log_debug("Using defaults for provider_priority");
     provider_priority = {"OpenCL", "CPU"};

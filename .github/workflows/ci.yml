@@ -97,13 +97,16 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
-      - name: Validate CPack Debian packaging lifecycle
-        run: ./tests/test_debian_lifecycle.sh
+      - name: Validate CPack Debian metadata
+        run: ./tests/test_debian_lifecycle.sh --metadata build
 
       - name: Build package
         run: |
           dpkg-buildpackage -b -uc -us
           mv ../linuxcampam_*.deb .
+
+      - name: Test CPack and debhelper package lifecycles
+        run: ./tests/test_debian_lifecycle.sh --lifecycle build/linuxcampam-*.deb linuxcampam_*.deb
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7

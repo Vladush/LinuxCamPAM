@@ -1,4 +1,5 @@
 #include "constants.hpp"
+#include "../common/socket_client.hpp"
 #include "../common/ipc_protocol.hpp"
 #include "kde_lockscreen.hpp"
 #include "pam_config.hpp"
@@ -15,9 +16,10 @@
 #include <unistd.h>
 
 int run_check_kde(bool brief) {
-  const char *config_path = "/etc/linuxcampam/config.ini";
 #ifdef PAM_CONFIG_PATH
-  config_path = PAM_CONFIG_PATH;
+  const char *config_path = PAM_CONFIG_PATH;
+#else
+  const char *config_path = linuxcampam::CONFIG_PATH;
 #endif
 
   if (access(config_path, F_OK) == 0 && access(config_path, R_OK) != 0) {
@@ -25,29 +27,24 @@ int run_check_kde(bool brief) {
     return 2;
   }
 
-  PamConfig pam_config = load_pam_config(config_path);
+  PamConfig pam_config;
+  try {
+    pam_config = load_pam_config(config_path);
+  } catch (const std::exception &error) {
+    std::cerr << "Error: " << error.what() << '\n';
+    return 2;
+  }
 
   linuxcampam::kde::Scan etc_scan = linuxcampam::kde::scan_file(linuxcampam::kde::ETC_STACK);
   linuxcampam::kde::Scan vendor_scan = linuxcampam::kde::scan_file(linuxcampam::kde::VENDOR_STACK);
   linuxcampam::kde::StackInfo eff = linuxcampam::kde::scan_effective_stack();
 
   if (etc_scan == linuxcampam::kde::Scan::Missing && vendor_scan == linuxcampam::kde::Scan::Missing) {
-    if (access("/etc/pam.d/kscreenlocker", F_OK) == 0) {
-      if (brief) {
-        std::cout << "KDE lock screen: Non-kde service name (/etc/pam.d/kscreenlocker exists), not supported yet\n";
-      } else {
-        std::cout << "KDE lock screen\n";
-        std::cout << "  Status: Non-kde service name (/etc/pam.d/kscreenlocker exists), not supported yet\n";
-      }
-      return 1;
-    }
-    if (brief) {
-      std::cout << "KDE lock screen: KDE not installed\n";
-    } else {
-      std::cout << "KDE lock screen\n";
-      std::cout << "  Status: KDE not installed\n";
-    }
-    return 0;
+    const bool alternative = access("/etc/pam.d/kscreenlocker", F_OK) == 0;
+    std::cout << (brief ? "KDE lock screen: " : "KDE lock screen\n  Status: ")
+              << (alternative ? "Non-kde service name (/etc/pam.d/kscreenlocker exists), not supported yet"
+                              : "KDE not installed") << '\n';
+    return alternative ? 1 : 0;
   }
 
   linuxcampam::kde::Decision dec = linuxcampam::kde::decide(pam_config, eff);
@@ -82,6 +79,9 @@ int run_check_kde(bool brief) {
       eff.scan == linuxcampam::kde::Scan::TooLarge ||
       eff.scan == linuxcampam::kde::Scan::Unreadable) {
     hint = "Unsupported stack: " + std::string(eff.path) + " (" + scan_str(eff.scan) + ")";
+    exit_code = 1;
+  } else if (pam_config.kde_lockscreen_invalid) {
+    hint = "Invalid kde_lockscreen value: using legacy behavior";
     exit_code = 1;
   } else if (!pam_config.require_confirmation) {
     hint = "require_confirmation = false: lock screen scans immediately";
@@ -149,41 +149,22 @@ std::string get_current_user() {
 }
 
 std::string send_cmd(const std::string &cmd, int timeout_ms = 5000) {
-  int sock = socket(AF_UNIX, SOCK_STREAM, 0);
-  if (sock < 0) {
-    std::cerr << "Error creating socket." << '\n';
-    return "";
-  }
-
-  struct sockaddr_un addr = {};
-  addr.sun_family = AF_UNIX;
-  // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-array-to-pointer-decay)
-  (void)std::snprintf(addr.sun_path, sizeof(addr.sun_path), "%s",
-                      linuxcampam::SOCKET_PATH);
-
-  // Cast required for POSIX connect() API
-  // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
-  if (connect(sock, reinterpret_cast<struct sockaddr *>(&addr),
-              sizeof(addr)) == -1) {
-  // NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
+  auto sock = linuxcampam::connectUnixSocket(linuxcampam::SOCKET_PATH, timeout_ms);
+  if (!sock.isValid()) {
     std::cerr << "Could not connect to service at " << linuxcampam::SOCKET_PATH
-              << ". Is linuxcampamd running?" << '\n';
-    close(sock);
-    return "";
+              << ". Is linuxcampamd running?\n";
+    return {};
   }
-
-  if (!linuxcampam::protocol::send_message(sock, cmd, timeout_ms)) {
-    close(sock);
-    return "";
-  }
-
+  if (!linuxcampam::protocol::send_message(sock.get(), cmd, timeout_ms)) return {};
   std::string response;
-  if (linuxcampam::protocol::recv_message(sock, response, timeout_ms)) {
-    close(sock);
-    return response;
-  }
-  close(sock);
-  return "";
+  if (!linuxcampam::protocol::recv_message(sock.get(), response, timeout_ms)) return {};
+  return response;
+}
+
+bool may_access_user(const std::string &user) {
+  if (getuid() == 0 || user == get_current_user()) return true;
+  std::cerr << "Error: Accessing another user's face data requires root privileges (sudo).\n";
+  return false;
 }
 
 void print_response(const std::string &resp) {
@@ -301,10 +282,7 @@ int main(int argc, char *argv[]) {
       }
     }
 
-    if (user != get_current_user() && getuid() != 0) {
-      std::cerr << "Error: Training for other users requires root privileges (sudo)." << '\n';
-      return 1;
-    }
+    if (!may_access_user(user)) return 1;
 
     if (is_new) {
       // Prompt for new label
@@ -328,16 +306,13 @@ int main(int argc, char *argv[]) {
     if (argc >= 3) {
       user = argv[2];
       // Security: require sudo to test other users
-      if (user != current_user && getuid() != 0) {
-        std::cerr << "Error: Testing other users requires sudo." << '\n';
-        return 1;
-      }
+      if (!may_access_user(user)) return 1;
     } else {
       user = current_user;
     }
 
     if (!user.empty()) {
-      print_response(send_cmd("TEST_AUTH " + user, 60000));
+      print_response(send_cmd("TEST_AUTH " + user, linuxcampam::MAX_AUTH_TIMEOUT_MS + linuxcampam::AUTH_IPC_MARGIN_MS));
     } else {
       print_response(send_cmd("TEST_AUTH", 60000));
     }
@@ -348,10 +323,7 @@ int main(int argc, char *argv[]) {
       return 1;
     }
     std::string user = argv[2];
-    if (user != get_current_user() && getuid() != 0) {
-      std::cerr << "Error: Listing other users requires root privileges (sudo)." << '\n';
-      return 1;
-    }
+    if (!may_access_user(user)) return 1;
     print_response(send_cmd("LIST_EMBEDDINGS " + user));
 
   } else if (op == "remove") {
@@ -361,10 +333,7 @@ int main(int argc, char *argv[]) {
       return 1;
     }
     std::string user = argv[2];
-    if (user != get_current_user() && getuid() != 0) {
-      std::cerr << "Error: Removing embeddings for other users requires root privileges (sudo)." << '\n';
-      return 1;
-    }
+    if (!may_access_user(user)) return 1;
     std::string label;
     for (int i = 3; i < argc; i++) {
       if (std::string(argv[i]) == "--label" && i + 1 < argc) {

@@ -98,7 +98,7 @@ void AuthEngine::setCameraFactory(CameraFactory factory) {
   camera_factory_ = std::move(factory);
 }
 
-bool AuthEngine::init(const fs::path &config_path) {
+bool AuthEngine::init(const fs::path &config_path, bool preload_models) {
   if (!config.load(config_path)) {
     log_error("Failed to load config from " + config_path.string() +
               ". Refusing to start with invalid configuration.");
@@ -125,7 +125,7 @@ bool AuthEngine::init(const fs::path &config_path) {
   // if needed.
   initializeActiveCameras();
 
-  return loadModels();
+  return !preload_models || loadModels();
 }
 
 void AuthEngine::initializeActiveCameras() {
@@ -359,6 +359,14 @@ AuthResult AuthEngine::verifyUserCore(std::string_view username,
     result.reason = "User locked out";
     return result;
   }
+  auto start_time = std::chrono::steady_clock::now();
+  auto check_timeout = [&]() -> bool {
+    if (config.timeout_ms <= 0) return false;
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start_time).count();
+    return elapsed >= config.timeout_ms;
+  };
+
   if (!ensureModelsLoaded()) {
     result.reason = "Failed to load models";
     return result;
@@ -381,13 +389,6 @@ AuthResult AuthEngine::verifyUserCore(std::string_view username,
   log_info("Verifying user " + std::string(username) + " with policy " +
            std::to_string(static_cast<int>(config.policy)));
 
-  auto start_time = std::chrono::steady_clock::now();
-  auto check_timeout = [&]() -> bool {
-    if (config.timeout_ms <= 0) return false;
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - start_time).count();
-    return elapsed >= config.timeout_ms;
-  };
 
   for (auto &ac : active_cameras) {
     if (check_timeout()) {
@@ -564,85 +565,56 @@ AuthResult AuthEngine::verifyUserCore(std::string_view username,
     }
   }
 
-  recordAuthAttempt(std::string(username), result.success);
   return result;
 }
 
 bool AuthEngine::verifyUser(std::string_view username) {
-  AuthResult res = verifyUserCore(
-      username, [&](const std::string &id, const cv::Mat &frame, bool success,
-                    float score, const std::string &msg) {
-        // Logging & Saving Logic (from original verifyUser)
-        if (msg == "Capture failed") {
-          std::cout << "[AuthEngine] Camera " << id << " failed to capture."
-                    << '\n';
-          return;
-        }
-
-        std::string full_msg = "Camera " + id + " " + msg;
-        if (score > 0)
-          full_msg += " (Score: " + std::to_string(score) + ")";
-
-        if (success) {
-          log_info(full_msg);
-          if (config.save_success) {
-            std::string fn =
-                (config.log_dir / ("success_" + id + "_" + std::string(username) + ".jpg")).string();
-            saveDiagnosticImageSafe(fn, frame);
-          }
-        } else {
-          log_warn(full_msg);
-          if (config.save_fail) {
-            std::string prefix = (msg == "NO_FACE_DETECTED") ? "fail_"
-                                 : (msg == "No embeddings found")
-                                     ? "fail_missing_"
-                                     : "fail_mismatched_";
-            std::string fn =
-                (config.log_dir / (prefix + id + "_" + std::string(username) + ".jpg")).string();
-            saveDiagnosticImageSafe(fn, frame);
-            log_debug("Saved fail image to: " + fn);
-          }
-        }
-      });
-  return res.success;
+  return verifyAndLog(username, false).success;
 }
 
 AuthResult AuthEngine::verifyUserWithDetails(std::string_view username) {
-  // Used by CLI test command - now with logging enabled for debugging
-  return verifyUserCore(username, [&](const std::string &id,
-                                      const cv::Mat &frame, bool success,
-                                      float score, const std::string &msg) {
-    // Logging & Saving Logic (Shared with verifyUser)
-    if (msg == "Capture failed") {
-      return;
-    }
+  return verifyAndLog(username, true);
+}
 
-    std::string full_msg = " [CLI] Camera " + id + " " + msg;
-    if (score > 0)
-      full_msg += " (Score: " + std::to_string(score) + ")";
+AuthResult AuthEngine::verifyAndLog(std::string_view username, bool diagnostic) {
+  if (!linuxcampam::isValidUsername(username)) return {false, "Invalid username", 0.0f};
+  if (isUserLockedOut(username)) return {false, "User locked out", 0.0f};
+  AuthResult result;
+  if (verification_runner_) {
+    result = verification_runner_(username, diagnostic);
+  } else {
+    result = verifyUserCore(username, [&](const std::string &id, const cv::Mat &frame,
+                                        bool success, float score, const std::string &message) {
+      std::string log = (diagnostic ? "[CLI] Camera " : "Camera ") + id + " " + message;
+      if (score > 0) log += " (Score: " + std::to_string(score) + ")";
+      if (success) log_info(log); else log_warn(log);
+      if (frame.empty() || !(success ? config.save_success : config.save_fail)) return;
+      const std::string prefix = success ? "success_" :
+          message == "NO_FACE_DETECTED" ? "fail_" :
+          message == "No embeddings found" ? "fail_missing_" : "fail_mismatched_";
+      const auto path = config.log_dir / (prefix + (diagnostic ? "test_" : "") + id + "_" +
+                                          std::string(username) + ".jpg");
+      saveDiagnosticImageSafe(path.string(), frame);
+    });
+  }
+  // Kept in the supervisor: killing/restarting a timed-out worker cannot reset lockout.
+  recordAuthAttempt(username, result.success);
+  return result;
+}
 
-    if (success) {
-      log_info(full_msg);
-      if (config.save_success) {
-        std::string fn =
-            (config.log_dir / ("success_test_" + id + "_" + std::string(username) + ".jpg")).string();
-        saveDiagnosticImageSafe(fn, frame);
-      }
-    } else {
-      log_warn(full_msg);
-      // Save fail images based on configuration
-      if (config.save_fail) {
-        std::string prefix = (msg == "NO_FACE_DETECTED") ? "fail_"
-                             : (msg == "No embeddings found")
-                                 ? "fail_missing_"
-                                 : "fail_mismatched_";
-        std::string fn =
-            (config.log_dir / (prefix + "test_" + id + "_" + std::string(username) + ".jpg")).string();
-        saveDiagnosticImageSafe(fn, frame);
-        log_debug("Saved test fail image to: " + fn);
-      }
+// Normalize legacy storage once before either labeling or training mutates it.
+static json &embeddingArray(json &data, const std::string &type) {
+  const std::string array_key = "embeddings_" + type;
+  if (!data.contains(array_key)) {
+    data[array_key] = json::array();
+    const std::string old_key = "embedding_" + type;
+    if (data.contains(old_key)) {
+      data[array_key].push_back({{"label", "default"}, {"data", data[old_key]},
+                               {"created", data.value("created", std::time(nullptr))}});
+      data.erase(old_key);
     }
-  });
+  }
+  return data[array_key];
 }
 
 // Atomic write: stage to temp file, fsync, then rename.
@@ -844,21 +816,7 @@ bool AuthEngine::setLabel(std::string_view username,
     if (j.contains(pending_key)) {
       auto embedding_data = j[pending_key];
 
-      // Initialize array if not exists
-      if (!j.contains(emb_array_key)) {
-        j[emb_array_key] = json::array();
-
-        // Migrate old single-embedding format if exists
-        std::string old_key = "embedding_" + ac.config.type;
-        if (j.contains(old_key)) {
-          json old_entry;
-          old_entry["label"] = "default";
-          old_entry["data"] = j[old_key];
-          old_entry["created"] = j.value("created", std::time(nullptr));
-          j[emb_array_key].push_back(old_entry);
-          j.erase(old_key);
-        }
-      }
+      (void)embeddingArray(j, ac.config.type);
 
       // Check max embeddings limit
       if (config.max_embeddings > 0 &&
@@ -933,7 +891,6 @@ bool AuthEngine::trainUser(std::string_view username,
   for (auto &ac : active_cameras) {
     std::string id = ac.config.id;
     std::string emb_array_key = "embeddings_" + ac.config.type;
-    std::string emb_key = "embedding_" + ac.config.type;
 
     cv::Mat frame = captureFrame(ac.cam.get());
     if (frame.empty()) {
@@ -950,19 +907,7 @@ bool AuthEngine::trainUser(std::string_view username,
       continue;
     }
 
-    // Initialize array if needed
-    if (!j.contains(emb_array_key)) {
-      j[emb_array_key] = json::array();
-      // Migrate legacy format
-      if (j.contains(emb_key)) {
-        json entry;
-        entry["label"] = "default";
-        entry["data"] = j[emb_key];
-        entry["created"] = j.value("created", std::time(nullptr));
-        j[emb_array_key].push_back(entry);
-        j.erase(emb_key);
-      }
-    }
+    (void)embeddingArray(j, ac.config.type);
 
     if (create_new) {
       // Add as new embedding

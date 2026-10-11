@@ -119,14 +119,7 @@ next_token(std::string_view s) {
 }
 
 [[nodiscard]] inline Scan scan_file(const char *path) {
-  struct FileCloser {
-    void operator()(FILE *f) const {
-      if (f) {
-        (void)std::fclose(f); // NOLINT
-      }
-    }
-  };
-  std::unique_ptr<FILE, FileCloser> f(std::fopen(path, "re")); // NOLINT
+  linuxcampam::FileHandle f(std::fopen(path, "re"));
   if (!f) {
     return errno == ENOENT ? Scan::Missing : Scan::Unreadable;
   }

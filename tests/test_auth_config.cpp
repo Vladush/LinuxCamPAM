@@ -159,3 +159,10 @@ TEST(SecurityTest, UsernameSanitizationAlgorithm) {
   EXPECT_FALSE(linuxcampam::isValidUsername("../../etc/passwd"));
   EXPECT_FALSE(linuxcampam::isValidUsername("user; rm -rf /"));
 }
+
+TEST_F(AuthConfigTest, RejectsDirectoryAsConfiguration) {
+  Configuration config;
+  config.threshold = 0.8f;
+  EXPECT_FALSE(config.load(std::filesystem::current_path()));
+  EXPECT_FLOAT_EQ(config.threshold, 0.8f);
+}

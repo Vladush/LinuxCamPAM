@@ -3,7 +3,7 @@ set -e
 
 echo "Installing LinuxCamPAM dependencies..."
 sudo apt-get update
-sudo apt-get install -y \
+sudo apt-get install -y python3 \
     build-essential \
     cmake \
     libpam0g-dev \
