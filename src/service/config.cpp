@@ -176,12 +176,10 @@ void Configuration::parse_ini_into_self(
       def.id = id;
       def.path = get("Camera." + id + ".path", "/dev/video0");
       def.type = get("Camera." + id + ".type", "generic");
-      std::string mb_str = get("Camera." + id + ".min_brightness", "0");
       def.min_brightness = get_int("Camera." + id + ".min_brightness", "0");
       def.mandatory = get_bool("Camera." + id + ".mandatory", "false");
       def.enroll_hdr = get("Camera." + id + ".enroll_hdr", "");
       def.enroll_averaging = get("Camera." + id + ".enroll_averaging", "");
-      std::string eaf_str = get("Camera." + id + ".enroll_average_frames", "0");
       def.enroll_average_frames = get_int("Camera." + id + ".enroll_average_frames", "0");
 
       camera_defs.push_back(def);
