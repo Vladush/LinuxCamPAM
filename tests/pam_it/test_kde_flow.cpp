@@ -135,7 +135,7 @@ protected:
     struct pam_conv conv = {ScriptedConversation::conv, &conv_data};
     std::string confdir = std::string(PAM_IT_DIR) + "/etc";
     const char *user = "testuser";
-    struct passwd *pw = getpwuid(getuid());
+    const struct passwd *pw = getpwuid(getuid());
     if (pw) {
       user = pw->pw_name;
     }
