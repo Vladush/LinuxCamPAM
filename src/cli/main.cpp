@@ -5,7 +5,6 @@
 #include "pam_config.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cstring>
 #include <ctime>
 #include <iostream>
@@ -148,7 +147,10 @@ std::string get_current_user() {
   return "";
 }
 
-std::string send_cmd(const std::string &cmd, int timeout_ms = 5000) {
+constexpr int kDefaultCmdTimeoutMs = 5000;
+constexpr int kLongCmdTimeoutMs = 60000;
+
+std::string send_cmd(const std::string &cmd, int timeout_ms = kDefaultCmdTimeoutMs) {
   auto sock = linuxcampam::connectUnixSocket(linuxcampam::SOCKET_PATH, timeout_ms);
   if (!sock.isValid()) {
     std::cerr << "Could not connect to service at " << linuxcampam::SOCKET_PATH
@@ -221,7 +223,7 @@ int main(int argc, char *argv[]) {
     std::string user = argv[2];
 
     // First enroll the user
-    std::string resp = send_cmd("ADD_USER " + user, 60000);
+    std::string resp = send_cmd("ADD_USER " + user, kLongCmdTimeoutMs);
     print_response(resp);
 
     // If successful, prompt for label
@@ -267,7 +269,7 @@ int main(int argc, char *argv[]) {
         label = argv[++i];
       } else if (arg == "--new") {
         is_new = true;
-      } else if (arg[0] != '-') {
+      } else if (!arg.empty() && arg.front() != '-') {
         user = arg;
       }
     }
@@ -291,12 +293,12 @@ int main(int argc, char *argv[]) {
       if (label.empty()) {
         label = "trained_" + std::to_string(std::time(nullptr));
       }
-      print_response(send_cmd("TRAIN_NEW " + user + " " + label, 60000));
+      print_response(send_cmd("TRAIN_NEW " + user + " " + label, kLongCmdTimeoutMs));
     } else {
       if (label.empty()) {
         label = "default";
       }
-      print_response(send_cmd("TRAIN_USER " + user + " " + label, 60000));
+      print_response(send_cmd("TRAIN_USER " + user + " " + label, kLongCmdTimeoutMs));
     }
 
   } else if (op == "test") {
@@ -314,7 +316,7 @@ int main(int argc, char *argv[]) {
     if (!user.empty()) {
       print_response(send_cmd("TEST_AUTH " + user, linuxcampam::MAX_AUTH_TIMEOUT_MS + linuxcampam::AUTH_IPC_MARGIN_MS));
     } else {
-      print_response(send_cmd("TEST_AUTH", 60000));
+      print_response(send_cmd("TEST_AUTH", linuxcampam::MAX_AUTH_TIMEOUT_MS + linuxcampam::AUTH_IPC_MARGIN_MS));
     }
 
   } else if (op == "list") {

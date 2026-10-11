@@ -4,7 +4,6 @@
 #include "utils.hpp"
 #include "../common/config_parser.hpp"
 
-#include <charconv>
 #include <fcntl.h>
 #include <fstream>
 #include <iostream>
@@ -15,6 +14,9 @@
 #include <unordered_map>
 
 namespace {
+
+constexpr int kMaxBrightness = 255;
+constexpr int kMaxConfidence = 100;
 
 // Helper to parse INI stream
 std::unordered_map<std::string, std::string>
@@ -190,7 +192,7 @@ void Configuration::parse_ini_into_self(
       def.id = id;
       def.path = get("Camera." + id + ".path", "/dev/video0");
       def.type = get("Camera." + id + ".type", "generic");
-      def.min_brightness = get_int("Camera." + id + ".min_brightness", "0", 0, 255);
+      def.min_brightness = get_int("Camera." + id + ".min_brightness", "0", 0, kMaxBrightness);
       def.mandatory = get_bool("Camera." + id + ".mandatory", "false");
       def.enroll_hdr = get("Camera." + id + ".enroll_hdr", "");
       def.enroll_averaging = get("Camera." + id + ".enroll_averaging", "");
@@ -207,7 +209,7 @@ void Configuration::parse_ini_into_self(
         camera_defs.push_back({"ir", path_ir, "ir", 0, true});
       if (!path_rgb.empty()) {
         int mb = get_int("Hardware.min_brightness",
-                         std::to_string(linuxcampam::DEFAULT_MIN_BRIGHTNESS), 0, 255);
+                         std::to_string(linuxcampam::DEFAULT_MIN_BRIGHTNESS), 0, kMaxBrightness);
         camera_defs.push_back({"rgb", path_rgb, "rgb", mb, false});
       }
     } else {
@@ -237,7 +239,7 @@ void Configuration::parse_ini_into_self(
           camera_defs.push_back({"ir", ir_p, "ir", 0, true});
         } else {
           camera_defs.push_back(
-              {"cam0", detected[0].first, "generic", 0, true});
+              {"cam0", detected.front().first, "generic", 0, true});
         }
       } else {
         log_warn("No cameras detected during config load.");
@@ -276,9 +278,9 @@ void Configuration::parse_ini_into_self(
   // Proximity Wake/Lock
   wake_enabled = get_bool("Proximity.wake_enabled", "true");
   always_wake_on_presence_detected = get_bool("Proximity.always_wake_on_presence_detected", "true");
-  wake_confidence_threshold = get_int("Proximity.wake_confidence_threshold", "50", 0, 100);
+  wake_confidence_threshold = get_int("Proximity.wake_confidence_threshold", "50", 0, kMaxConfidence);
   lock_enabled = get_bool("Proximity.lock_enabled", "false");
-  lock_confidence_threshold = get_int("Proximity.lock_confidence_threshold", "5", 0, 100);
+  lock_confidence_threshold = get_int("Proximity.lock_confidence_threshold", "5", 0, kMaxConfidence);
   lock_timeout_seconds = get_int("Proximity.lock_timeout_seconds", "10", 0);
   lock_command = get("Proximity.lock_command", "loginctl lock-sessions");
 
@@ -388,10 +390,13 @@ std::string Configuration::toString() const {
   ss << "  GPU Flush: " << (gpu_flush ? "On" : "Off") << "\n";
   ss << "  GPU Throttle: " << gpu_throttle_ms << " ms\n";
   ss << "  Provider Priority: ";
-  for (size_t i = 0; i < provider_priority.size(); ++i) {
-    ss << provider_priority[i];
-    if (i < provider_priority.size() - 1)
+  bool first = true;
+  for (const auto &provider : provider_priority) {
+    if (!first) {
       ss << " > ";
+    }
+    ss << provider;
+    first = false;
   }
   ss << "\n";
 
