@@ -16,7 +16,7 @@ public:
   // Defaults are maintained here for immediate reference and structural compatibility.
   static constexpr float DEFAULT_THRESHOLD = 0.363f;
   static constexpr float DEFAULT_DETECTION_THRESHOLD = 0.9f;
-  static constexpr int DEFAULT_TIMEOUT_MS = 3000;
+  static constexpr int DEFAULT_TIMEOUT_MS = linuxcampam::DEFAULT_AUTH_TIMEOUT_MS;
   static constexpr int DEFAULT_MAX_EMBEDDINGS = 5;
   static constexpr int DEFAULT_ENROLL_AVG_FRAMES = 5;
   static constexpr int DEFAULT_VERIFY_AVG_FRAMES = 3;

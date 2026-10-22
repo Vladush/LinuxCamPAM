@@ -1,54 +1,49 @@
+#include "../common/socket_client.hpp"
+#include "../common/user_lookup.hpp"
 #include "constants.hpp"
 #include "ipc_protocol.hpp"
 #include "pam_config.hpp"
+#include "kde_lockscreen.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cstring>
 #include <pwd.h>
 #include <security/pam_ext.h>
 #include <security/pam_modules.h>
 #include <string>
-#include <vector>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <syslog.h>
 #include <unistd.h>
-#include <utility>
 
 namespace {
-constexpr size_t BUFFER_SIZE = 128;
-constexpr int TIMEOUT_SEC = 5;
+namespace kde = linuxcampam::kde;
 
-struct SocketDescriptor {
-  int fd = -1;
-  explicit SocketDescriptor(int f) : fd(f) {}
-  ~SocketDescriptor() {
-    if (fd >= 0) {
-      close(fd);
-    }
+#ifdef LINUXCAMPAM_TEST_SOCKET_PATH
+constexpr const char *PAM_SOCKET_PATH = LINUXCAMPAM_TEST_SOCKET_PATH;
+constexpr const char *PAM_CONFIG_PATH = LINUXCAMPAM_TEST_CONFIG_PATH;
+#else
+constexpr const char *PAM_SOCKET_PATH = linuxcampam::SOCKET_PATH;
+constexpr const char *PAM_CONFIG_PATH = linuxcampam::CONFIG_PATH;
+#endif
+
+// pam_kwallet5 prompts when PAM_AUTHTOK is NULL and skips an empty token.
+void set_empty_authtok_if_unset(pam_handle_t *pamh) {
+  const void *tok = nullptr;
+  if (pam_get_item(pamh, PAM_AUTHTOK, &tok) != PAM_SUCCESS ||
+      tok != nullptr) {
+    return;
   }
-  SocketDescriptor(const SocketDescriptor &) = delete;
-  SocketDescriptor &operator=(const SocketDescriptor &) = delete;
-  SocketDescriptor(SocketDescriptor &&other) noexcept : fd(std::exchange(other.fd, -1)) {}
-  SocketDescriptor &operator=(SocketDescriptor &&other) noexcept {
-    if (this != &other) {
-      if (fd >= 0) {
-        close(fd);
-      }
-      fd = std::exchange(other.fd, -1);
-    }
-    return *this;
+  if (pam_set_item(pamh, PAM_AUTHTOK, "") != PAM_SUCCESS) {
+    syslog(LOG_WARNING, "Could not set empty PAM_AUTHTOK for kde");
   }
-  [[nodiscard]] int get() const { return fd; }
-  [[nodiscard]] bool isValid() const { return fd >= 0; }
-};
+}
 
 struct SyslogManager {
-  SyslogManager() {
+  SyslogManager() noexcept {
     openlog("LinuxCamPAM", LOG_PID | LOG_NDELAY, LOG_AUTHPRIV);
   }
-  ~SyslogManager() { closelog(); }
+  ~SyslogManager() noexcept { closelog(); }
   SyslogManager(const SyslogManager &) = delete;
   SyslogManager &operator=(const SyslogManager &) = delete;
   SyslogManager(SyslogManager &&) = delete;
@@ -111,7 +106,28 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
       return retval;
     }
 
-    PamConfig config = load_pam_config(linuxcampam::CONFIG_PATH);
+    PamConfig config = load_pam_config(PAM_CONFIG_PATH);
+
+    const void *service_ptr = nullptr;
+    if (pam_get_item(pamh, PAM_SERVICE, &service_ptr) != PAM_SUCCESS) {
+      service_ptr = nullptr;
+    }
+    const char *service = static_cast<const char *>(service_ptr);
+
+    kde::Decision kde_mode;
+    if (service != nullptr && std::string_view{service} == kde::SERVICE) {
+      kde::StackInfo stack;
+      if (config.kde_lockscreen == KdeLockscreenMode::Auto) {
+        stack = kde::scan_effective_stack();
+      }
+      kde_mode = kde::decide(config, stack);
+      syslog(config.kde_lockscreen_invalid ? LOG_WARNING : LOG_DEBUG,
+             "kde_lockscreen: %s -> %s (%s%s%s)",
+             to_string(config.kde_lockscreen),
+             kde_mode.single_enter ? "single_enter" : "legacy",
+             kde_mode.reason, stack.path ? ", " : "",
+             stack.path ? stack.path : "");
+    }
 
 #ifndef DISABLE_WELCOME_MESSAGE
     if (std::any_of(argv, argv + argc, [](const char *arg) {
@@ -121,19 +137,13 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
     }
 #endif
 
-    struct passwd pwd = {};
-    struct passwd *result = nullptr;
-    constexpr long DEFAULT_PW_BUF_SIZE = 16384;
-    long bufsize = sysconf(_SC_GETPW_R_SIZE_MAX);
-    if (bufsize == -1) bufsize = DEFAULT_PW_BUF_SIZE;
-    std::vector<char> buffer(bufsize);
-
-    if (getpwnam_r(user, &pwd, buffer.data(), buffer.size(), &result) == 0 && result != nullptr) {
+    const auto uid = linuxcampam::getUidForUsername(user);
+    if (uid) {
       // If min_uid is 0, the check is disabled.
       // Otherwise, skip authentication for any user with UID < min_uid.
-      if (config.min_uid > 0 && result->pw_uid < config.min_uid) {
+      if (config.min_uid > 0 && *uid < config.min_uid) {
         syslog(LOG_INFO, "Skipping auth for system user: %s (UID %d < %d)",
-               user, result->pw_uid, config.min_uid);
+               user, *uid, config.min_uid);
         return PAM_IGNORE;
       }
     } else {
@@ -152,17 +162,12 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
     }
 
     if (config.require_confirmation) {
-      const void *service_ptr = nullptr;
-      if (pam_get_item(pamh, PAM_SERVICE, &service_ptr) != PAM_SUCCESS || service_ptr == nullptr) {
+      if (service == nullptr) {
         syslog(LOG_WARNING, "PAM_SERVICE unavailable; applying confirmation prompt as fallback");
-        service_ptr = nullptr;
       }
 
-      if (service_ptr == nullptr || 
-          std::find(config.confirmation_exempt_services.begin(),
-                    config.confirmation_exempt_services.end(),
-                    std::string_view{static_cast<const char *>(service_ptr)}) == config.confirmation_exempt_services.end()) {
-        const char *service = service_ptr ? static_cast<const char *>(service_ptr) : "unknown";
+      if (service == nullptr || 
+          !kde::is_confirmation_exempt(config, service, kde_mode)) {
         const char* msg_text = "Press <Enter> to authenticate with face, or type password:";
         struct pam_message msg = {
             .msg_style = PAM_PROMPT_ECHO_OFF,
@@ -178,7 +183,7 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
           int conv_ret = conv->conv(1, &msgp, &resp_pam, conv->appdata_ptr);
           PamResponsePtr resp_ptr(resp_pam);
           if (conv_ret != PAM_SUCCESS) {
-            syslog(LOG_ERR, "Authentication confirmation failed or canceled for service: %s", service);
+            syslog(LOG_ERR, "Authentication confirmation failed or canceled for service: %s", service ? service : "unknown");
             return PAM_AUTH_ERR;
           }
           if (resp_pam && resp_pam[0].resp && std::strlen(resp_pam[0].resp) > 0) {
@@ -196,36 +201,10 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
       }
     }
 
-    SocketDescriptor sock(socket(AF_UNIX, SOCK_STREAM, 0));
+    const int response_timeout_ms = config.auth_timeout_ms + linuxcampam::AUTH_IPC_MARGIN_MS;
+    auto sock = linuxcampam::connectUnixSocket(PAM_SOCKET_PATH, response_timeout_ms);
     if (!sock.isValid()) {
-      syslog(LOG_ERR, "Failed to create socket: %m");
-      return PAM_AUTHINFO_UNAVAIL;
-    }
-
-    struct sockaddr_un addr = {};
-    addr.sun_family = AF_UNIX;
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-array-to-pointer-decay)
-    (void)std::snprintf(addr.sun_path, sizeof(addr.sun_path), "%s",
-                        linuxcampam::SOCKET_PATH);
-
-    // Set timeout (exceeds detection timeout of 3s)
-    // to avoid aborting while the camera is still looking.
-    struct timeval tv = {};
-    tv.tv_sec = TIMEOUT_SEC;
-    tv.tv_usec = 0;
-    // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
-    setsockopt(sock.get(), SOL_SOCKET, SO_RCVTIMEO,
-               reinterpret_cast<const char *>(&tv), sizeof tv);
-    setsockopt(sock.get(), SOL_SOCKET, SO_SNDTIMEO,
-               reinterpret_cast<const char *>(&tv), sizeof tv);
-    // NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
-
-    // NOLINTBEGIN(cppcoreguidelines-pro-type-reinterpret-cast)
-    if (connect(sock.get(), reinterpret_cast<struct sockaddr *>(&addr),
-                sizeof(addr)) == -1) {
-      // NOLINTEND(cppcoreguidelines-pro-type-reinterpret-cast)
-      syslog(LOG_INFO, "Could not connect to linuxcampamd socket - service may "
-                       "not be running");
+      syslog(LOG_INFO, "Could not connect to linuxcampamd: %m");
       return PAM_AUTHINFO_UNAVAIL;
     }
 
@@ -234,17 +213,17 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
         linuxcampam::protocol::Command::AUTH_REQUEST, {user}};
     std::string reqStr = req.serialize();
 
-    if (send(sock.get(), reqStr.c_str(), reqStr.length(), 0) < 0) {
+    if (!linuxcampam::protocol::send_message(sock.get(), reqStr, response_timeout_ms)) {
       syslog(LOG_ERR, "Failed to send auth request: %m");
       return PAM_AUTHINFO_UNAVAIL;
     }
 
-    std::array<char, BUFFER_SIZE> response_buffer = {};
-    ssize_t valread = read(sock.get(), response_buffer.data(), response_buffer.size() - 1);
-
-    if (valread > 0) {
-      std::string resp(response_buffer.data(), static_cast<size_t>(valread));
+    std::string resp;
+    if (linuxcampam::protocol::recv_message(sock.get(), resp, response_timeout_ms)) {
       if (resp.find("AUTH_SUCCESS") != std::string::npos) {
+        if (kde_mode.single_enter) {
+          set_empty_authtok_if_unset(pamh);
+        }
 #ifndef DISABLE_WELCOME_MESSAGE
         if (config.show_welcome && ((flags & PAM_SILENT) == 0)) {
           std::string welcome_msg = config.welcome_message;

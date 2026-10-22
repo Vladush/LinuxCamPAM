@@ -302,17 +302,5 @@ std::optional<std::filesystem::path> getHomeDir(uid_t uid) {
   return std::nullopt;
 }
 
-std::optional<uid_t> getUidForUsername(std::string_view username) {
-  struct passwd pwd{};
-  struct passwd *result = nullptr;
-  constexpr size_t GETPWNAM_BUFFER_SIZE = 16384;
-  std::vector<char> buf(GETPWNAM_BUFFER_SIZE);
-  // pw_name is null-terminated, so we must make a safe string first
-  std::string uname(username);
-  if (getpwnam_r(uname.c_str(), &pwd, buf.data(), buf.size(), &result) == 0 && result) {
-    return result->pw_uid;
-  }
-  return std::nullopt;
-}
 
 } // namespace linuxcampam

@@ -10,8 +10,8 @@
 #include <mutex>
 #include <opencv2/dnn.hpp>
 #include <opencv2/opencv.hpp>
+#include <map>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -47,7 +47,10 @@ public:
   AuthEngine(AuthEngine &&) = delete;
   AuthEngine &operator=(AuthEngine &&) = delete;
 
-  [[nodiscard]] bool init(const fs::path &config_path);
+  [[nodiscard]] bool init(const fs::path &config_path, bool preload_models = true);
+
+  using VerificationRunner = std::function<AuthResult(std::string_view, bool)>;
+  void setVerificationRunner(VerificationRunner runner) { verification_runner_ = std::move(runner); }
 
   // Operations
   [[nodiscard]] bool verifyUser(std::string_view username);
@@ -96,6 +99,8 @@ private:
 
   Configuration config;
   CameraFactory camera_factory_;
+  VerificationRunner verification_runner_;
+  AuthResult verifyAndLog(std::string_view username, bool diagnostic);
 
   cv::Ptr<cv::FaceDetectorYN> detector;
   cv::Ptr<cv::FaceRecognizerSF> recognizer;
@@ -153,6 +158,6 @@ private:
     int failed_attempts = 0;
     std::chrono::steady_clock::time_point lockout_until{};
   };
-  std::unordered_map<std::string, LockoutState> lockout_map_;
+  std::map<std::string, LockoutState, std::less<>> lockout_map_;
   mutable std::mutex lockout_mutex_;
 };

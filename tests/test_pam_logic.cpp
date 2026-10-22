@@ -142,7 +142,7 @@ TEST_F(PamConfigTest, RequireConfirmationDefaults) {
   auto config = loadConfig("");
   EXPECT_TRUE(config.require_confirmation);
   EXPECT_EQ(config.confirmation_exempt_services.size(), 10);
-  EXPECT_EQ(config.confirmation_exempt_services[0], "gdm-password");
+  EXPECT_EQ(config.confirmation_exempt_services.at(0), "gdm-password");
 }
 
 TEST_F(PamConfigTest, RequireConfirmationParsing) {
@@ -153,8 +153,8 @@ confirmation_exempt_services = sshd,su
 )");
   EXPECT_FALSE(config.require_confirmation);
   ASSERT_EQ(config.confirmation_exempt_services.size(), 2);
-  EXPECT_EQ(config.confirmation_exempt_services[0], "sshd");
-  EXPECT_EQ(config.confirmation_exempt_services[1], "su");
+  EXPECT_EQ(config.confirmation_exempt_services.at(0), "sshd");
+  EXPECT_EQ(config.confirmation_exempt_services.at(1), "su");
 }
 
 TEST_F(PamConfigTest, RequireConfirmationPrecedence) {
@@ -168,6 +168,87 @@ confirmation_exempt_services = sudo,login
 )");
   EXPECT_FALSE(config.require_confirmation);
   ASSERT_EQ(config.confirmation_exempt_services.size(), 2);
-  EXPECT_EQ(config.confirmation_exempt_services[0], "sudo");
-  EXPECT_EQ(config.confirmation_exempt_services[1], "login");
+  EXPECT_EQ(config.confirmation_exempt_services.at(0), "sudo");
+  EXPECT_EQ(config.confirmation_exempt_services.at(1), "login");
+}
+
+TEST_F(PamConfigTest, KdeLockscreenDefaultsToAuto) {
+  auto config = loadConfig("");
+  EXPECT_EQ(config.kde_lockscreen, KdeLockscreenMode::Auto);
+  EXPECT_FALSE(config.kde_lockscreen_invalid);
+}
+
+TEST_F(PamConfigTest, KdeLockscreenParsesAllValues) {
+  EXPECT_EQ(loadConfig("kde_lockscreen = auto").kde_lockscreen, KdeLockscreenMode::Auto);
+  EXPECT_EQ(loadConfig("kde_lockscreen = single_enter").kde_lockscreen, KdeLockscreenMode::SingleEnter);
+  EXPECT_EQ(loadConfig("kde_lockscreen = legacy").kde_lockscreen, KdeLockscreenMode::Legacy);
+}
+
+TEST_F(PamConfigTest, KdeLockscreenQuotedValue) {
+  EXPECT_EQ(loadConfig("kde_lockscreen = \"single_enter\"").kde_lockscreen, KdeLockscreenMode::SingleEnter);
+}
+
+TEST_F(PamConfigTest, KdeLockscreenInvalidFallsBackToLegacy) {
+  auto config = loadConfig("kde_lockscreen = invalid_mode");
+  EXPECT_EQ(config.kde_lockscreen, KdeLockscreenMode::Legacy);
+  EXPECT_TRUE(config.kde_lockscreen_invalid);
+}
+
+TEST_F(PamConfigTest, KdeLockscreenInlineCommentIsValid) {
+  auto config = loadConfig("kde_lockscreen = auto ; comment");
+  EXPECT_EQ(config.kde_lockscreen, KdeLockscreenMode::Auto);
+  EXPECT_FALSE(config.kde_lockscreen_invalid);
+}
+
+TEST_F(PamConfigTest, ExemptListDefaultIsNotExplicit) {
+  auto config = loadConfig("");
+  EXPECT_FALSE(config.exempt_services_explicit);
+}
+
+TEST_F(PamConfigTest, ExemptListSetIsExplicit) {
+  auto config = loadConfig("confirmation_exempt_services = sudo");
+  EXPECT_TRUE(config.exempt_services_explicit);
+}
+
+TEST_F(PamConfigTest, EmptyExemptListIsExplicit) {
+  auto config = loadConfig("confirmation_exempt_services = ");
+  EXPECT_TRUE(config.exempt_services_explicit);
+  EXPECT_TRUE(config.confirmation_exempt_services.empty());
+}
+
+TEST_F(PamConfigTest, SecuritySectionWinsForKdeLockscreen) {
+  auto config = loadConfig(R"(
+kde_lockscreen = legacy
+
+[Security]
+kde_lockscreen = single_enter
+)");
+  EXPECT_EQ(config.kde_lockscreen, KdeLockscreenMode::SingleEnter);
+}
+
+TEST_F(PamConfigTest, DefaultExemptListContents) {
+  auto config = loadConfig("");
+  const auto& list = config.confirmation_exempt_services;
+  ASSERT_EQ(list.size(), 10);
+  EXPECT_EQ(list.at(0), "gdm-password");
+  EXPECT_EQ(list.at(1), "sddm");
+  EXPECT_EQ(list.at(2), "lightdm");
+  EXPECT_EQ(list.at(3), "login");
+  EXPECT_EQ(list.at(4), "swaylock");
+  EXPECT_EQ(list.at(5), "i3lock");
+  EXPECT_EQ(list.at(6), "xscreensaver");
+  EXPECT_EQ(list.at(7), "kscreenlocker");
+  EXPECT_EQ(list.at(8), "kde");
+  EXPECT_EQ(list.at(9), "systemd-user");
+}
+
+TEST_F(PamConfigTest, RejectsMalformedSyntax) {
+  EXPECT_THROW(loadConfig("[Security\nrequire_confirmation=false"), std::invalid_argument);
+}
+
+TEST_F(PamConfigTest, AuthTimeoutMatchesDaemonPrecedence) {
+  EXPECT_EQ(loadConfig("[General]\ntimeout_ms=7000\n[Auth]\ntimeout_ms=10000").auth_timeout_ms, 10000);
+  EXPECT_EQ(loadConfig("[Auth]\ntimeout_ms=10000\n[General]\ntimeout_ms=7000").auth_timeout_ms, 10000);
+  EXPECT_EQ(loadConfig("[General]\ntimeout_ms=invalid\n[Auth]\ntimeout_ms=9000").auth_timeout_ms, 9000);
+  EXPECT_THROW(loadConfig("[Auth]\ntimeout_ms=0"), std::invalid_argument);
 }

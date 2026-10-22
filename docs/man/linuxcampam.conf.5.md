@@ -38,15 +38,17 @@ The file is in standard INI format. Sections and keys are case-insensitive.
 
 **threshold** = *FLOAT*
 :   Similarity threshold for face matching (0.0 - 1.0).
-    Lower is stricter. (Default: `0.363`).
+    Higher is stricter. (Default: `0.363`).
 
 **detection_threshold** = *FLOAT*
 :   Confidence threshold for face detection (0.0 - 1.0).
     (Default: `0.9`).
 
 **timeout_ms** = *INT*
-:   Timeout in milliseconds to wait for a successful match.
-    (Default: `3000`).
+:   Verification deadline in milliseconds, including model loading, capture, and inference.
+    Valid range: `1` to `60000`; default: `3000`.
+    The daemon terminates a timed-out verification worker and its IR helper processes.
+    PAM waits for this deadline plus a short IPC allowance.
 
 **policy** = *MODE*
 :   Authentication policy.
@@ -66,6 +68,18 @@ The file is in standard INI format. Sections and keys are case-insensitive.
 **min_uid** = *INT*
 :   Minimum user ID (UID) required to attempt face authentication. System users (e.g., root, daemon) with UIDs lower than this are ignored and fall back to password automatically.
     (Default: `1000`).
+
+**require_confirmation** = *BOOL*
+:   Require user confirmation (pressing Enter/Authenticate) before camera check for all non-exempt services. This prevents silent privilege escalation (e.g., background sudo) by requiring explicit user intent.
+    (Default: `true`).
+
+**confirmation_exempt_services** = *LIST*
+:   Comma-separated list of PAM services that are exempt from the confirmation prompt. Typically, these are login managers and screen lockers where the user explicitly initiated the login process.
+    (Default: `gdm-password,sddm,lightdm,login,swaylock,i3lock,xscreensaver,kscreenlocker,kde,systemd-user`).
+
+**kde_lockscreen** = *MODE*
+:   Controls how LinuxCamPAM bypasses KDE Plasma's secondary password prompt upon successful face authentication. Values: `auto` (detects if KWallet is present in the PAM stack and uses single_enter), `single_enter` (forces bypassing the KWallet prompt by injecting an empty password), `legacy` (KDE asks for a password normally).
+    (Default: `auto`).
 
 **show_welcome** = *BOOL*
 :   Whether to show a welcome message upon successful authentication.

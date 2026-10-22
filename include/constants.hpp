@@ -17,6 +17,10 @@ inline constexpr int SECURE_FILE_MODE = 0600;
 inline constexpr double RGB_CHANNELS = 3.0;
 inline constexpr uid_t DEFAULT_MIN_UID = 1000;
 
+inline constexpr int DEFAULT_AUTH_TIMEOUT_MS = 3000;
+inline constexpr int MAX_AUTH_TIMEOUT_MS = 60000;
+inline constexpr int AUTH_IPC_MARGIN_MS = 4000;
+
 // Camera & Auth constants
 inline constexpr int CAMERA_WARMUP_FRAMES = 10;
 inline constexpr int CAMERA_WARMUP_DELAY_MS = 100;
