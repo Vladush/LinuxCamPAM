@@ -8,6 +8,7 @@
 #include "logger.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <fcntl.h>
 #include <filesystem>
@@ -110,17 +111,18 @@ bool AuthEngine::init(const fs::path &config_path, bool preload_models) {
   // Initialize last activity
   last_activity_ = std::chrono::steady_clock::now();
 
-  // Initialize model paths dynamic vars
-  // Note: If user supplies full path in config in future, handle that.
+  fs::path models_dir = config.models_dir;
+  if (models_dir == linuxcampam::MODELS_DIR &&
+      !fs::exists(models_dir / linuxcampam::DETECTOR_MODEL_FILE)) {
+    if (fs::exists(fs::path("models") / linuxcampam::DETECTOR_MODEL_FILE)) {
+      models_dir = "models";
+    } else if (fs::exists(fs::path("../models") / linuxcampam::DETECTOR_MODEL_FILE)) {
+      models_dir = "../models";
+    }
+  }
 
-  // Default model paths (System Install)
-  const std::string DEFAULT_DETECTOR_PATH =
-      "/usr/share/linuxcampam/models/face_detection_yunet_2023mar.onnx";
-  const std::string DEFAULT_RECOGNIZER_PATH =
-      "/usr/share/linuxcampam/models/face_recognition_sface_2021dec.onnx";
-
-  detection_model_path = DEFAULT_DETECTOR_PATH;
-  recognition_model_path = DEFAULT_RECOGNIZER_PATH;
+  detection_model_path = models_dir / linuxcampam::DETECTOR_MODEL_FILE;
+  recognition_model_path = models_dir / linuxcampam::RECOGNIZER_MODEL_FILE;
 
   // Initialize Cameras if any
   // Note: config.load() already populated config.camera_defs via auto-detection
@@ -341,9 +343,11 @@ cv::Mat AuthEngine::captureFrame(ICamera *cam) {
 double AuthEngine::calculateBrightness(const cv::Mat &frame) {
   if (frame.empty())
     return 0.0;
-  cv::Scalar means = cv::mean(frame);
-  const auto [b, g, r, unused] = means.val;
-  return (b + g + r) / linuxcampam::RGB_CHANNELS;
+  const cv::Scalar means = cv::mean(frame);
+  std::array<double, 4> channels{};
+  std::copy(std::begin(means.val), std::end(means.val), channels.begin());
+  return (channels.at(0) + channels.at(1) + channels.at(2)) /
+         linuxcampam::RGB_CHANNELS;
 }
 
 AuthResult AuthEngine::verifyUserCore(std::string_view username,

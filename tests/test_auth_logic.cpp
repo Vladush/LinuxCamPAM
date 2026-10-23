@@ -46,6 +46,9 @@ public:
     std::ofstream config_file("test_auth_config.ini");
     config_file << "[Paths]\n"
                 << "users_dir=/tmp/linuxcampam_test_users\n"
+#ifdef LINUXCAMPAM_TEST_MODELS_DIR
+                << "models_dir=" << LINUXCAMPAM_TEST_MODELS_DIR << "\n"
+#endif
                 << "\n"
                 << "[Cameras]\n"
                 << "names=mock_cam\n"

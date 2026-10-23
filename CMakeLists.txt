@@ -52,10 +52,15 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(
         -Wall -Wextra -Werror
         -fstack-protector-strong
-        -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
         -Wformat -Wformat-security
         -Werror=format-security
     )
+
+    # Apply _FORTIFY_SOURCE=2 only if not already set by the distro/environment
+    # (e.g. Arch Linux sets _FORTIFY_SOURCE=3 via CXXFLAGS)
+    if(NOT CMAKE_C_FLAGS MATCHES "_FORTIFY_SOURCE" AND NOT CMAKE_CXX_FLAGS MATCHES "_FORTIFY_SOURCE")
+        add_compile_options(-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2)
+    endif()
     # -fPIE is applied per-target to executables only (not the PAM .so module,
     # which needs pure -fPIC to avoid relocation errors with STL internals).
     add_link_options(
@@ -252,7 +257,8 @@ if(TARGET gtest)
     target_include_directories(deadline_worker_fixture PRIVATE src include)
     target_compile_definitions(linuxcampam_tests PRIVATE
         DEADLINE_WORKER_FIXTURE="$<TARGET_FILE:deadline_worker_fixture>"
-        LINUXCAMPAMD_EXECUTABLE="$<TARGET_FILE:linuxcampamd>")
+        LINUXCAMPAMD_EXECUTABLE="$<TARGET_FILE:linuxcampamd>"
+        LINUXCAMPAM_TEST_MODELS_DIR="${CMAKE_SOURCE_DIR}/models")
     add_dependencies(linuxcampam_tests deadline_worker_fixture linuxcampamd)
     
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -291,6 +297,9 @@ endif()
 
 # --- Install Targets ---
 include(GNUInstallDirs)
+set(LINUXCAMPAM_SYSTEMD_UNIT_DIR "/lib/systemd/system" CACHE PATH
+    "Directory for the LinuxCamPAM systemd service")
+option(INSTALL_PAM_AUTH_UPDATE_PROFILE "Install the Debian pam-auth-update profile" ON)
 
 install(TARGETS linuxcampamd linuxcampam check_opencl
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -310,15 +319,14 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/models/
     FILES_MATCHING PATTERN "*.onnx"
 )
 
-install(FILES ${CMAKE_SOURCE_DIR}/config/linuxcampam_pam_profile
-    DESTINATION /usr/share/pam-configs
-    RENAME linuxcampam
-)
-
-
-
+if(INSTALL_PAM_AUTH_UPDATE_PROFILE)
+    install(FILES ${CMAKE_SOURCE_DIR}/config/linuxcampam_pam_profile
+        DESTINATION /usr/share/pam-configs
+        RENAME linuxcampam
+    )
+endif()
 install(FILES ${CMAKE_SOURCE_DIR}/scripts/linuxcampam.service
-    DESTINATION /lib/systemd/system
+    DESTINATION ${LINUXCAMPAM_SYSTEMD_UNIT_DIR}
 )
 
 install(PROGRAMS ${CMAKE_SOURCE_DIR}/scripts/setup_config.sh
