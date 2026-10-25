@@ -5,11 +5,11 @@
 #include <limits>
 #include <string>
 #include <vector>
+#include "../src/common/device_validator.hpp"
 #include "../src/service/utils.hpp"
 using json = nlohmann::json;
 
 namespace {
-constexpr size_t kMaxCameraPathLength = 20;
 constexpr size_t kEmbeddingDim = 128;
 constexpr float kDefaultEmbeddingVal = 0.5f;
 constexpr float kLargeVal = 1e30f;
@@ -19,24 +19,15 @@ constexpr float kLargeVal = 1e30f;
 // INPUT VALIDATION TESTS
 // ============================================================================
 
-// Camera path validation
+// Use the production validator from device_validator.hpp
 bool isValidCameraPath(const std::string &path) {
-  // Only allow /dev/video* patterns
-  if (path.rfind("/dev/video", 0) != 0)
-    return false;
-  // Check for path traversal attempts
-  if (path.find("..") != std::string::npos)
-    return false;
-  // Must be reasonable length
-  if (path.length() > kMaxCameraPathLength)
-    return false;
-  return true;
+  return linuxcampam::isValidCameraPath(path);
 }
 
 // Config path validation
 bool isValidConfigPath(const std::string &path) {
   // Must be absolute path
-  if (path.empty() || path[0] != '/')
+  if (path.empty() || path.front() != '/')
     return false;
   // No path traversal
   if (path.find("..") != std::string::npos)
@@ -72,17 +63,62 @@ TEST(SecurityTest, CameraPathValidation) {
   EXPECT_TRUE(isValidCameraPath("/dev/video1"));
   EXPECT_TRUE(isValidCameraPath("/dev/video10"));
 
+  // Valid persistent udev paths (Option B)
+  EXPECT_TRUE(isValidCameraPath("/dev/v4l/by-id/usb-SunplusIT_Inc_Integrated_Camera-video-index0"));
+  EXPECT_TRUE(isValidCameraPath("/dev/v4l/by-path/pci-0000:00:14.0-usb-0:6:1.0-video-index0"));
+
   // Invalid - path traversal
   EXPECT_FALSE(isValidCameraPath("/dev/video0/../video1"));
   EXPECT_FALSE(isValidCameraPath("/dev/../etc/passwd"));
+  EXPECT_FALSE(isValidCameraPath("/dev/v4l/by-id/../video0"));
 
   // Invalid - not video device
   EXPECT_FALSE(isValidCameraPath("/dev/sda1"));
   EXPECT_FALSE(isValidCameraPath("/etc/passwd"));
   EXPECT_FALSE(isValidCameraPath("/tmp/fake_video0"));
+  EXPECT_FALSE(isValidCameraPath("/dev/video")); // missing number suffix
 
   // Invalid - symlink escape attempts
   EXPECT_FALSE(isValidCameraPath("/dev/video0; cat /etc/passwd"));
+
+  // Invalid - empty or invalid udev leaf suffixes
+  EXPECT_FALSE(isValidCameraPath("/dev/v4l/by-id/"));
+  EXPECT_FALSE(isValidCameraPath("/dev/v4l/by-path/"));
+  EXPECT_FALSE(isValidCameraPath("/dev/v4l/by-id/nested/dir"));
+  EXPECT_FALSE(isValidCameraPath("/dev/v4l/by-id/camera with space"));
+  EXPECT_FALSE(isValidCameraPath("/dev/v4l/by-id/camera\nindex0"));
+  EXPECT_FALSE(isValidCameraPath("/dev/v4l/by-id/camera\"index0"));
+}
+
+TEST(SecurityTest, ResolveCameraPathValidation) {
+  using linuxcampam::resolveCameraPath;
+
+  // Offline parsing (require_char_device = false)
+  auto res0 = resolveCameraPath("/dev/video0", false);
+  ASSERT_TRUE(res0.has_value());
+  EXPECT_EQ(res0->device_id, 0);
+  EXPECT_EQ(res0->canonical_path, "/dev/video0");
+
+  auto res12 = resolveCameraPath("/dev/video12", false);
+  ASSERT_TRUE(res12.has_value());
+  EXPECT_EQ(res12->device_id, 12);
+  EXPECT_EQ(res12->canonical_path, "/dev/video12");
+
+  // Invalid paths fail resolution
+  EXPECT_FALSE(resolveCameraPath("/dev/video0/../video1", false).has_value());
+  EXPECT_FALSE(resolveCameraPath("/dev/sda1", false).has_value());
+  EXPECT_FALSE(resolveCameraPath("/dev/v4l/by-id/nested/sub", false).has_value());
+
+  // Non-existent device fails when require_char_device = true
+  EXPECT_FALSE(resolveCameraPath("/dev/video9999", true).has_value());
+
+  // Regular file is rejected by require_char_device = true
+  std::string tmp_pattern = "/tmp/fake_cam_XXXXXX";
+  int fd = mkstemp(tmp_pattern.data());
+  ASSERT_GE(fd, 0);
+  close(fd);
+  EXPECT_FALSE(resolveCameraPath(tmp_pattern, true).has_value());
+  unlink(tmp_pattern.c_str());
 }
 
 TEST(SecurityTest, ConfigPathValidation) {
@@ -111,9 +147,8 @@ TEST(SecurityTest, MalformedEmbeddingData) {
   constexpr size_t kWrongDim = 64;
 
   // Empty embedding array should be handled
-  json empty_emb;
-  empty_emb["data"] = json::array();
-  EXPECT_EQ(empty_emb["data"].size(), 0);
+  json empty_emb = {{"data", json::array()}};
+  EXPECT_EQ(empty_emb.at("data").size(), 0);
 
   // Wrong dimension - SFace uses 128-dim embeddings
   std::vector<float> wrong_dim(kWrongDim, kDefaultEmbeddingVal);
@@ -128,17 +163,17 @@ TEST(SecurityTest, EmbeddingNaNAndInfValues) {
   std::vector<float> embedding(kEmbeddingDim, kDefaultEmbeddingVal);
 
   // NaN values should be detectable
-  embedding[0] = std::numeric_limits<float>::quiet_NaN();
-  EXPECT_TRUE(std::isnan(embedding[0]));
+  embedding.at(0) = std::numeric_limits<float>::quiet_NaN();
+  EXPECT_TRUE(std::isnan(embedding.at(0)));
 
   // Inf values should be detectable
-  embedding[1] = std::numeric_limits<float>::infinity();
-  EXPECT_TRUE(std::isinf(embedding[1]));
+  embedding.at(1) = std::numeric_limits<float>::infinity();
+  EXPECT_TRUE(std::isinf(embedding.at(1)));
 
   // Normal values
-  embedding[2] = kDefaultEmbeddingVal;
-  EXPECT_FALSE(std::isnan(embedding[2]));
-  EXPECT_FALSE(std::isinf(embedding[2]));
+  embedding.at(2) = kDefaultEmbeddingVal;
+  EXPECT_FALSE(std::isnan(embedding.at(2)));
+  EXPECT_FALSE(std::isinf(embedding.at(2)));
 }
 
 // Helper to check if embedding is valid (no NaN/Inf)
@@ -164,12 +199,12 @@ TEST(SecurityTest, EmbeddingValidation) {
 
   // Contains NaN
   std::vector<float> with_nan(kEmbeddingDim, kDefaultEmbeddingVal);
-  with_nan[kSpecialIndex] = std::numeric_limits<float>::quiet_NaN();
+  with_nan.at(kSpecialIndex) = std::numeric_limits<float>::quiet_NaN();
   EXPECT_FALSE(isValidEmbedding(with_nan));
 
   // Contains Inf
   std::vector<float> with_inf(kEmbeddingDim, kDefaultEmbeddingVal);
-  with_inf[kSpecialIndex] = std::numeric_limits<float>::infinity();
+  with_inf.at(kSpecialIndex) = std::numeric_limits<float>::infinity();
   EXPECT_FALSE(isValidEmbedding(with_inf));
 }
 
@@ -184,10 +219,9 @@ TEST(SecurityTest, MaxEmbeddingsLimit) {
 
   // Add up to limit
   for (int i = 0; i < MAX_EMBEDDINGS; i++) {
-    json e;
-    e["label"] = "label_" + std::to_string(i);
-    e["data"] =
-        std::vector<float>(kEmbeddingDim, static_cast<float>(i) * kValStep);
+    json e = {
+        {"label", "label_" + std::to_string(i)},
+        {"data", std::vector<float>(kEmbeddingDim, static_cast<float>(i) * kValStep)}};
     embeddings.push_back(e);
   }
 
@@ -235,12 +269,11 @@ TEST(SecurityTest, MalformedJsonHandling) {
 }
 
 TEST(SecurityTest, JsonTypeConfusion) {
-  json data;
-  data["embeddings_ir"] = "not_an_array"; // Should be array
+  json data = {{"embeddings_ir", "not_an_array"}};
 
   // Application should check types before accessing
-  EXPECT_FALSE(data["embeddings_ir"].is_array());
-  EXPECT_TRUE(data["embeddings_ir"].is_string());
+  EXPECT_FALSE(data.at("embeddings_ir").is_array());
+  EXPECT_TRUE(data.at("embeddings_ir").is_string());
 }
 
 // ============================================================================
@@ -255,9 +288,9 @@ float cosine_similarity(const std::vector<float> &a,
 
   float dot = 0.0f, norm_a = 0.0f, norm_b = 0.0f;
   for (size_t i = 0; i < a.size(); i++) {
-    dot += a[i] * b[i];
-    norm_a += a[i] * a[i];
-    norm_b += b[i] * b[i];
+    dot += a.at(i) * b.at(i);
+    norm_a += a.at(i) * a.at(i);
+    norm_b += b.at(i) * b.at(i);
   }
 
   float denom = std::sqrt(norm_a) * std::sqrt(norm_b);

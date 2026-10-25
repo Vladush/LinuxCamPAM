@@ -29,6 +29,8 @@ inline constexpr int AUTH_IPC_MARGIN_MS = 4000;
 inline constexpr int CAMERA_WARMUP_FRAMES = 10;
 inline constexpr int CAMERA_WARMUP_DELAY_MS = 100;
 inline constexpr int CAMERA_AVERAGE_FRAMES = 5;
+inline constexpr int MIN_AVERAGE_FRAMES = 1;
+inline constexpr int MAX_AVERAGE_FRAMES = 15;
 inline constexpr int IR_TRIGGER_DELAY_MS = 200;
 inline constexpr int CAPTURE_RETRY_DELAY_S = 1;
 
@@ -41,6 +43,11 @@ inline constexpr int HDR_BIT_DEPTH = 255;
 inline constexpr int CAMERA_RGB_WEIGHT = 40;
 inline constexpr int DEFAULT_MIN_BRIGHTNESS = 40;
 inline constexpr int CAPTURE_RETRY_ATTEMPTS = 3;
+inline constexpr int CAMERA_DRAIN_GRAB_COUNT = 2;
+inline constexpr int HDR_CANDIDATE_READS = 4;
+inline constexpr int MIN_HDR_EXPOSURES = 2;
+inline constexpr size_t MIN_BURST_CANDIDATES = 6;
+inline constexpr size_t MAX_BURST_CANDIDATES = 32;
 
 inline constexpr float MIRROR_THRESHOLD_DEFAULT = 0.6f;
 inline constexpr int MIRROR_SIZE = 640;

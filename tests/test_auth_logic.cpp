@@ -13,6 +13,7 @@
 
 using ::testing::NiceMock;
 using ::testing::Return;
+using ::testing::StrictMock;
 
 // RAII guard to clean up config file even on ASSERT failure
 struct TempConfigFile {
@@ -130,6 +131,18 @@ public:
     engine.config.gpu_flush = false;
     engine.config.threshold = kDefaultThreshold;
     engine.config.lockout_attempts = kHighLockoutAttempts;
+  }
+  static constexpr int kDefaultVerifyAverageFrames = 3;
+  static constexpr int kDefaultEnrollAverageFrames = 5;
+  static void setVerifyAveraging(AuthEngine &engine, bool enabled,
+                                int frames = kDefaultVerifyAverageFrames) {
+    engine.config.verify_averaging = enabled;
+    engine.config.verify_average_frames = frames;
+  }
+  static void setEnrollAveraging(AuthEngine &engine, bool enabled,
+                                int frames = kDefaultEnrollAverageFrames) {
+    engine.config.enroll_averaging = enabled;
+    engine.config.enroll_average_frames = frames;
   }
   static void clearActiveCameras(AuthEngine &engine) {
     engine.active_cameras.clear();
@@ -311,7 +324,7 @@ TEST_F(AuthEngineTest, RemoveEmbeddingReturnsFalseForMissingUser) {
 TEST_F(AuthEngineTest, TrainUserHandlesMissingFace) {
   auth_engine->setCameraFactory([&](const Configuration::CameraDefinition &) {
     auto mock = std::make_unique<NiceMock<MockCamera>>();
-    EXPECT_CALL(*mock, capture()).WillOnce(Return(cv::Mat()));
+    EXPECT_CALL(*mock, captureAveraged(::testing::_)).WillOnce(Return(cv::Mat()));
     return mock;
   });
   EXPECT_TRUE(auth_engine->init("test_auth_config.ini"));
@@ -626,8 +639,11 @@ public:
   static constexpr uchar kNoFacePixel = 140;
   static constexpr int kFaceFeatureCols = 15;
 
-  void setInputSize(const cv::Size &) override {}
-  cv::Size getInputSize() override { return {kInputDim, kInputDim}; }
+  cv::Size last_input_size{0, 0};
+  int last_channels = 0;
+
+  void setInputSize(const cv::Size &s) override { last_input_size = s; }
+  cv::Size getInputSize() override { return last_input_size.width > 0 ? last_input_size : cv::Size{kInputDim, kInputDim}; }
   void setScoreThreshold(float) override {}
   float getScoreThreshold() override { return kScoreThreshold; }
   void setNMSThreshold(float) override {}
@@ -635,6 +651,7 @@ public:
   void setTopK(int) override {}
   int getTopK() override { return 1; }
   int detect(cv::InputArray image, cv::OutputArray faces) override {
+    last_channels = image.channels();
     if (*image.getMat().ptr<uchar>(0, 0) == kNoFacePixel) { faces.release(); return 0; }
     cv::Mat face = cv::Mat::ones(1, kFaceFeatureCols, CV_32F);
     face.copyTo(faces);
@@ -729,4 +746,253 @@ TEST_F(AuthEngineTest, WorkerTimeoutsCannotResetSupervisorLockout) {
   for (int i = 0; i < 3; ++i) EXPECT_FALSE(auth_engine->verifyUser("worker_user"));
   EXPECT_EQ(auth_engine->verifyUserWithDetails("worker_user").reason, "User locked out");
   EXPECT_EQ(calls, 3);
+}
+
+TEST_F(AuthEngineTest, DetectFacesNormalizesChannelsAndSetsInputSize) {
+  AuthEngine engine;
+  auto detector = cv::makePtr<PolicyDetector>();
+  auto recognizer = cv::makePtr<PolicyRecognizer>();
+  useModels(engine, detector, recognizer);
+
+  cv::Mat faces;
+
+  constexpr int kHeight360 = 360;
+  constexpr int kWidth640 = 640;
+  constexpr int kHeight240 = 240;
+  constexpr int kWidth320 = 320;
+  constexpr int kHeight600 = 600;
+  constexpr int kWidth800 = 800;
+  constexpr uint8_t kPixelVal = 100;
+  constexpr uint8_t kAlphaOpaque = 255;
+
+  // 1-channel (GRAY) 640x360 frame
+  cv::Mat gray(kHeight360, kWidth640, CV_8UC1, cv::Scalar(kPixelVal));
+  cv::Mat bgr1 = engine.detectFaces(gray, faces);
+  EXPECT_EQ(bgr1.channels(), 3);
+  EXPECT_EQ(bgr1.size(), cv::Size(kWidth640, kHeight360));
+  EXPECT_EQ(detector->last_input_size, cv::Size(kWidth640, kHeight360));
+  EXPECT_EQ(detector->last_channels, 3);
+  EXPECT_EQ(faces.rows, 1);
+
+  // 4-channel (BGRA) 320x240 frame
+  cv::Mat bgra(kHeight240, kWidth320, CV_8UC4,
+               cv::Scalar(kPixelVal, kPixelVal, kPixelVal, kAlphaOpaque));
+  cv::Mat bgr4 = engine.detectFaces(bgra, faces);
+  EXPECT_EQ(bgr4.channels(), 3);
+  EXPECT_EQ(bgr4.size(), cv::Size(kWidth320, kHeight240));
+  EXPECT_EQ(detector->last_input_size, cv::Size(kWidth320, kHeight240));
+  EXPECT_EQ(detector->last_channels, 3);
+  EXPECT_EQ(faces.rows, 1);
+
+  // 3-channel (BGR) 800x600 frame
+  cv::Mat bgr(kHeight600, kWidth800, CV_8UC3,
+              cv::Scalar(kPixelVal, kPixelVal, kPixelVal));
+  cv::Mat bgr3 = engine.detectFaces(bgr, faces);
+  EXPECT_EQ(bgr3.channels(), 3);
+  EXPECT_EQ(bgr3.size(), cv::Size(kWidth800, kHeight600));
+  EXPECT_EQ(detector->last_input_size, cv::Size(kWidth800, kHeight600));
+  EXPECT_EQ(detector->last_channels, 3);
+
+  // Empty frame returns empty and clears faces
+  cv::Mat empty;
+  cv::Mat empty_res = engine.detectFaces(empty, faces);
+  EXPECT_TRUE(empty_res.empty());
+  EXPECT_TRUE(faces.empty());
+}
+
+TEST_F(AuthEngineTest, TestCameraAndAuthHandlesDynamicResolutionWithoutThrowing) {
+  AuthEngine engine;
+  auto detector = cv::makePtr<PolicyDetector>();
+  auto recognizer = cv::makePtr<PolicyRecognizer>();
+  useModels(engine, detector, recognizer);
+
+  Configuration::CameraDefinition cam_def;
+  cam_def.id = "ir_cam";
+  cam_def.path = "/dev/video0";
+  cam_def.type = "ir";
+
+  constexpr int kIrHeight = 360;
+  constexpr int kIrWidth = 640;
+  constexpr uint8_t kIrPixelVal = 100;
+
+  auto mock = std::make_unique<NiceMock<MockCamera>>();
+  // Non-640x640 resolution (e.g. 640x360 typical of Lenovo Yoga IR sensors)
+  cv::Mat ir_frame(kIrHeight, kIrWidth, CV_8UC1, cv::Scalar(kIrPixelVal));
+  EXPECT_CALL(*mock, capture()).WillOnce(Return(ir_frame));
+  addActiveCamera(engine, std::move(mock), cam_def);
+
+  EXPECT_TRUE(engine.testCameraAndAuth());
+  EXPECT_EQ(detector->last_input_size, cv::Size(kIrWidth, kIrHeight));
+  EXPECT_EQ(detector->last_channels, 3);
+}
+
+TEST_F(AuthEngineTest, VerifyUserRoutesToCaptureAveragedWhenConfigured) {
+  AuthEngine engine;
+  auto detector = cv::makePtr<PolicyDetector>();
+  auto recognizer = cv::makePtr<PolicyRecognizer>();
+  useModels(engine, detector, recognizer);
+
+  constexpr float kEmbeddingVal = 0.1F;
+  constexpr uint8_t kFrameBrightness = 100;
+  constexpr int kVerifyAverageFrames = 4;
+
+  // Set up enrolled user with template
+  nlohmann::json user_data;
+  user_data.emplace("embeddings_ir",
+                    nlohmann::json::array({{{"label", "default"}, {"data", {kEmbeddingVal}}}}));
+  {
+    std::ofstream file("/tmp/linuxcampam_test_users/avg_user.json");
+    file << user_data;
+  }
+
+  Configuration::CameraDefinition cam_def;
+  cam_def.id = "ir";
+  cam_def.type = "ir";
+  cam_def.mandatory = true;
+
+  cv::Mat frame = cv::Mat(PolicyDetector::kInputDim, PolicyDetector::kInputDim,
+                          CV_8UC3, cv::Scalar::all(kFrameBrightness));
+
+  // Case 1: verify_averaging = false -> calls capture(), NOT captureAveraged()
+  {
+    setVerifyAveraging(engine, false);
+    clearActiveCameras(engine);
+    auto mock = std::make_unique<StrictMock<MockCamera>>();
+    EXPECT_CALL(*mock, capture()).WillOnce(Return(frame));
+    EXPECT_CALL(*mock, captureAveraged(::testing::_)).Times(0);
+    addActiveCamera(engine, std::move(mock), cam_def);
+
+    EXPECT_TRUE(engine.verifyUserWithDetails("avg_user").success);
+  }
+
+  // Case 2: verify_averaging = true -> calls captureAveraged(verify_average_frames), NOT capture()
+  {
+    setVerifyAveraging(engine, true, kVerifyAverageFrames);
+    clearActiveCameras(engine);
+    auto mock = std::make_unique<StrictMock<MockCamera>>();
+    EXPECT_CALL(*mock, captureAveraged(kVerifyAverageFrames)).WillOnce(Return(frame));
+    EXPECT_CALL(*mock, capture()).Times(0);
+    addActiveCamera(engine, std::move(mock), cam_def);
+
+    EXPECT_TRUE(engine.verifyUserWithDetails("avg_user").success);
+  }
+}
+
+TEST_F(AuthEngineTest, EnrollUserPerCameraAveragingOverride) {
+  AuthEngine engine;
+  auto detector = cv::makePtr<PolicyDetector>();
+  auto recognizer = cv::makePtr<PolicyRecognizer>();
+  useModels(engine, detector, recognizer);
+
+  constexpr uint8_t kFrameBrightness = 100;
+  constexpr int kOverrideAverageFrames = 6;
+  constexpr int kGlobalAverageFrames = 5;
+
+  cv::Mat frame = cv::Mat(PolicyDetector::kInputDim, PolicyDetector::kInputDim,
+                          CV_8UC3, cv::Scalar::all(kFrameBrightness));
+
+  Configuration::CameraDefinition cam_def;
+  cam_def.id = "cam";
+  cam_def.type = "generic";
+  cam_def.enroll_hdr = "off";
+
+  // Case 1: Global averaging ON, but CameraDefinition specifies enroll_averaging = false
+  {
+    setEnrollAveraging(engine, true);
+    cam_def.enroll_averaging = false;
+    clearActiveCameras(engine);
+    auto mock = std::make_unique<StrictMock<MockCamera>>();
+    EXPECT_CALL(*mock, capture()).WillOnce(Return(frame));
+    EXPECT_CALL(*mock, captureAveraged(::testing::_)).Times(0);
+    addActiveCamera(engine, std::move(mock), cam_def);
+
+    auto result = engine.enrollUser("enroll_test1");
+    EXPECT_TRUE(result.first);
+  }
+
+  // Case 2: Global averaging OFF, but CameraDefinition specifies enroll_averaging = true
+  {
+    setEnrollAveraging(engine, false);
+    cam_def.enroll_averaging = true;
+    cam_def.enroll_average_frames = kOverrideAverageFrames;
+    clearActiveCameras(engine);
+    auto mock = std::make_unique<StrictMock<MockCamera>>();
+    EXPECT_CALL(*mock, captureAveraged(kOverrideAverageFrames)).WillOnce(Return(frame));
+    EXPECT_CALL(*mock, capture()).Times(0);
+    addActiveCamera(engine, std::move(mock), cam_def);
+
+    auto result = engine.enrollUser("enroll_test2");
+    EXPECT_TRUE(result.first);
+  }
+
+  // Case 3: CameraDefinition enroll_averaging = std::nullopt -> respects global setting
+  {
+    setEnrollAveraging(engine, true, kGlobalAverageFrames);
+    cam_def.enroll_averaging = std::nullopt;
+    cam_def.enroll_average_frames = std::nullopt;
+    clearActiveCameras(engine);
+    auto mock = std::make_unique<StrictMock<MockCamera>>();
+    EXPECT_CALL(*mock, captureAveraged(kGlobalAverageFrames)).WillOnce(Return(frame));
+    EXPECT_CALL(*mock, capture()).Times(0);
+    addActiveCamera(engine, std::move(mock), cam_def);
+
+    auto result = engine.enrollUser("enroll_test3");
+    EXPECT_TRUE(result.first);
+  }
+}
+
+TEST_F(AuthEngineTest, EnrollAndTrainUserResolvesHdrCapabilityOnSession) {
+  AuthEngine engine;
+  auto detector = cv::makePtr<PolicyDetector>();
+  auto recognizer = cv::makePtr<PolicyRecognizer>();
+  useModels(engine, detector, recognizer);
+
+  constexpr double kFrameBrightness = 50.0;
+  cv::Mat frame = cv::Mat(PolicyDetector::kInputDim, PolicyDetector::kInputDim,
+                          CV_8UC3, cv::Scalar::all(kFrameBrightness));
+
+  Configuration::CameraDefinition cam_def;
+  cam_def.id = "hdr_cam";
+  cam_def.type = "generic";
+  cam_def.enroll_hdr = "auto";
+  cam_def.enroll_averaging = false;
+
+  // Case 1: Camera supports manual exposure -> auto selects HDR
+  {
+    clearActiveCameras(engine);
+    auto mock = std::make_unique<StrictMock<MockCamera>>();
+    EXPECT_CALL(*mock, supportsManualExposure()).WillRepeatedly(Return(true));
+    EXPECT_CALL(*mock, captureHDR()).WillOnce(Return(frame));
+    EXPECT_CALL(*mock, capture()).Times(0);
+    EXPECT_CALL(*mock, captureAveraged(::testing::_)).Times(0);
+    addActiveCamera(engine, std::move(mock), cam_def);
+
+    auto result = engine.enrollUser("hdr_supported_user");
+    EXPECT_TRUE(result.first);
+  }
+
+  // Case 2: Camera does NOT support manual exposure -> auto falls back to standard capture
+  {
+    clearActiveCameras(engine);
+    auto mock = std::make_unique<StrictMock<MockCamera>>();
+    EXPECT_CALL(*mock, supportsManualExposure()).WillRepeatedly(Return(false));
+    EXPECT_CALL(*mock, captureHDR()).Times(0);
+    EXPECT_CALL(*mock, capture()).WillOnce(Return(frame));
+    addActiveCamera(engine, std::move(mock), cam_def);
+
+    auto result = engine.enrollUser("hdr_unsupported_user");
+    EXPECT_TRUE(result.first);
+  }
+
+  // Case 3: trainUser also honors active session capability detection
+  {
+    clearActiveCameras(engine);
+    auto mock = std::make_unique<StrictMock<MockCamera>>();
+    EXPECT_CALL(*mock, supportsManualExposure()).WillRepeatedly(Return(true));
+    EXPECT_CALL(*mock, captureHDR()).WillOnce(Return(frame));
+    addActiveCamera(engine, std::move(mock), cam_def);
+
+    bool trained = engine.trainUser("hdr_supported_user", "test_label");
+    EXPECT_TRUE(trained);
+  }
 }

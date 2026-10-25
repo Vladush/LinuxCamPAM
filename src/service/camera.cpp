@@ -1,7 +1,9 @@
 #include "camera.hpp"
+#include "camera_frames.hpp"
 #include "constants.hpp"
 #include "logger.hpp"
 #include "utils.hpp"
+#include "../common/device_validator.hpp"
 #include <array>
 #include <fcntl.h>
 #include <filesystem>
@@ -114,9 +116,17 @@ void Camera::triggerIrEmitter() {
 }
 
 bool Camera::detectExposureSupport() {
-  FileDescriptor fd_wrapper(open(device_path.c_str(), O_RDWR));
+  if (device_id < 0) {
+    return false;
+  }
+  FileDescriptor fd_wrapper(open(device_path.c_str(), O_RDWR | O_CLOEXEC | O_NONBLOCK));
   if (!fd_wrapper.isValid())
     return false;
+
+  struct stat st {};
+  if (fstat(fd_wrapper.get(), &st) != 0 || !S_ISCHR(st.st_mode)) {
+    return false;
+  }
 
   struct v4l2_queryctrl queryctrl = {};
   queryctrl.id = V4L2_CID_EXPOSURE_ABSOLUTE;
@@ -127,8 +137,11 @@ bool Camera::detectExposureSupport() {
 }
 
 Camera::Camera(std::string_view device_path, bool is_ir,
-               const fs::path &ir_cmd_path)
-    : device_path(device_path), is_ir_camera(is_ir) {
+               const fs::path &ir_cmd_path, bool ambient_subtraction)
+    : raw_device_path_(device_path),
+      device_path(device_path),
+      is_ir_camera(is_ir),
+      ambient_subtraction_(ambient_subtraction) {
   if (ir_cmd_path.empty()) {
     ir_emitter_path_ = linuxcampam::IR_EMITTER_PATH;
   } else {
@@ -136,18 +149,14 @@ Camera::Camera(std::string_view device_path, bool is_ir,
   }
   cv::utils::logging::setLogLevel(cv::utils::logging::LOG_LEVEL_ERROR);
 
-  if (device_path.rfind("/dev/video", 0) == 0) {
-    try {
-      device_id = std::stoi(std::string(device_path.substr(std::string("/dev/video").length())));
-    } catch (...) {
-      device_id = 0;
-    }
-  }
-
-  // Detect exposure control support
-  supports_manual_exposure_ = detectExposureSupport();
-  if (supports_manual_exposure_) {
-    log_info("[Camera] " + std::string(device_path) + " supports manual exposure");
+  // Perform lexical path extraction without opening hardware in constructor
+  auto resolved = linuxcampam::resolveCameraPath(raw_device_path_, /*require_char_device=*/false);
+  if (resolved) {
+    device_id = resolved->device_id;
+    this->device_path = resolved->canonical_path;
+  } else {
+    device_id = -1;
+    log_error("[Camera] Invalid camera device path: " + raw_device_path_);
   }
 }
 
@@ -156,17 +165,28 @@ Camera::~Camera() {}
 bool Camera::openAndWarmup(cv::VideoCapture &temp_cap) {
   // Open camera FIRST, then trigger IR emitter
   // IR state resets when camera device is released, so we must keep it open
-  for (int attempt = 0; attempt < 3; ++attempt) {
-    if (temp_cap.open(device_id, cv::CAP_V4L2))
-      break;
-    log_warn("[Camera] Device busy. Retrying (" + std::to_string(attempt + 1) +
-             "/3)...");
-    std::this_thread::sleep_for(
-        std::chrono::seconds(linuxcampam::CAPTURE_RETRY_DELAY_S));
+  for (int attempt = 0; attempt < linuxcampam::CAPTURE_RETRY_ATTEMPTS; ++attempt) {
+    auto resolved = linuxcampam::resolveCameraPath(raw_device_path_, /*require_char_device=*/true);
+    if (resolved) {
+      device_id = resolved->device_id;
+      this->device_path = resolved->canonical_path;
+      if (temp_cap.open(device_id, cv::CAP_V4L2)) {
+        break;
+      }
+    }
+    if (attempt + 1 < linuxcampam::CAPTURE_RETRY_ATTEMPTS) {
+      log_warn("[Camera] Device unavailable or busy. Retrying (" + std::to_string(attempt + 1) +
+               "/" + std::to_string(linuxcampam::CAPTURE_RETRY_ATTEMPTS) + ")...");
+      std::this_thread::sleep_for(
+          std::chrono::seconds(linuxcampam::CAPTURE_RETRY_DELAY_S));
+    }
   }
 
   if (!temp_cap.isOpened())
     return false;
+
+  // Query hardware exposure support once device is opened and confirmed S_ISCHR
+  supports_manual_exposure_ = detectExposureSupport();
 
   // Now trigger IR emitter while camera is open
   if (is_ir_camera) {
@@ -192,116 +212,229 @@ cv::Mat Camera::capture() {
 
   std::this_thread::sleep_for(
       std::chrono::milliseconds(linuxcampam::CAMERA_WARMUP_DELAY_MS));
-  temp_cap.read(frame);
-
-  return frame.empty() ? cv::Mat() : frame.clone();
-}
-
-cv::Mat Camera::captureAveraged(int num_frames) {
-  cv::VideoCapture temp_cap;
-  if (!openAndWarmup(temp_cap)) {
-    log_error("[Camera] Failed to open for averaging");
-    return cv::Mat();
+  for (int i = 0; i < linuxcampam::CAMERA_DRAIN_GRAB_COUNT; ++i) {
+    temp_cap.grab();
   }
 
-  // Warmup
-  cv::Mat frame;
-  for (int i = 0; i < linuxcampam::CAMERA_WARMUP_FRAMES; i++)
+  if (!is_ir_camera) {
     temp_cap.read(frame);
-
-  // Accumulate frames in-place
-  cv::Mat sum;
-  int count = 0;
-  cv::Size expected_size;
-
-  for (int i = 0; i < num_frames; i++) {
-    temp_cap.read(frame);
-    if (frame.empty())
-      continue;
-
-    if (count == 0) {
-      expected_size = frame.size();
-      frame.convertTo(sum, CV_32FC3);
-      count++;
-    } else if (frame.size() == expected_size) {
-      cv::Mat f32;
-      frame.convertTo(f32, CV_32FC3);
-      cv::add(sum, f32, sum);
-      count++;
-    }
-  }
-
-  if (count == 0 || sum.empty())
-    return cv::Mat();
-
-  // Average
-  sum /= static_cast<float>(count);
-
-  cv::Mat result;
-  sum.convertTo(result, CV_8UC3);
-  log_info("[Camera] Averaged " + std::to_string(count) + " frames");
-  return result;
-}
-
-cv::Mat Camera::captureHDR() {
-  if (!supports_manual_exposure_) {
-    log_warn("[Camera] HDR not supported, falling back to averaging");
-    return captureAveraged(linuxcampam::CAMERA_AVERAGE_FRAMES);
-  }
-
-  cv::VideoCapture temp_cap;
-  if (!openAndWarmup(temp_cap)) {
-    log_error("[Camera] Failed to open for HDR");
-    return cv::Mat();
-  }
-
-  // Warmup
-  cv::Mat frame;
-  for (int i = 0; i < linuxcampam::CAMERA_WARMUP_FRAMES; i++)
-    temp_cap.read(frame);
-
-  // Save original auto-exposure mode
-  double original_auto_exp = temp_cap.get(cv::CAP_PROP_AUTO_EXPOSURE);
-
-  // Disable auto-exposure (1 = manual)
-  // Note: 0.25 is sometimes used in older OpenCV/V4L2 bridges,
-  // but 1.0 is standard for Manual in recent versions.
-  temp_cap.set(cv::CAP_PROP_AUTO_EXPOSURE, 1);
-
-  // Capture at different exposures
-  std::vector<cv::Mat> exposures;
-
-  std::array<int, 3> exp_values = {linuxcampam::HDR_EXPOSURE_1,
-                                   linuxcampam::HDR_EXPOSURE_2,
-                                   linuxcampam::HDR_EXPOSURE_3};
-
-  for (int exp : exp_values) {
-    temp_cap.set(cv::CAP_PROP_EXPOSURE, exp);
-    std::this_thread::sleep_for(
-        std::chrono::milliseconds(linuxcampam::HDR_SETTLE_MS));
-    for (int j = 0; j < 3; j++)
-      temp_cap.read(frame); // Let it settle
-    if (!frame.empty())
-      exposures.push_back(frame.clone());
-  }
-
-  // Restore original auto-exposure mode
-  temp_cap.set(cv::CAP_PROP_AUTO_EXPOSURE, original_auto_exp);
-
-  if (exposures.size() < 2) {
-    log_error("[Camera] HDR failed, using last frame");
     return frame.empty() ? cv::Mat() : frame.clone();
   }
 
-  // Merge using Mertens (exposure fusion, no calibration needed)
-  cv::Ptr<cv::MergeMertens> merge = cv::createMergeMertens();
-  cv::Mat hdr;
-  merge->process(exposures, hdr);
+  // IR camera: select the best lit frame, avoiding alternating dark frames and overexposure
+  auto reader = [&temp_cap](cv::Mat &out) {
+    return temp_cap.read(out);
+  };
+  cv::Mat best = linuxcampam::selectBestLitFrame(
+      reader, linuxcampam::kDefaultMaxCandidateReads, /*ambient_subtraction=*/false);
+  if (best.empty()) {
+    log_warn("[Camera] No illuminated frame detected for IR camera " + device_path);
+    return cv::Mat();
+  }
+  return best;
+}
 
-  // Convert to 8-bit
-  cv::Mat result;
-  hdr.convertTo(result, CV_8U, linuxcampam::HDR_BIT_DEPTH);
-  log_info("[Camera] HDR merged " + std::to_string(exposures.size()) +
-           " exposures");
-  return result;
+cv::Mat Camera::captureAveraged(int num_frames) {
+  if (num_frames <= 1) {
+    return capture();
+  }
+
+  cv::VideoCapture temp_cap;
+  if (!openAndWarmup(temp_cap)) {
+    log_error("[Camera] Failed to open for averaging " + device_path);
+    return cv::Mat();
+  }
+
+  // Warmup drain
+  cv::Mat frame;
+  for (int i = 0; i < linuxcampam::CAMERA_WARMUP_FRAMES; i++)
+    temp_cap.read(frame);
+
+  std::this_thread::sleep_for(
+      std::chrono::milliseconds(linuxcampam::CAMERA_WARMUP_DELAY_MS));
+  for (int i = 0; i < linuxcampam::CAMERA_DRAIN_GRAB_COUNT; ++i) {
+    temp_cap.grab();
+  }
+
+  auto reader = [&temp_cap](cv::Mat &out) {
+    return temp_cap.read(out);
+  };
+
+  std::vector<cv::Mat> frames_to_average;
+  if (is_ir_camera) {
+    frames_to_average = linuxcampam::collectLitFrames(
+        reader, num_frames, -1, /*ambient_subtraction=*/false);
+  } else {
+    frames_to_average.reserve(static_cast<size_t>(num_frames));
+    for (int i = 0; i < num_frames; i++) {
+      if (temp_cap.read(frame) && !frame.empty()) {
+        frames_to_average.push_back(frame.clone());
+      }
+    }
+  }
+
+  if (frames_to_average.size() < static_cast<size_t>(num_frames)) {
+    log_warn("[Camera] Failed to collect sufficient frames for averaging (" +
+             std::to_string(frames_to_average.size()) + "/" +
+             std::to_string(num_frames) + ") on " + device_path);
+    return cv::Mat();
+  }
+
+  log_info("[Camera] Averaged " + std::to_string(frames_to_average.size()) +
+           " frames on " + device_path);
+  return linuxcampam::averageFrames(frames_to_average);
+}
+
+cv::Mat Camera::captureEnrollment(std::string_view hdr_mode, bool use_averaging,
+                                  int avg_frames) {
+  cv::VideoCapture temp_cap;
+  if (!openAndWarmup(temp_cap)) {
+    log_error("[Camera] Failed to open for enrollment capture: " + device_path);
+    return cv::Mat();
+  }
+
+  // Warmup drain
+  cv::Mat frame;
+  for (int i = 0; i < linuxcampam::CAMERA_WARMUP_FRAMES; i++) {
+    temp_cap.read(frame);
+  }
+
+  std::this_thread::sleep_for(
+      std::chrono::milliseconds(linuxcampam::CAMERA_WARMUP_DELAY_MS));
+  for (int i = 0; i < linuxcampam::CAMERA_DRAIN_GRAB_COUNT; ++i) {
+    temp_cap.grab();
+  }
+
+  // Capability has been probed on this active session in openAndWarmup()
+  bool is_hdr_explicit = (hdr_mode == "on" || hdr_mode == "true");
+  bool is_hdr_auto = (hdr_mode == "auto");
+
+  bool do_hdr = false;
+  if (is_hdr_explicit) {
+    if (supports_manual_exposure_) {
+      do_hdr = true;
+    } else {
+      log_warn("[Camera] Explicit HDR requested ('on'), but manual exposure unsupported on " +
+               device_path + "; falling back to averaging (" + std::to_string(avg_frames) + " frames)");
+    }
+  } else if (is_hdr_auto) {
+    if (supports_manual_exposure_) {
+      do_hdr = true;
+    } else {
+      log_info("[Camera] HDR auto: manual exposure unsupported on " + device_path +
+               "; using configured averaging/standard capture");
+    }
+  }
+
+  if (do_hdr) {
+    // Save original auto-exposure mode and manual exposure value
+    double original_auto_exp = temp_cap.get(cv::CAP_PROP_AUTO_EXPOSURE);
+    double original_exp = temp_cap.get(cv::CAP_PROP_EXPOSURE);
+
+    temp_cap.set(cv::CAP_PROP_AUTO_EXPOSURE, 1);
+
+    std::vector<cv::Mat> exposures;
+    std::array<int, 3> exp_values = {linuxcampam::HDR_EXPOSURE_1,
+                                     linuxcampam::HDR_EXPOSURE_2,
+                                     linuxcampam::HDR_EXPOSURE_3};
+
+    for (int exp : exp_values) {
+      temp_cap.set(cv::CAP_PROP_EXPOSURE, exp);
+      std::this_thread::sleep_for(
+          std::chrono::milliseconds(linuxcampam::HDR_SETTLE_MS));
+
+      for (int j = 0; j < linuxcampam::CAMERA_DRAIN_GRAB_COUNT; ++j) {
+        temp_cap.grab();
+      }
+
+      cv::Mat exp_frame;
+      if (is_ir_camera) {
+        auto reader = [&temp_cap](cv::Mat &out) {
+          return temp_cap.read(out);
+        };
+        exp_frame = linuxcampam::selectBestLitFrame(
+            reader, linuxcampam::HDR_CANDIDATE_READS, /*ambient_subtraction=*/false);
+      } else {
+        temp_cap.read(frame);
+        if (!frame.empty())
+          exp_frame = frame.clone();
+      }
+      if (!exp_frame.empty())
+        exposures.push_back(exp_frame);
+    }
+
+    // Restore original auto-exposure mode and exposure value
+    temp_cap.set(cv::CAP_PROP_AUTO_EXPOSURE, original_auto_exp);
+    if (original_exp > 0) {
+      temp_cap.set(cv::CAP_PROP_EXPOSURE, original_exp);
+    }
+
+    if (exposures.size() >= static_cast<size_t>(linuxcampam::MIN_HDR_EXPOSURES)) {
+      cv::Ptr<cv::MergeMertens> merge = cv::createMergeMertens();
+      cv::Mat hdr;
+      merge->process(exposures, hdr);
+      cv::Mat result;
+      hdr.convertTo(result, CV_8U, linuxcampam::HDR_BIT_DEPTH);
+      log_info("[Camera] HDR merged " + std::to_string(exposures.size()) +
+               " exposures on " + device_path);
+      return result;
+    }
+
+    log_warn("[Camera] HDR capture failed to collect sufficient exposures on " + device_path);
+    if (!exposures.empty()) {
+      return exposures.at(exposures.size() / 2);
+    }
+  }
+
+  // Averaging capture
+  if (use_averaging && avg_frames > 1) {
+    auto reader = [&temp_cap](cv::Mat &out) {
+      return temp_cap.read(out);
+    };
+
+    std::vector<cv::Mat> frames_to_average;
+    if (is_ir_camera) {
+      frames_to_average = linuxcampam::collectLitFrames(
+          reader, avg_frames, -1, /*ambient_subtraction=*/false);
+    } else {
+      frames_to_average.reserve(static_cast<size_t>(avg_frames));
+      for (int i = 0; i < avg_frames; i++) {
+        if (temp_cap.read(frame) && !frame.empty()) {
+          frames_to_average.push_back(frame.clone());
+        }
+      }
+    }
+
+    if (frames_to_average.size() >= static_cast<size_t>(avg_frames)) {
+      log_info("[Camera] Averaged " + std::to_string(frames_to_average.size()) +
+               " frames on " + device_path);
+      return linuxcampam::averageFrames(frames_to_average);
+    }
+
+    log_warn("[Camera] Failed to collect sufficient frames for averaging (" +
+             std::to_string(frames_to_average.size()) + "/" +
+             std::to_string(avg_frames) + ") on " + device_path);
+    return cv::Mat();
+  }
+
+  // Single-frame lit capture
+  if (!is_ir_camera) {
+    temp_cap.read(frame);
+    return frame.empty() ? cv::Mat() : frame.clone();
+  }
+
+  auto reader = [&temp_cap](cv::Mat &out) {
+    return temp_cap.read(out);
+  };
+  cv::Mat best = linuxcampam::selectBestLitFrame(
+      reader, linuxcampam::kDefaultMaxCandidateReads, /*ambient_subtraction=*/false);
+  if (best.empty()) {
+    log_warn("[Camera] No illuminated frame detected for IR camera " + device_path);
+    return cv::Mat();
+  }
+  return best;
+}
+
+cv::Mat Camera::captureHDR() {
+  return captureEnrollment("on", true, linuxcampam::CAMERA_AVERAGE_FRAMES);
 }
