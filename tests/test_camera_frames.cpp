@@ -12,6 +12,9 @@ cv::Size testSize() { return {kTestWidth, kTestHeight}; }
 constexpr int kSmallDim = 50;
 cv::Size smallSize() { return {kSmallDim, kSmallDim}; }
 
+constexpr int kMicroDim = 10;
+cv::Size microSize() { return {kMicroDim, kMicroDim}; }
+
 constexpr uint8_t kDarkVal = 1;
 constexpr uint8_t kSunlightAmbient = 20;
 constexpr uint8_t kLitVal35 = 35;
@@ -626,7 +629,7 @@ TEST(CameraFramesTest, VaryingAmbientMustNotWinSingleFrameSelection) {
       if (index == vals.size()) return false;
       const int val = vals.at(index++);
       if (val < 0) return false;
-      out = cv::Mat(10, 10, CV_8UC1, cv::Scalar::all(val));
+      out = makeSolidFrame(microSize(), static_cast<uint8_t>(val));
       return true;
     };
   };
@@ -643,14 +646,14 @@ TEST(CameraFramesTest, VaryingAmbientMustNotContaminateAverage) {
       if (index == vals.size()) return false;
       const int val = vals.at(index++);
       if (val < 0) return false;
-      out = cv::Mat(10, 10, CV_8UC1, cv::Scalar::all(val));
+      out = makeSolidFrame(microSize(), static_cast<uint8_t>(val));
       return true;
     };
   };
 
   const auto frames = linuxcampam::collectLitFrames(
       reader({20, 100, 20, 100, 40, 100,
-              20, 100, 20, 100, 40, 100}), 5);
+              20, 100, 20, 100, 40, 100}), kReads5);
   for (const auto &frame : frames) {
     EXPECT_DOUBLE_EQ(meanBrightness(frame), 100.0);
   }
@@ -663,7 +666,7 @@ TEST(CameraFramesTest, FailedReadsMustNotProveContinuousIllumination) {
       if (index == vals.size()) return false;
       const int val = vals.at(index++);
       if (val < 0) return false;
-      out = cv::Mat(10, 10, CV_8UC1, cv::Scalar::all(val));
+      out = makeSolidFrame(microSize(), static_cast<uint8_t>(val));
       return true;
     };
   };
@@ -680,13 +683,13 @@ TEST(CameraFramesTest, MissingOnPhaseMustNotBecomeAllOffAverage) {
       if (index == vals.size()) return false;
       const int val = vals.at(index++);
       if (val < 0) return false;
-      out = cv::Mat(10, 10, CV_8UC1, cv::Scalar::all(val));
+      out = makeSolidFrame(microSize(), static_cast<uint8_t>(val));
       return true;
     };
   };
 
   const auto frames = linuxcampam::collectLitFrames(
       reader({80, -1, 80, -1, 80, -1,
-              80, -1, 80, -1, 80, -1}), 5);
+              80, -1, 80, -1, 80, -1}), kReads5);
   EXPECT_TRUE(frames.empty());
 }
