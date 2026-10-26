@@ -941,7 +941,9 @@ TEST_F(AuthEngineTest, EnrollUserPerCameraAveragingOverride) {
   }
 }
 
-TEST_F(AuthEngineTest, EnrollAndTrainUserResolvesHdrCapabilityOnSession) {
+TEST_F(AuthEngineTest, AuthEngineEnrollAndTrainRoutesHdrModeToCamera) {
+  // Verifies that AuthEngine's enrollUser and trainUser route the configured enroll_hdr policy
+  // to ICamera::captureEnrollment. (Production session capability discovery is verified in CameraTest).
   AuthEngine engine;
   auto detector = cv::makePtr<PolicyDetector>();
   auto recognizer = cv::makePtr<PolicyRecognizer>();

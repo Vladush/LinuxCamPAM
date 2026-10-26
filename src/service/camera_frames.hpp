@@ -36,6 +36,11 @@ struct Candidate {
   FrameMetrics metrics;
 };
 
+struct CandidateBurst {
+  std::vector<Candidate> candidates;
+  bool complete = true;
+};
+
 struct PhasePartition {
   IlluminationClassification classification = IlluminationClassification::Empty;
   std::vector<Candidate> lit_candidates;
@@ -69,6 +74,12 @@ struct IrFramePair {
     double max_saturation = kDefaultMaxSaturationRatio);
 
 using FrameReader = std::function<bool(cv::Mat &)>;
+
+// Reads a burst of frames, evaluating metrics and tracking read completeness.
+[[nodiscard]] CandidateBurst readCandidateBurst(
+    const FrameReader &reader, int max_reads,
+    double dark_threshold = kDefaultIrDarkFrameMean,
+    double max_saturation = kDefaultMaxSaturationRatio);
 
 // Reads candidate frames and retains both the best lit frame (IR_ON) and ambient frame (IR_OFF).
 [[nodiscard]] IrFramePair selectBestLitPair(

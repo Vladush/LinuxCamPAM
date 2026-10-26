@@ -16,6 +16,7 @@ constexpr uint8_t kDarkVal = 1;
 constexpr uint8_t kSunlightAmbient = 20;
 constexpr uint8_t kLitVal35 = 35;
 constexpr uint8_t kLitVal40 = 40;
+constexpr uint8_t kLitVal44 = 44;
 constexpr uint8_t kLitVal45 = 45;
 constexpr uint8_t kLitVal50 = 50;
 constexpr uint8_t kLitVal55 = 55;
@@ -23,12 +24,15 @@ constexpr uint8_t kLitVal60 = 60;
 constexpr uint8_t kLitVal61 = 61;
 constexpr uint8_t kLitVal70 = 70;
 constexpr uint8_t kLitVal80 = 80;
+constexpr uint8_t kLitVal81 = 81;
 constexpr uint8_t kLitVal86 = 86;
 constexpr uint8_t kLitVal90 = 90;
 constexpr uint8_t kLitVal100 = 100;
+constexpr uint8_t kLitVal120 = 120;
+constexpr uint8_t kLitVal121 = 121;
+constexpr uint8_t kLitVal122 = 122;
 constexpr uint8_t kLitVal160 = 160;
 constexpr uint8_t kLitVal220 = 220;
-constexpr uint8_t kGlareBaseVal = 80;
 constexpr uint8_t kMaxPixelVal = 255;
 constexpr float kFloatLowVal = 10.0f;
 constexpr float kFloatHighVal = 50.0f;
@@ -39,8 +43,8 @@ constexpr uint8_t kUnderflowHigh = 30;
 constexpr int kReads5 = 5;
 constexpr int kReads6 = 6;
 
+constexpr double kGlareFraction01 = 0.01;
 constexpr double kGlareFraction10 = 0.10;
-constexpr double kGlareFraction20 = 0.20;
 
 // Helper to create synthetic solid test frames
 cv::Mat makeSolidFrame(cv::Size size, uint8_t value) {
@@ -159,7 +163,7 @@ TEST(CameraFramesTest, StrobePhaseSelectionPairRetention) {
       makeSolidFrame(testSize(), kDarkVal),
       makeSolidFrame(testSize(), kLitVal45),
       makeSolidFrame(testSize(), kDarkVal),
-      makeSolidFrame(testSize(), kLitVal40)};
+      makeSolidFrame(testSize(), kLitVal44)};
 
   SequenceReader reader(stream);
   auto pair = linuxcampam::selectBestLitPair(
@@ -222,10 +226,10 @@ TEST(CameraFramesTest, StrobePhaseSelectionInverted) {
 
 TEST(CameraFramesTest, AvoidsOverexposedFrameInBurst) {
   // In a burst:
-  // Frame 0: heavily blown-out glare frame (base=80, 20% saturated at 255) -> high raw mean
-  // Frame 1: well-balanced frame (solid 55, 0% saturated) -> lower raw mean, but better exposure
+  // Frame 0: blown-out glare frame (base=55, 1% saturated at 255) -> higher raw mean, glare penalty
+  // Frame 1: well-balanced frame (solid 55, 0% saturated) -> lower raw mean, no glare
   // Frame 2: pitch-black OFF frame (solid 1)
-  cv::Mat blown_out = makeGlareFrame(kGlareFraction20, testSize(), kGlareBaseVal);
+  cv::Mat blown_out = makeGlareFrame(kGlareFraction01, testSize(), kLitVal55);
   cv::Mat balanced = makeSolidFrame(testSize(), kLitVal55);
   cv::Mat dark = makeSolidFrame(testSize(), kDarkVal);
 
@@ -258,39 +262,41 @@ TEST(CameraFramesTest, FailsClosedWhenEmitterDoesNotFire) {
 }
 
 TEST(CameraFramesTest, CollectLitFramesWithAmbientSubtraction) {
-  // Stream: [ON1=35, OFF=1, ON2=45, OFF=1, ON3=50]
-  // Ambient subtraction subtracts ambient dark frame (val=1) -> 34 and 44
+  // Stream: [ON1=44, OFF=1, ON2=45, OFF=1, ON3=45, OFF=1]
+  // Ambient subtraction subtracts ambient dark frame (val=1) -> 43 and 44
   std::vector<cv::Mat> stream = {
-      makeSolidFrame(testSize(), kLitVal35),
+      makeSolidFrame(testSize(), kLitVal44),
       makeSolidFrame(testSize(), kDarkVal),
       makeSolidFrame(testSize(), kLitVal45),
       makeSolidFrame(testSize(), kDarkVal),
-      makeSolidFrame(testSize(), kLitVal50)};
+      makeSolidFrame(testSize(), kLitVal45),
+      makeSolidFrame(testSize(), kDarkVal)};
 
   SequenceReader reader(stream);
   auto collected = linuxcampam::collectLitFrames(
-      [&](cv::Mat &f) { return reader(f); }, 2, -1, /*ambient_subtraction=*/true);
+      [&](cv::Mat &f) { return reader(f); }, 2, kReads6, /*ambient_subtraction=*/true);
 
   ASSERT_EQ(collected.size(), 2);
-  EXPECT_NEAR(meanBrightness(collected.at(0)), 34.0, 0.5);
+  EXPECT_NEAR(meanBrightness(collected.at(0)), 43.0, 0.5);
   EXPECT_NEAR(meanBrightness(collected.at(1)), 44.0, 0.5);
 }
 
 TEST(CameraFramesTest, CollectLitFramesWithoutAmbientSubtraction) {
   // With ambient subtraction disabled, lit frames are returned un-subtracted
   std::vector<cv::Mat> stream = {
-      makeSolidFrame(testSize(), kLitVal35),
+      makeSolidFrame(testSize(), kLitVal44),
       makeSolidFrame(testSize(), kDarkVal),
       makeSolidFrame(testSize(), kLitVal45),
       makeSolidFrame(testSize(), kDarkVal),
-      makeSolidFrame(testSize(), kLitVal50)};
+      makeSolidFrame(testSize(), kLitVal45),
+      makeSolidFrame(testSize(), kDarkVal)};
 
   SequenceReader reader(stream);
   auto collected = linuxcampam::collectLitFrames(
-      [&](cv::Mat &f) { return reader(f); }, 2, -1, /*ambient_subtraction=*/false);
+      [&](cv::Mat &f) { return reader(f); }, 2, kReads6, /*ambient_subtraction=*/false);
 
   ASSERT_EQ(collected.size(), 2);
-  EXPECT_NEAR(meanBrightness(collected.at(0)), 35.0, 0.5);
+  EXPECT_NEAR(meanBrightness(collected.at(0)), 44.0, 0.5);
   EXPECT_NEAR(meanBrightness(collected.at(1)), 45.0, 0.5);
 }
 
@@ -495,10 +501,10 @@ TEST(CameraFramesTest, DroppedFrameDoesNotBreakPhaseSeparation) {
   EXPECT_NEAR(meanBrightness(pair.dark), 20.0, 0.5);
 }
 
-TEST(CameraFramesTest, VaryingLitFramesNeverSelectAmbientOff) {
-  // Strobe burst with varying lit frame intensities: OFF=80, ON in [100, 160, 220]
-  // In previous versions, high variance in ON frames failed the cluster spread test
-  // and fell back to treating all frames as lit, where OFF=80 won exposure ranking.
+TEST(CameraFramesTest, MultilevelBurstsAreClassifiedAmbiguousAndFailClosed) {
+  // Multi-level burst without two compact clusters (OFF=80, ON in [100, 160, 220])
+  // High spread across candidates lacks coherent bimodal interpretation.
+  // Must be classified as Ambiguous and fail closed (empty lit selection/averaging).
   std::vector<cv::Mat> stream = {
       makeSolidFrame(testSize(), kLitVal80),
       makeSolidFrame(testSize(), kLitVal100),
@@ -510,21 +516,32 @@ TEST(CameraFramesTest, VaryingLitFramesNeverSelectAmbientOff) {
   SequenceReader reader(stream);
   auto pair = linuxcampam::selectBestLitPair(
       [&](cv::Mat &f) { return reader(f); }, kReads6);
+  EXPECT_TRUE(pair.lit.empty());
 
-  ASSERT_FALSE(pair.lit.empty());
-  // The lit frame must be one of the ON frames (>= 100), NEVER the 80 OFF frame
-  EXPECT_GE(meanBrightness(pair.lit), 99.0);
-  ASSERT_TRUE(pair.has_dark);
-  EXPECT_NEAR(meanBrightness(pair.dark), 80.0, 0.5);
-
-  // When collecting 3 frames for averaging, NONE may be the 80 OFF frame
   SequenceReader reader2(stream);
   auto collected = linuxcampam::collectLitFrames(
       [&](cv::Mat &f) { return reader2(f); }, 3, kReads6, false);
-  ASSERT_EQ(collected.size(), 3);
-  for (const auto &f : collected) {
-    EXPECT_GE(meanBrightness(f), 99.0);
-  }
+  EXPECT_TRUE(collected.empty());
+}
+
+TEST(CameraFramesTest, CompactStrobeSeparationWithTolerantSpread) {
+  // Strobe burst with slight pulse variance within tolerance (spread <= 4.0):
+  // OFF in [80, 81], ON in [120, 122]
+  std::vector<cv::Mat> stream = {
+      makeSolidFrame(testSize(), kLitVal80),
+      makeSolidFrame(testSize(), kLitVal120),
+      makeSolidFrame(testSize(), kLitVal81),
+      makeSolidFrame(testSize(), kLitVal122),
+      makeSolidFrame(testSize(), kLitVal80),
+      makeSolidFrame(testSize(), kLitVal121)};
+
+  SequenceReader reader(stream);
+  auto pair = linuxcampam::selectBestLitPair(
+      [&](cv::Mat &f) { return reader(f); }, kReads6);
+  ASSERT_FALSE(pair.lit.empty());
+  EXPECT_GE(meanBrightness(pair.lit), 119.5);
+  ASSERT_TRUE(pair.has_dark);
+  EXPECT_NEAR(meanBrightness(pair.dark), 80.5, 1.0);
 }
 
 TEST(CameraFramesTest, WeakSeparationIsClassifiedAmbiguousAndFailsClosed) {
@@ -580,4 +597,96 @@ TEST(CameraFramesTest, MonotonicExposureRampIsClassifiedAmbiguous) {
   cv::Mat best = linuxcampam::selectBestLitFrame(
       [&](cv::Mat &f) { return reader(f); }, kReads6);
   EXPECT_TRUE(best.empty());
+}
+
+TEST(CameraFramesTest, StrobePhaseSelectionStartingOnLit) {
+  // Strobe burst starting on lit frame (ON first, then OFF)
+  std::vector<cv::Mat> stream = {
+      makeSolidFrame(testSize(), kLitVal60),
+      makeSolidFrame(testSize(), kSunlightAmbient),
+      makeSolidFrame(testSize(), kLitVal60),
+      makeSolidFrame(testSize(), kSunlightAmbient),
+      makeSolidFrame(testSize(), kLitVal60),
+      makeSolidFrame(testSize(), kSunlightAmbient)};
+
+  SequenceReader reader(stream);
+  auto pair = linuxcampam::selectBestLitPair(
+      [&](cv::Mat &f) { return reader(f); }, kReads6);
+  ASSERT_FALSE(pair.lit.empty());
+  EXPECT_NEAR(meanBrightness(pair.lit), 60.0, 0.5);
+  ASSERT_TRUE(pair.has_dark);
+  EXPECT_NEAR(meanBrightness(pair.dark), 20.0, 0.5);
+}
+
+TEST(CameraFramesTest, VaryingAmbientMustNotWinSingleFrameSelection) {
+  // Review regression: OFF=20,20,40; ON=100. Either select ON or conservatively reject.
+  auto reader = [](const std::vector<int> &values) {
+    return [vals = values, index = std::size_t{0}](cv::Mat &out) mutable {
+      out.release();
+      if (index == vals.size()) return false;
+      const int val = vals.at(index++);
+      if (val < 0) return false;
+      out = cv::Mat(10, 10, CV_8UC1, cv::Scalar::all(val));
+      return true;
+    };
+  };
+
+  const auto frame = linuxcampam::selectBestLitFrame(
+      reader({20, 100, 20, 100, 40, 100}));
+  EXPECT_TRUE(frame.empty() || meanBrightness(frame) == 100.0);
+}
+
+TEST(CameraFramesTest, VaryingAmbientMustNotContaminateAverage) {
+  auto reader = [](const std::vector<int> &values) {
+    return [vals = values, index = std::size_t{0}](cv::Mat &out) mutable {
+      out.release();
+      if (index == vals.size()) return false;
+      const int val = vals.at(index++);
+      if (val < 0) return false;
+      out = cv::Mat(10, 10, CV_8UC1, cv::Scalar::all(val));
+      return true;
+    };
+  };
+
+  const auto frames = linuxcampam::collectLitFrames(
+      reader({20, 100, 20, 100, 40, 100,
+              20, 100, 20, 100, 40, 100}), 5);
+  for (const auto &frame : frames) {
+    EXPECT_DOUBLE_EQ(meanBrightness(frame), 100.0);
+  }
+}
+
+TEST(CameraFramesTest, FailedReadsMustNotProveContinuousIllumination) {
+  auto reader = [](const std::vector<int> &values) {
+    return [vals = values, index = std::size_t{0}](cv::Mat &out) mutable {
+      out.release();
+      if (index == vals.size()) return false;
+      const int val = vals.at(index++);
+      if (val < 0) return false;
+      out = cv::Mat(10, 10, CV_8UC1, cv::Scalar::all(val));
+      return true;
+    };
+  };
+
+  const auto frame = linuxcampam::selectBestLitFrame(
+      reader({80, -1, -1, -1, -1, -1}));
+  EXPECT_TRUE(frame.empty());
+}
+
+TEST(CameraFramesTest, MissingOnPhaseMustNotBecomeAllOffAverage) {
+  auto reader = [](const std::vector<int> &values) {
+    return [vals = values, index = std::size_t{0}](cv::Mat &out) mutable {
+      out.release();
+      if (index == vals.size()) return false;
+      const int val = vals.at(index++);
+      if (val < 0) return false;
+      out = cv::Mat(10, 10, CV_8UC1, cv::Scalar::all(val));
+      return true;
+    };
+  };
+
+  const auto frames = linuxcampam::collectLitFrames(
+      reader({80, -1, 80, -1, 80, -1,
+              80, -1, 80, -1, 80, -1}), 5);
+  EXPECT_TRUE(frames.empty());
 }

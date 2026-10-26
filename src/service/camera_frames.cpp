@@ -101,19 +101,34 @@ FrameMetrics evaluateFrame(const cv::Mat &frame, double dark_threshold,
   return m;
 }
 
-std::vector<Candidate> readCandidateBurst(const FrameReader &reader, int max_reads,
-                                         double dark_threshold, double max_saturation) {
-  std::vector<Candidate> candidates;
-  candidates.reserve(static_cast<size_t>(max_reads));
+CandidateBurst readCandidateBurst(const FrameReader &reader, int max_reads,
+                                  double dark_threshold, double max_saturation) {
+  CandidateBurst burst;
+  if (!reader || max_reads <= 0) {
+    burst.complete = false;
+    return burst;
+  }
+  burst.candidates.reserve(static_cast<size_t>(max_reads));
+  cv::Size expected_size;
+  int expected_type = -1;
+
   for (int i = 0; i < max_reads; ++i) {
     cv::Mat frame;
     if (!reader(frame) || frame.empty()) {
+      burst.complete = false;
+      continue;
+    }
+    if (expected_type == -1) {
+      expected_size = frame.size();
+      expected_type = frame.type();
+    } else if (frame.size() != expected_size || frame.type() != expected_type) {
+      burst.complete = false;
       continue;
     }
     FrameMetrics m = evaluateFrame(frame, dark_threshold, max_saturation);
-    candidates.push_back({frame.clone(), m});
+    burst.candidates.push_back({frame.clone(), m});
   }
-  return candidates;
+  return burst;
 }
 
 PhasePartition partitionCandidates(const std::vector<Candidate> &candidates,
@@ -156,10 +171,15 @@ PhasePartition partitionCandidates(const std::vector<Candidate> &candidates,
     double max_low = sorted_b.at(k - 1);
     double min_low = sorted_b.front();
     double min_high = sorted_b.at(k);
+    double max_high = sorted_b.back();
     double gap = min_high - max_low;
     double spread_low = max_low - min_low;
+    double spread_high = max_high - min_high;
 
-    if (spread_low <= kStableSpread && gap >= kMinStrobeDelta && min_high >= dark_threshold) {
+    const bool compact_groups = (spread_low <= kStableSpread) &&
+                                (spread_high <= kStableSpread);
+
+    if (compact_groups && gap >= kMinStrobeDelta && min_high >= dark_threshold) {
       if (gap > best_gap) {
         best_gap = gap;
         best_threshold = (max_low + min_high) / kMidpointDivisor;
@@ -180,7 +200,8 @@ PhasePartition partitionCandidates(const std::vector<Candidate> &candidates,
   }
 
   // Check for stable continuous illumination
-  if (delta <= kStableSpread && min_b >= dark_threshold) {
+  // Requires at least 2 frames to establish temporal stability; a single frame cannot prove continuous illumination
+  if (n >= 2 && delta <= kStableSpread && min_b >= dark_threshold) {
     result.classification = IlluminationClassification::StableContinuous;
     result.lit_candidates = candidates;
     return result;
@@ -198,12 +219,12 @@ IrFramePair selectBestLitPair(const FrameReader &reader, int max_reads,
     return {};
   }
 
-  auto candidates = readCandidateBurst(reader, max_reads, dark_threshold, max_saturation);
-  if (candidates.empty()) {
+  auto burst = readCandidateBurst(reader, max_reads, dark_threshold, max_saturation);
+  if (!burst.complete || burst.candidates.empty()) {
     return {};
   }
 
-  auto partition = partitionCandidates(candidates, dark_threshold);
+  auto partition = partitionCandidates(burst.candidates, dark_threshold);
   if (partition.lit_candidates.empty()) {
     return {};
   }
@@ -260,12 +281,12 @@ std::vector<cv::Mat> collectLitFrames(const FrameReader &reader, int wanted_fram
   constexpr int kHardMaxReads = 32;
   max_reads = std::min(max_reads, kHardMaxReads);
 
-  auto candidates = readCandidateBurst(reader, max_reads, dark_threshold, max_saturation);
-  if (candidates.empty()) {
+  auto burst = readCandidateBurst(reader, max_reads, dark_threshold, max_saturation);
+  if (!burst.complete || burst.candidates.empty()) {
     return {};
   }
 
-  auto partition = partitionCandidates(candidates, dark_threshold);
+  auto partition = partitionCandidates(burst.candidates, dark_threshold);
   if (partition.lit_candidates.empty()) {
     return {};
   }

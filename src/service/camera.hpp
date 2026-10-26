@@ -43,7 +43,7 @@ public:
   void setAmbientSubtraction(bool enabled) { ambient_subtraction_ = enabled; }
   [[nodiscard]] bool ambientSubtraction() const { return ambient_subtraction_; }
 
-private:
+protected:
   std::string raw_device_path_;
   std::string device_path;
   fs::path ir_emitter_path_;
@@ -52,6 +52,8 @@ private:
   bool supports_manual_exposure_ = false;
   bool ambient_subtraction_ = false;
 
-  bool detectExposureSupport();
-  bool openAndWarmup(cv::VideoCapture &temp_cap);
+  virtual bool detectExposureSupport();
+  virtual bool openAndWarmup(cv::VideoCapture &temp_cap);
+  virtual cv::Mat captureSingleOnSession(cv::VideoCapture &temp_cap);
+  virtual cv::Mat captureAverageOnSession(cv::VideoCapture &temp_cap, int num_frames);
 };

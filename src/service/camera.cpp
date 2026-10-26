@@ -314,15 +314,25 @@ cv::Mat Camera::captureEnrollment(std::string_view hdr_mode, bool use_averaging,
     if (supports_manual_exposure_) {
       do_hdr = true;
     } else {
-      log_warn("[Camera] Explicit HDR requested ('on'), but manual exposure unsupported on " +
-               device_path + "; falling back to averaging (" + std::to_string(avg_frames) + " frames)");
+      if (use_averaging && avg_frames > 1) {
+        log_warn("[Camera] Explicit HDR requested ('on'), but manual exposure unsupported on " +
+                 device_path + "; falling back to averaging (" + std::to_string(avg_frames) + " frames)");
+      } else {
+        log_warn("[Camera] Explicit HDR requested ('on'), but manual exposure unsupported on " +
+                 device_path + "; falling back to standard single capture");
+      }
     }
   } else if (is_hdr_auto) {
     if (supports_manual_exposure_) {
       do_hdr = true;
     } else {
-      log_info("[Camera] HDR auto: manual exposure unsupported on " + device_path +
-               "; using configured averaging/standard capture");
+      if (use_averaging && avg_frames > 1) {
+        log_info("[Camera] HDR auto: manual exposure unsupported on " + device_path +
+                 "; using configured averaging (" + std::to_string(avg_frames) + " frames)");
+      } else {
+        log_info("[Camera] HDR auto: manual exposure unsupported on " + device_path +
+                 "; using standard single capture");
+      }
     }
   }
 
@@ -388,36 +398,14 @@ cv::Mat Camera::captureEnrollment(std::string_view hdr_mode, bool use_averaging,
 
   // Averaging capture
   if (use_averaging && avg_frames > 1) {
-    auto reader = [&temp_cap](cv::Mat &out) {
-      return temp_cap.read(out);
-    };
-
-    std::vector<cv::Mat> frames_to_average;
-    if (is_ir_camera) {
-      frames_to_average = linuxcampam::collectLitFrames(
-          reader, avg_frames, -1, /*ambient_subtraction=*/false);
-    } else {
-      frames_to_average.reserve(static_cast<size_t>(avg_frames));
-      for (int i = 0; i < avg_frames; i++) {
-        if (temp_cap.read(frame) && !frame.empty()) {
-          frames_to_average.push_back(frame.clone());
-        }
-      }
-    }
-
-    if (frames_to_average.size() >= static_cast<size_t>(avg_frames)) {
-      log_info("[Camera] Averaged " + std::to_string(frames_to_average.size()) +
-               " frames on " + device_path);
-      return linuxcampam::averageFrames(frames_to_average);
-    }
-
-    log_warn("[Camera] Failed to collect sufficient frames for averaging (" +
-             std::to_string(frames_to_average.size()) + "/" +
-             std::to_string(avg_frames) + ") on " + device_path);
-    return cv::Mat();
+    return captureAverageOnSession(temp_cap, avg_frames);
   }
 
-  // Single-frame lit capture
+  return captureSingleOnSession(temp_cap);
+}
+
+cv::Mat Camera::captureSingleOnSession(cv::VideoCapture &temp_cap) {
+  cv::Mat frame;
   if (!is_ir_camera) {
     temp_cap.read(frame);
     return frame.empty() ? cv::Mat() : frame.clone();
@@ -433,6 +421,37 @@ cv::Mat Camera::captureEnrollment(std::string_view hdr_mode, bool use_averaging,
     return cv::Mat();
   }
   return best;
+}
+
+cv::Mat Camera::captureAverageOnSession(cv::VideoCapture &temp_cap, int num_frames) {
+  cv::Mat frame;
+  auto reader = [&temp_cap](cv::Mat &out) {
+    return temp_cap.read(out);
+  };
+
+  std::vector<cv::Mat> frames_to_average;
+  if (is_ir_camera) {
+    frames_to_average = linuxcampam::collectLitFrames(
+        reader, num_frames, -1, /*ambient_subtraction=*/false);
+  } else {
+    frames_to_average.reserve(static_cast<size_t>(num_frames));
+    for (int i = 0; i < num_frames; i++) {
+      if (temp_cap.read(frame) && !frame.empty()) {
+        frames_to_average.push_back(frame.clone());
+      }
+    }
+  }
+
+  if (frames_to_average.size() >= static_cast<size_t>(num_frames)) {
+    log_info("[Camera] Averaged " + std::to_string(frames_to_average.size()) +
+             " frames on " + device_path);
+    return linuxcampam::averageFrames(frames_to_average);
+  }
+
+  log_warn("[Camera] Failed to collect sufficient frames for averaging (" +
+           std::to_string(frames_to_average.size()) + "/" +
+           std::to_string(num_frames) + ") on " + device_path);
+  return cv::Mat();
 }
 
 cv::Mat Camera::captureHDR() {
