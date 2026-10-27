@@ -81,6 +81,9 @@ public:
   [[nodiscard]] const Configuration &getConfig() const { return config; }
   [[nodiscard]] std::string getActiveProvider() const;
 
+  // Face detection with dynamic resolution, channel normalization, and OpenCL fallback
+  [[nodiscard]] cv::Mat detectFaces(const cv::Mat &frame, cv::Mat &out_faces);
+
   // Allows to swap out the camera implementation (e.g., using a mock for
   // testing).
   using CameraFactory = std::function<std::unique_ptr<ICamera>(

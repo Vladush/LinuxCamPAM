@@ -96,10 +96,33 @@ The file is in standard INI format. Sections and keys are case-insensitive.
     (Default: `OpenCL,CPU`).
 
 **camera_path_ir** = *PATH*
-:   Path to IR camera (e.g., `/dev/video2`).
+:   Path to IR camera (e.g., `/dev/video2`, or persistent `/dev/v4l/by-path/...` or `/dev/v4l/by-id/...` symlink).
 
 **camera_path_rgb** = *PATH*
-:   Path to RGB camera (e.g., `/dev/video0`).
+:   Path to RGB camera (e.g., `/dev/video0`, or persistent `/dev/v4l/by-path/...` or `/dev/v4l/by-id/...` symlink).
+
+## [Cameras]
+
+**names** = *LIST*
+:   Comma-separated list of camera identifiers (e.g., `ir,rgb`), each corresponding to a `[Camera.NAME]` section.
+
+## [Camera.NAME]
+
+**path** = *PATH*
+:   Device path for this camera (e.g., `/dev/video0` or persistent udev symlink `/dev/v4l/by-id/...` or `/dev/v4l/by-path/...`). Persistent udev symlinks are recommended for multi-camera systems to prevent device index drift across reboots.
+
+**type** = *STRING*
+:   Camera type (`ir`, `rgb`, or custom) for profile matching.
+
+**min_brightness** = *INT*
+:   Minimum average pixel intensity (0-255). Images darker than this are skipped.
+
+**mandatory** = *BOOL*
+:   Whether camera match is strictly required under the `adaptive` policy.
+
+**ambient_subtraction** = *BOOL*
+:   Deferred in this release (must be `false` or omitted). Requests to enable it are rejected fail-closed.
+    (Default: `false`).
 
 ## [Performance]
 
@@ -118,24 +141,28 @@ The file is in standard INI format. Sections and keys are case-insensitive.
 ## [Capture]
 
 **enroll_hdr** = *MODE*
-:   Uses multiple exposures if camera supports manual exposure control.
-    Values: `auto`, `on`, `off`. (Default: `auto`).
+:   Uses multiple exposures if camera supports manual exposure control during enrollment and training.
+    Values: `auto`, `on`, `off`. Can be overridden per-camera in `[Camera.<name>]`. (Default: `auto`).
 
 **enroll_averaging** = *BOOL*
-:   Reduce noise by averaging frames during enrollment.
-    (Default: `on`).
+:   Reduce noise by averaging frames during enrollment and training.
+    Can be overridden per-camera in `[Camera.<name>]`. (Default: `on`).
 
 **enroll_average_frames** = *INT*
-:   Number of frames to average during enrollment.
-    (Default: `5`).
+:   Number of frames to average during enrollment and training (bounded 1 to 15).
+    Can be overridden per-camera in `[Camera.<name>]`. (Default: `5`).
 
 **verify_averaging** = *BOOL*
 :   Use frame averaging during authentication (slower, but more reliable).
     (Default: `off`).
 
 **verify_average_frames** = *INT*
-:   Number of frames to average during verification if averaging is enabled.
+:   Number of frames to average during verification if averaging is enabled (bounded 1 to 15).
     (Default: `3`).
+
+**ir_ambient_subtraction** = *BOOL*
+:   Deferred in this release (must be `false` or omitted). Requests to enable it are rejected fail-closed.
+    (Default: `off`).
 
 ## [Storage]
 

@@ -43,7 +43,7 @@ type = rgb
 min_brightness = 40 ; Only participate if scene brightness > 40
 ```
 
-- **path**: Device path (e.g., `/dev/video0`).
+- **path**: Device path (e.g., `/dev/video0`, or persistent udev symlinks like `/dev/v4l/by-path/pci-...-video-index0` or `/dev/v4l/by-id/...`). Persistent `/dev/v4l/by-*` paths are recommended across reboots and suspend cycles because `/dev/video*` indices can change dynamically. LinuxCamPAM securely canonicalizes these symlinks to their underlying `/dev/video*` character devices.
 - **type**: Camera type tag (`ir`, `rgb`, or custom). Used for matching user profile data (`embedding_<type>`).
 - **min_brightness**: Minimum average pixel intensity (0-255). If a camera's image is darker than this, it is skipped (unless `mandatory=true`).
 - **mandatory**: `true` or `false` (default: `false`). Only used in **Adaptive** policy.
@@ -90,10 +90,16 @@ enroll_average_frames = 5     ; Number of frames to average.
 
 verify_averaging = off        ; Averaging during auth (slower, but more reliable).
 verify_average_frames = 3
+
+ir_ambient_subtraction = off  ; on | off. Deferred in this release (must be off/false or omitted).
 ```
 
-- **enroll_hdr**: Improves profiles in difficult lighting (backlit scenes).
-- **enroll_averaging**: recommended for IR cameras to reduce sensor noise.
+- **enroll_hdr**: Multi-exposure capture for difficult lighting (backlit scenes). Acceptable values: `auto`, `on`, `off`. Applies to both initial enrollment (`add`) and subsequent training (`train`). Can be overridden per-camera via `[Camera.<name>].enroll_hdr`.
+- **enroll_averaging**: Frame averaging to reduce sensor noise (especially on IR cameras). Applies to both enrollment and training. Can be overridden per-camera via `[Camera.<name>].enroll_averaging`.
+- **enroll_average_frames**: Number of frames to average during enrollment and training (bounded 1 to 15). Can be overridden per-camera via `[Camera.<name>].enroll_average_frames`.
+- **ir_ambient_subtraction**: Deferred in this release (must be `off` or omitted). Requests to enable it are rejected fail-closed. Overrides per camera via `ambient_subtraction` are similarly deferred.
+
+> **Capture Precedence:** Per-camera settings in `[Camera.<name>]` take precedence over global `[Capture]` defaults. Verification/authentication uses separate speed-focused settings (`verify_averaging`, `verify_average_frames`) and defaults to fast single-frame capture.
 
 #### 5. Proximity Sensor (Optional)
 

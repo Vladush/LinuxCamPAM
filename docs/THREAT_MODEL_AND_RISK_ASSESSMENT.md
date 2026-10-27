@@ -48,8 +48,10 @@ We use the STRIDE framework to analyze potential threats to the authentication p
   * **Active Liveness Check**: Active liveness detection (challenge-response) provides a strong defense against frame injection by requiring unpredictable real-time user reactions, preventing the replay of static or looped video frames (see [Roadmap #6](#5-future-security-enhancements-roadmap)).
   * **System-Level Recommendation**: For highly sensitive environments, administrators are strongly advised to deploy `usbguard` to block unauthorized USB devices from enumerating, preventing hot-plug camera swap attacks.
 
-* **Threat 4 (Configuration Tampering):** An attacker with local access modifies `/etc/linuxcampam/config.ini` to bypass security policies. For example, they could lower the similarity `threshold` to `0.01` to accept any image, switch the policy to `lenient` to bypass IR liveness checks, or point `camera_path_ir` to a virtual webcam device looping a pre-recorded spoof video.
-* **Mitigation:** The configuration file must be strictly owned by `root:root` with `0644` or `0600` permissions.
+* **Threat 4 (Configuration Tampering & Device Path Injection):** An attacker with local access modifies `/etc/linuxcampam/config.ini` to bypass security policies. For example, they could lower the similarity `threshold` to `0.01` to accept any image, switch the policy to `lenient` to bypass IR liveness checks, point `camera_path_ir` to a virtual webcam device looping a pre-recorded spoof video, or attempt path traversal into arbitrary device files.
+* **Mitigation:**
+  * The configuration file must be strictly owned by `root:root` with `0644` or `0600` permissions.
+  * **Device Path Validation:** All camera paths are strictly validated: they must lexically match `/dev/video*` or persistent udev paths (`/dev/v4l/by-id/*`, `/dev/v4l/by-path/*`) without path traversal (`..`) at configuration parse time. Canonical symlink resolution and character device verification (`S_ISCHR`) are enforced fail-closed at hardware open time.
   * **Advanced Mitigation (Immutable Flag):** Administrators are highly encouraged to apply the immutable flag (`chattr +i /etc/linuxcampam/config.ini`) to prevent even a compromised root daemon or rogue script from modifying these critical security parameters (see [Roadmap #9](#5-future-security-enhancements-roadmap)). The setup script provides an interactive prompt to enable this easily.
 
 ### 3.3 Repudiation

@@ -5,13 +5,30 @@
 
 using namespace linuxcampam;
 
+class MockEmptyBackend : public linuxcampam::ICameraBackend {
+public:
+  [[nodiscard]] std::vector<std::string> getDevicePaths() const override {
+    return {};
+  }
+  [[nodiscard]] bool isVideoCaptureDevice(std::string_view) const override {
+    return false;
+  }
+  [[nodiscard]] std::vector<uint32_t> getPixelFormats(std::string_view) const override {
+    return {};
+  }
+};
+
 class ConfigParsingTest : public ::testing::Test {
 public: // NOLINT(misc-non-private-member-variables-in-classes)
   Configuration config;
+  MockEmptyBackend mock_backend;
   
   void loadConfig(std::string_view ini_content) {
     std::stringstream ss(std::string{ini_content});
-    EXPECT_TRUE(config.load(ss, nullptr));
+    EXPECT_TRUE(config.load(ss, &mock_backend));
+  }
+  bool loadStream(std::istream &ss) {
+    return config.load(ss, &mock_backend);
   }
 };
 
@@ -154,7 +171,7 @@ enroll_average_frames=5
   EXPECT_EQ(config.camera_defs.at(1).type, "ir");
   EXPECT_FALSE(config.camera_defs.at(1).mandatory);
   EXPECT_EQ(config.camera_defs.at(1).enroll_hdr, "true");
-  EXPECT_EQ(config.camera_defs.at(1).enroll_averaging, "true");
+  EXPECT_EQ(config.camera_defs.at(1).enroll_averaging, std::optional<bool>(true));
   EXPECT_EQ(config.camera_defs.at(1).enroll_average_frames, 5);
 }
 
@@ -208,7 +225,7 @@ TEST_F(ConfigParsingTest, RejectsMalformedSyntaxWithoutChangingActiveConfigurati
                                       "proximity_enforce true", "=false", "name=\"unclosed"}) {
     SCOPED_TRACE(malformed);
     std::istringstream input(malformed);
-    EXPECT_FALSE(config.load(input));
+    EXPECT_FALSE(loadStream(input));
     EXPECT_TRUE(config.proximity_enforce);
     EXPECT_FLOAT_EQ(config.threshold, 0.8f);
   }
@@ -219,14 +236,14 @@ TEST_F(ConfigParsingTest, ReadFailurePreservesConfiguration) {
   config.threshold = kCustomThreshold;
   std::istringstream input;
   input.setstate(std::ios::badbit);
-  EXPECT_FALSE(config.load(input));
+  EXPECT_FALSE(loadStream(input));
   EXPECT_FLOAT_EQ(config.threshold, kCustomThreshold);
 }
 
 TEST_F(ConfigParsingTest, LateValueErrorPreservesEntireConfiguration) {
   loadConfig("[Auth]\nthreshold=0.8\n[Hardware]\nproximity_enforce=true\n");
   std::istringstream input("[Auth]\nthreshold=0.2\n[Cameras]\nnames=x\n[Camera.x]\nmandatory=typo\n");
-  EXPECT_FALSE(config.load(input));
+  EXPECT_FALSE(loadStream(input));
   EXPECT_FLOAT_EQ(config.threshold, 0.8f);
   EXPECT_TRUE(config.proximity_enforce);
 }
@@ -249,6 +266,230 @@ TEST_F(ConfigParsingTest, GpuFlushBooleanSpellings) {
 TEST_F(ConfigParsingTest, AuthenticationDeadlineMustBeBounded) {
   for (const std::string value : {"0", "-1", "60001", "2147483647"}) {
     std::istringstream input("[Auth]\ntimeout_ms=" + value);
-    EXPECT_FALSE(config.load(input));
+    EXPECT_FALSE(loadStream(input));
   }
+}
+
+TEST_F(ConfigParsingTest, AverageFramesMustBeBounded) {
+  for (const std::string value : {"0", "-1", "16", "1000"}) {
+    std::istringstream input_enroll("[Capture]\nenroll_average_frames=" + value);
+    EXPECT_FALSE(loadStream(input_enroll));
+
+    std::istringstream input_verify("[Capture]\nverify_average_frames=" + value);
+    EXPECT_FALSE(loadStream(input_verify));
+  }
+
+  std::istringstream valid("[Capture]\nenroll_average_frames=5\nverify_average_frames=3\n");
+  EXPECT_TRUE(loadStream(valid));
+  EXPECT_EQ(config.enroll_average_frames, 5);
+  EXPECT_EQ(config.verify_average_frames, 3);
+}
+
+TEST_F(ConfigParsingTest, EnrollHdrStrictParsing) {
+  loadConfig("[Capture]\nenroll_hdr=on\n");
+  EXPECT_EQ(config.enroll_hdr, "on");
+
+  loadConfig("[Capture]\nenroll_hdr=auto\n");
+  EXPECT_EQ(config.enroll_hdr, "auto");
+
+  loadConfig("[Capture]\nenroll_hdr=off\n");
+  EXPECT_EQ(config.enroll_hdr, "off");
+
+  loadConfig("[Capture]\nenroll_hdr=true\n");
+  EXPECT_EQ(config.enroll_hdr, "on");
+
+  loadConfig("[Capture]\nenroll_hdr=false\n");
+  EXPECT_EQ(config.enroll_hdr, "off");
+
+  std::istringstream invalid("[Capture]\nenroll_hdr=bananas\n");
+  EXPECT_FALSE(loadStream(invalid));
+}
+
+TEST_F(ConfigParsingTest, CameraEnrollAveragingBooleanStrictParsing) {
+  std::istringstream invalid(R"(
+[Cameras]
+names=ir
+[Camera.ir]
+path=/dev/video0
+enroll_averaging=bananas
+)");
+  EXPECT_FALSE(loadStream(invalid));
+
+  std::istringstream valid_on(R"(
+[Cameras]
+names=ir
+[Camera.ir]
+path=/dev/video0
+enroll_averaging=on
+)");
+  EXPECT_TRUE(loadStream(valid_on));
+  EXPECT_EQ(config.camera_defs.at(0).enroll_averaging, std::optional<bool>(true));
+
+  std::istringstream valid_off(R"(
+[Cameras]
+names=ir
+[Camera.ir]
+path=/dev/video0
+enroll_averaging=off
+)");
+  EXPECT_TRUE(loadStream(valid_off));
+  EXPECT_EQ(config.camera_defs.at(0).enroll_averaging, std::optional<bool>(false));
+
+  std::istringstream unset(R"(
+[Cameras]
+names=ir
+[Camera.ir]
+path=/dev/video0
+)");
+  EXPECT_TRUE(loadStream(unset));
+  EXPECT_EQ(config.camera_defs.at(0).enroll_averaging, std::nullopt);
+}
+
+TEST_F(ConfigParsingTest, CameraEnrollAverageFramesBounded) {
+  for (const std::string value : {"0", "-1", "16", "1000"}) {
+    std::istringstream invalid(R"(
+[Cameras]
+names=ir
+[Camera.ir]
+path=/dev/video0
+enroll_average_frames=)" + value + "\n");
+    EXPECT_FALSE(loadStream(invalid));
+  }
+
+  std::istringstream valid(R"(
+[Cameras]
+names=ir
+[Camera.ir]
+path=/dev/video0
+enroll_average_frames=5
+)");
+  EXPECT_TRUE(loadStream(valid));
+  EXPECT_EQ(config.camera_defs.at(0).enroll_average_frames, std::optional<int>(5));
+
+  std::istringstream unset(R"(
+[Cameras]
+names=ir
+[Camera.ir]
+path=/dev/video0
+)");
+  EXPECT_TRUE(loadStream(unset));
+  EXPECT_EQ(config.camera_defs.at(0).enroll_average_frames, std::nullopt);
+}
+
+TEST_F(ConfigParsingTest, AmbientSubtractionDefaultsToFalse) {
+  std::istringstream stream(R"(
+[Cameras]
+names=ir
+[Camera.ir]
+path=/dev/video0
+)");
+  EXPECT_TRUE(loadStream(stream));
+  EXPECT_FALSE(config.ir_ambient_subtraction);
+  EXPECT_EQ(config.camera_defs.at(0).ambient_subtraction, std::nullopt);
+}
+
+TEST_F(ConfigParsingTest, CameraAmbientSubtractionStrictParsing) {
+  std::istringstream invalid(R"(
+[Cameras]
+names=ir
+[Camera.ir]
+path=/dev/video0
+ambient_subtraction=invalid_val
+)");
+  EXPECT_FALSE(loadStream(invalid));
+
+  std::istringstream valid_off(R"(
+[Cameras]
+names=ir
+[Camera.ir]
+path=/dev/video0
+ambient_subtraction=off
+)");
+  EXPECT_TRUE(loadStream(valid_off));
+  EXPECT_EQ(config.camera_defs.at(0).ambient_subtraction, std::optional<bool>(false));
+
+  // Requests to enable ambient subtraction are explicitly rejected since feature is deferred
+  std::istringstream rejected_on(R"(
+[Cameras]
+names=ir
+[Camera.ir]
+path=/dev/video0
+ambient_subtraction=true
+)");
+  EXPECT_FALSE(loadStream(rejected_on));
+}
+
+TEST_F(ConfigParsingTest, AmbientSubtractionAliasesAndValidation) {
+  // Canonical only
+  std::istringstream canonical(R"(
+[Cameras]
+names=ir
+[Camera.ir]
+path=/dev/video0
+[Capture]
+ir_ambient_subtraction=false
+)");
+  EXPECT_TRUE(loadStream(canonical));
+  EXPECT_FALSE(config.ir_ambient_subtraction);
+
+  // Alias only
+  std::istringstream alias(R"(
+[Cameras]
+names=ir
+[Camera.ir]
+path=/dev/video0
+[Hardware]
+ir_ambient_subtraction=false
+)");
+  EXPECT_TRUE(loadStream(alias));
+  EXPECT_FALSE(config.ir_ambient_subtraction);
+
+  // Equal duplicate
+  std::istringstream duplicate(R"(
+[Cameras]
+names=ir
+[Camera.ir]
+path=/dev/video0
+[Capture]
+ir_ambient_subtraction=false
+[Hardware]
+ir_ambient_subtraction=false
+)");
+  EXPECT_TRUE(loadStream(duplicate));
+  EXPECT_FALSE(config.ir_ambient_subtraction);
+
+  // Malformed shadowed alias must NOT be ignored
+  std::istringstream malformed_shadowed(R"(
+[Cameras]
+names=ir
+[Camera.ir]
+path=/dev/video0
+[Capture]
+ir_ambient_subtraction=false
+[Hardware]
+ir_ambient_subtraction=bananas
+)");
+  EXPECT_FALSE(loadStream(malformed_shadowed));
+
+  // Explicit enable request must be rejected
+  std::istringstream enable_req(R"(
+[Cameras]
+names=ir
+[Camera.ir]
+path=/dev/video0
+[Capture]
+ir_ambient_subtraction=true
+)");
+  EXPECT_FALSE(loadStream(enable_req));
+
+  // Alias enable request must also be rejected
+  std::istringstream alias_enable_req(R"(
+[Cameras]
+names=ir
+[Camera.ir]
+path=/dev/video0
+[Hardware]
+ir_ambient_subtraction=true
+)");
+  EXPECT_FALSE(loadStream(alias_enable_req));
 }

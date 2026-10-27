@@ -131,6 +131,7 @@ add_library(service_core STATIC
     src/service/auth_engine.cpp
     src/service/deadline_worker.cpp
     src/service/camera.cpp
+    src/service/camera_frames.cpp
     src/service/config.cpp
     src/service/utils.cpp
     src/PresenceTripwire.cpp
@@ -242,6 +243,7 @@ if(TARGET gtest)
         tests/test_scoped_worker.cpp
         tests/test_presence_actions.cpp
         tests/test_deadline_worker.cpp
+        tests/test_camera_frames.cpp
     )
     
     # The tests link against the service_core library to test internal logic without
