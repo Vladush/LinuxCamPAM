@@ -87,6 +87,7 @@ public:
     return 0.0;
   }
 
+  // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
   bool setProperty(int prop_id, double value) override {
     if (prop_id == cv::CAP_PROP_EXPOSURE) {
       state_->recorded_exposures.push_back(value);

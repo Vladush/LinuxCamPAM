@@ -117,6 +117,7 @@ void Camera::triggerIrEmitter() {
 
 namespace {
 using linuxcampam::FileDescriptor;
+constexpr int kMsPerSecond = 1000;
 
 class DefaultCameraSession : public ICameraSession {
 public:
@@ -158,6 +159,7 @@ public:
     return cap_.get(prop_id);
   }
 
+  // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
   bool setProperty(int prop_id, double value) override {
     return cap_.set(prop_id, value);
   }
@@ -226,7 +228,7 @@ bool Camera::openAndWarmup(ICameraSession &session) {
     if (attempt + 1 < linuxcampam::CAPTURE_RETRY_ATTEMPTS) {
       log_warn("[Camera] Device unavailable or busy. Retrying (" + std::to_string(attempt + 1) +
                "/" + std::to_string(linuxcampam::CAPTURE_RETRY_ATTEMPTS) + ")...");
-      session.sleepMs(linuxcampam::CAPTURE_RETRY_DELAY_S * 1000);
+      session.sleepMs(linuxcampam::CAPTURE_RETRY_DELAY_S * kMsPerSecond);
     }
   }
 

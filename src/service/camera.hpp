@@ -21,6 +21,7 @@ public:
   virtual bool read(cv::Mat &frame) = 0;
   virtual bool grab() = 0;
   [[nodiscard]] virtual double getProperty(int prop_id) const = 0;
+  // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
   virtual bool setProperty(int prop_id, double value) = 0;
   virtual void sleepMs(int ms) = 0;
 };
