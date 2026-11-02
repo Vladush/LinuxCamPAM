@@ -2,13 +2,13 @@
 #include "auth_engine.hpp"
 
 #include "camera.hpp"
+#include "camera_frames.hpp"
 #include "config.hpp"
 #include "constants.hpp"
 #include "json.hpp"
 #include "logger.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cstdlib>
 #include <fcntl.h>
 #include <filesystem>
@@ -91,8 +91,10 @@ inline std::string getModelVersion(const fs::path &model_path) {
 // Tests can override this later using setCameraFactory().
 AuthEngine::AuthEngine() {
   camera_factory_ = [this](const Configuration::CameraDefinition &def) {
+    bool ambient_sub = def.ambient_subtraction.value_or(config.ir_ambient_subtraction);
     return std::make_unique<Camera>(def.path, def.type == "ir",
-                                    config.ir_emitter_path.string());
+                                    config.ir_emitter_path.string(),
+                                    ambient_sub);
   };
 }
 AuthEngine::~AuthEngine() {}
@@ -274,41 +276,104 @@ void AuthEngine::fallbackToCPU() {
   }
 }
 
+cv::Mat AuthEngine::detectFaces(const cv::Mat &frame, cv::Mat &out_faces) {
+  if (frame.empty()) {
+    out_faces.release();
+    return cv::Mat();
+  }
+
+  if (!ensureModelsLoaded() || !detector) {
+    log_error("detectFaces: Models unavailable or failed to load");
+    out_faces.release();
+    return cv::Mat();
+  }
+
+  cv::Mat bgr;
+  if (frame.channels() == 1) {
+    cv::cvtColor(frame, bgr, cv::COLOR_GRAY2BGR);
+  } else if (frame.channels() == 4) {
+    cv::cvtColor(frame, bgr, cv::COLOR_BGRA2BGR);
+  } else if (frame.channels() == 3) {
+    bgr = frame;
+  } else {
+    log_warn("detectFaces: unsupported channel count: " +
+             std::to_string(frame.channels()));
+    out_faces.release();
+    return cv::Mat();
+  }
+
+  auto run_detection = [&]() {
+    log_debug("detectFaces: Setting input size to " + std::to_string(bgr.cols) +
+              "x" + std::to_string(bgr.rows));
+    detector->setInputSize(bgr.size());
+    detector->detect(bgr, out_faces);
+    gpuSync(config.gpu_flush, config.gpu_throttle_ms);
+  };
+
+  try {
+    run_detection();
+  } catch (const cv::Exception &e) {
+    if (cv::ocl::useOpenCL()) {
+      log_warn("OpenCL failure during detection, switching to CPU: " +
+               std::string(e.what()));
+      cv::ocl::setUseOpenCL(false);
+      fallbackToCPU();
+      if (!detector) {
+        log_error("detectFaces: Failed to switch to CPU detector");
+        out_faces.release();
+        return cv::Mat();
+      }
+      run_detection();
+    } else {
+      throw;
+    }
+  }
+
+  return bgr;
+}
+
 int AuthEngine::generateEmbedding(const cv::Mat &frame,
                                   std::vector<float> &out_embedding,
                                   cv::Mat &out_aligned_face) {
   if (frame.empty())
     return 0;
 
-  auto run_inference = [&]() {
-    cv::Mat faces;
-    log_debug("Profiling: About to detect (dynamic size)");
+  if (!ensureModelsLoaded() || !recognizer) {
+    log_error("generateEmbedding: Recognizer unavailable or failed to load");
+    return 0;
+  }
 
-    detector->setInputSize(frame.size());
-    detector->detect(frame, faces);
+  cv::Mat faces;
+  cv::Mat bgr = detectFaces(frame, faces);
+  if (bgr.empty())
+    return 0;
 
-    int num_faces = faces.rows;
-    if (num_faces == 0) {
-      log_warn("Profiling: Detection complete. 0 faces found above threshold (" +
-                  std::to_string(config.detection_threshold) +
-                  "). If using IR camera, try lowering detection_threshold to 0.5 in config.ini.");
-    } else {
-      constexpr int FACE_SCORE_INDEX = 14;
-      float best_score = faces.at<float>(0, FACE_SCORE_INDEX);
-      log_info("Profiling: Detection complete. Faces: " + std::to_string(num_faces) +
-                  " | Best score: " + std::to_string(best_score) +
-                  " | Threshold: " + std::to_string(config.detection_threshold));
-    }
-    gpuSync(config.gpu_flush, config.gpu_throttle_ms);
+  int num_faces = faces.rows;
+  if (num_faces == 0) {
+    linuxcampam::FrameMetrics metrics = linuxcampam::evaluateFrame(frame);
+    log_warn("Profiling: Detection complete. 0 faces found above threshold (" +
+             std::to_string(config.detection_threshold) +
+             ") [mean brightness=" + std::to_string(metrics.mean_brightness) +
+             ", saturation=" + std::to_string(metrics.saturation_ratio * 100.0) +
+             "%]. If using IR camera, check emitter or try lowering detection_threshold to 0.5 in config.ini.");
+    return 0;
+  }
 
-    if (num_faces < 1)
-      return 0;
+  constexpr int FACE_SCORE_INDEX = 14;
+  float best_score = faces.at<float>(0, FACE_SCORE_INDEX);
+  log_info("Profiling: Detection complete. Faces: " + std::to_string(num_faces) +
+           " | Best score: " + std::to_string(best_score) +
+           " | Threshold: " + std::to_string(config.detection_threshold));
 
-    log_debug("Profiling: About to align and recognize");
+  if (num_faces < 1)
+    return 0;
 
+  log_debug("Profiling: About to align and recognize");
+
+  auto run_recognition = [&]() {
     cv::Mat emb_mat;
-    // Use largest face (row 0)
-    recognizer->alignCrop(frame, faces.row(0), out_aligned_face);
+    // Row 0 has highest score from YuNet
+    recognizer->alignCrop(bgr, faces.row(0), out_aligned_face);
     recognizer->feature(out_aligned_face, emb_mat);
 
     log_debug("Profiling: Recognition complete");
@@ -317,21 +382,27 @@ int AuthEngine::generateEmbedding(const cv::Mat &frame,
     if (!emb_mat.empty()) {
       emb_mat.reshape(1, 1).copyTo(out_embedding);
     }
-
-    return num_faces;
   };
 
   try {
-    return run_inference();
+    run_recognition();
   } catch (const cv::Exception &e) {
     if (cv::ocl::useOpenCL()) {
-      log_warn("OpenCL failure, switching to CPU: " + std::string(e.what()));
+      log_warn("OpenCL failure during recognition, switching to CPU: " +
+               std::string(e.what()));
       cv::ocl::setUseOpenCL(false);
       fallbackToCPU();
-      return run_inference();
+      if (!recognizer) {
+        log_error("generateEmbedding: Failed to switch to CPU recognizer");
+        return 0;
+      }
+      run_recognition();
+    } else {
+      throw;
     }
-    throw;
   }
+
+  return num_faces;
 }
 
 cv::Mat AuthEngine::captureFrame(ICamera *cam) {
@@ -343,11 +414,7 @@ cv::Mat AuthEngine::captureFrame(ICamera *cam) {
 double AuthEngine::calculateBrightness(const cv::Mat &frame) {
   if (frame.empty())
     return 0.0;
-  const cv::Scalar means = cv::mean(frame);
-  std::array<double, 4> channels{};
-  std::copy(std::begin(means.val), std::end(means.val), channels.begin());
-  return (channels.at(0) + channels.at(1) + channels.at(2)) /
-         linuxcampam::RGB_CHANNELS;
+  return linuxcampam::evaluateFrame(frame).mean_brightness;
 }
 
 AuthResult AuthEngine::verifyUserCore(std::string_view username,
@@ -405,7 +472,12 @@ AuthResult AuthEngine::verifyUserCore(std::string_view username,
     }
 
     std::string id = ac.config.id;
-    cv::Mat frame = captureFrame(ac.cam.get());
+    cv::Mat frame;
+    if (config.verify_averaging) {
+      frame = ac.cam ? ac.cam->captureAveraged(config.verify_average_frames) : cv::Mat();
+    } else {
+      frame = captureFrame(ac.cam.get());
+    }
 
     if (check_timeout()) {
       log_warn("Verification timed out after capture.");
@@ -718,22 +790,11 @@ AuthEngine::enrollUser(std::string_view username) {
     // Per-camera settings override global if set
     std::string use_hdr = !ac.config.enroll_hdr.empty() ? ac.config.enroll_hdr
                                                         : config.enroll_hdr;
-    bool use_averaging = !ac.config.enroll_averaging.empty()
-                             ? (ac.config.enroll_averaging == "on")
-                             : config.enroll_averaging;
-    int avg_frames = (ac.config.enroll_average_frames > 0)
-                         ? ac.config.enroll_average_frames
-                         : config.enroll_average_frames;
+    bool use_averaging = ac.config.enroll_averaging.value_or(config.enroll_averaging);
+    int avg_frames = ac.config.enroll_average_frames.value_or(config.enroll_average_frames);
 
-    cv::Mat frame;
-    if (use_hdr == "on" ||
-        (use_hdr == "auto" && ac.cam->supportsManualExposure())) {
-      frame = ac.cam->captureHDR();
-    } else if (use_averaging) {
-      frame = ac.cam->captureAveraged(avg_frames);
-    } else {
-      frame = ac.cam->capture();
-    }
+    cv::Mat frame = ac.cam ? ac.cam->captureEnrollment(use_hdr, use_averaging, avg_frames)
+                           : cv::Mat();
 
     if (frame.empty()) {
       log_error("Camera " + id + " failed. Enroll aborted.");
@@ -886,7 +947,13 @@ bool AuthEngine::trainUser(std::string_view username,
     std::string id = ac.config.id;
     std::string emb_array_key = "embeddings_" + ac.config.type;
 
-    cv::Mat frame = captureFrame(ac.cam.get());
+    std::string use_hdr = !ac.config.enroll_hdr.empty() ? ac.config.enroll_hdr
+                                                        : config.enroll_hdr;
+    bool use_averaging = ac.config.enroll_averaging.value_or(config.enroll_averaging);
+    int avg_frames = ac.config.enroll_average_frames.value_or(config.enroll_average_frames);
+
+    cv::Mat frame = ac.cam ? ac.cam->captureEnrollment(use_hdr, use_averaging, avg_frames)
+                           : cv::Mat();
     if (frame.empty()) {
       log_warn("Train: Camera " + id + " failed capture.");
       continue;
@@ -1044,37 +1111,27 @@ bool AuthEngine::testCameraAndAuth() {
     log_info("Testing Camera " + id + "...");
     cv::Mat frame = captureFrame(ac.cam.get());
     if (!frame.empty()) {
-      cv::Mat processed = frame;
-
-      log_info("Frame Props: " + std::to_string(processed.cols) + "x" +
-                      std::to_string(processed.rows) +
-                      " Type=" + std::to_string(processed.type()) +
-                      " Channels=" + std::to_string(processed.channels()));
-
-      if (processed.channels() == 1) {
-        log_info("Converting GRAY to BGR for detection");
-        cv::cvtColor(processed, processed, cv::COLOR_GRAY2BGR);
-      } else if (processed.channels() == 4) {
-        log_info("Converting BGRA to BGR for detection");
-        cv::cvtColor(processed, processed, cv::COLOR_BGRA2BGR);
-      }
+      log_info("Frame Props: " + std::to_string(frame.cols) + "x" +
+               std::to_string(frame.rows) +
+               " Type=" + std::to_string(frame.type()) +
+               " Channels=" + std::to_string(frame.channels()));
 
       try {
         log_info("Running detector on frame...");
         cv::Mat faces;
-        detector->detect(processed, faces);
-        any_ok = true;
-
-        // Visualize result
-        if (faces.rows > 0) {
-          log_info("Detected " + std::to_string(faces.rows) +
-                                          " faces on Camera " + id);
-        } else {
-          log_info("No faces detected on Camera " + id);
+        cv::Mat bgr = detectFaces(frame, faces);
+        if (!bgr.empty()) {
+          any_ok = true;
+          if (faces.rows > 0) {
+            log_info("Detected " + std::to_string(faces.rows) +
+                     " faces on Camera " + id);
+          } else {
+            log_info("No faces detected on Camera " + id);
+          }
         }
       } catch (const cv::Exception &e) {
         log_error("OpenCV Exception handling TEST_AUTH: " +
-                                         std::string(e.what()));
+                  std::string(e.what()));
       } catch (const std::exception &e) {
         log_error("Exception handling TEST_AUTH: " + std::string(e.what()));
       } catch (...) {

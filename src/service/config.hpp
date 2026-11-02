@@ -3,10 +3,11 @@
 #include "constants.hpp"
 #include "utils.hpp"
 
+#include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
-#include <cstdint>
 
 namespace fs = std::filesystem;
 
@@ -37,8 +38,9 @@ public:
     int min_brightness = 0;
     bool mandatory = false;
     std::string enroll_hdr = "";
-    std::string enroll_averaging = "";
-    int enroll_average_frames = 0;
+    std::optional<bool> enroll_averaging = std::nullopt;
+    std::optional<int> enroll_average_frames = std::nullopt;
+    std::optional<bool> ambient_subtraction = std::nullopt;
   };
 
   // Data Members
@@ -63,6 +65,7 @@ public:
   int enroll_average_frames = DEFAULT_ENROLL_AVG_FRAMES;
   bool verify_averaging = false;
   int verify_average_frames = DEFAULT_VERIFY_AVG_FRAMES;
+  bool ir_ambient_subtraction = false;
 
   ProximitySensorMode proximity_sensor = ProximitySensorMode::AUTO;
   std::string proximity_sensor_id = "ITE8353";
