@@ -148,18 +148,24 @@ if [ -n "$IR_CAM" ]; then
             echo
             if [[ $REPLY =~ ^[Yy]$ ]]; then
                 echo "[Setup] Fetching install script..."
+                # Never stage the installer at a fixed /tmp path: this runs as root,
+                # and another local user could pre-create and rewrite that file.
                 if [ -f "./scripts/install_ir_emitter.sh" ]; then
                     echo "[Setup] Using local script (./scripts/install_ir_emitter.sh) for installation."
-                    cp "./scripts/install_ir_emitter.sh" /tmp/install_ir_emitter.sh
+                    bash "./scripts/install_ir_emitter.sh"
                 elif [ -f "/usr/share/linuxcampam/install_ir_emitter.sh" ]; then
                     echo "[Setup] Using package script (/usr/share/linuxcampam/install_ir_emitter.sh) for installation."
-                    cp "/usr/share/linuxcampam/install_ir_emitter.sh" /tmp/install_ir_emitter.sh
+                    bash "/usr/share/linuxcampam/install_ir_emitter.sh"
                 else
                     echo "[Setup] Downloading script from GitHub..."
-                    curl -sL https://raw.githubusercontent.com/Vladush/LinuxCamPAM/master/scripts/install_ir_emitter.sh -o /tmp/install_ir_emitter.sh
+                    (
+                        ire_dir=$(mktemp -d)
+                        trap 'rm -rf -- "$ire_dir"' EXIT
+                        curl -fsSL https://raw.githubusercontent.com/Vladush/LinuxCamPAM/master/scripts/install_ir_emitter.sh \
+                            -o "$ire_dir/install_ir_emitter.sh"
+                        bash "$ire_dir/install_ir_emitter.sh"
+                    )
                 fi
-                chmod +x /tmp/install_ir_emitter.sh
-                /tmp/install_ir_emitter.sh
                 echo ""
                 IRE_VERSION=$(linux-enable-ir-emitter -V 2>/dev/null || echo "linux-enable-ir-emitter")
                 echo "[Setup] $IRE_VERSION installed successfully."
