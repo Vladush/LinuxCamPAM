@@ -1,4 +1,5 @@
 #include "../src/pam/pam_config.hpp"
+#include "../src/pam/remote_session.hpp"
 
 #include <gtest/gtest.h>
 #include <sstream>
@@ -251,4 +252,38 @@ TEST_F(PamConfigTest, AuthTimeoutMatchesDaemonPrecedence) {
   EXPECT_EQ(loadConfig("[Auth]\ntimeout_ms=10000\n[General]\ntimeout_ms=7000").auth_timeout_ms, 10000);
   EXPECT_EQ(loadConfig("[General]\ntimeout_ms=invalid\n[Auth]\ntimeout_ms=9000").auth_timeout_ms, 9000);
   EXPECT_THROW(loadConfig("[Auth]\ntimeout_ms=0"), std::invalid_argument);
+}
+
+TEST_F(PamConfigTest, AllowRemoteSessionsDefaultsOff) {
+  EXPECT_FALSE(loadConfig("").allow_remote_sessions);
+  EXPECT_TRUE(loadConfig("[Security]\nallow_remote_sessions = true").allow_remote_sessions);
+  EXPECT_FALSE(loadConfig("[Security]\nallow_remote_sessions = bogus").allow_remote_sessions);
+}
+
+TEST(RemoteSessionTest, RemoteOnlyServicesAreRemote) {
+  using linuxcampam::pam::is_remote_session;
+  EXPECT_TRUE(is_remote_session("sshd", "", "mybox"));
+  EXPECT_TRUE(is_remote_session("sshd", "127.0.0.1", "mybox"));
+  EXPECT_TRUE(is_remote_session("remote", "", "mybox"));
+  EXPECT_TRUE(is_remote_session("cockpit", "", "mybox"));
+  EXPECT_TRUE(is_remote_session("xrdp-sesman", "", "mybox"));
+}
+
+TEST(RemoteSessionTest, ForeignRhostIsRemote) {
+  using linuxcampam::pam::is_remote_session;
+  EXPECT_TRUE(is_remote_session("login", "203.0.113.7", "mybox"));
+  EXPECT_TRUE(is_remote_session("sudo", "attacker.example", "mybox"));
+  EXPECT_TRUE(is_remote_session("sudo", "mybox.example", "mybox"));
+  EXPECT_TRUE(is_remote_session("sudo", "otherhost", ""));
+}
+
+TEST(RemoteSessionTest, LocalSessionsAreNotRemote) {
+  using linuxcampam::pam::is_remote_session;
+  EXPECT_FALSE(is_remote_session("sudo", "", "mybox"));
+  EXPECT_FALSE(is_remote_session("sudo", "mybox", "mybox"));
+  EXPECT_FALSE(is_remote_session("gdm-password", "", "mybox"));
+  EXPECT_FALSE(is_remote_session("login", "localhost", "mybox"));
+  EXPECT_FALSE(is_remote_session("su", "127.0.0.1", "mybox"));
+  EXPECT_FALSE(is_remote_session("su", "::1", "mybox"));
+  EXPECT_FALSE(is_remote_session("", "", ""));
 }

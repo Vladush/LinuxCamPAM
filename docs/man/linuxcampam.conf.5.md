@@ -73,6 +73,10 @@ The file is in standard INI format. Sections and keys are case-insensitive.
 :   Require user confirmation (pressing Enter/Authenticate) before camera check for all non-exempt services. This prevents silent privilege escalation (e.g., background sudo) by requiring explicit user intent.
     (Default: `true`).
 
+**allow_remote_sessions** = *BOOL*
+:   Allow face authentication for remote logins. When `false`, the module returns `PAM_IGNORE` for `sshd`, `remote`, `cockpit` and `xrdp-sesman`, and for any session whose `PAM_RHOST` is not this machine, so the password is used instead.
+    (Default: `false`).
+
 **confirmation_exempt_services** = *LIST*
 :   Comma-separated list of PAM services that are exempt from the confirmation prompt. Typically, these are login managers and screen lockers where the user explicitly initiated the login process.
     (Default: `gdm-password,sddm,lightdm,login,swaylock,i3lock,xscreensaver,kscreenlocker,kde,systemd-user`).

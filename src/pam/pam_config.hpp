@@ -19,6 +19,7 @@ struct PamConfig {
   int auth_timeout_ms = linuxcampam::DEFAULT_AUTH_TIMEOUT_MS;
   uid_t min_uid = linuxcampam::DEFAULT_MIN_UID;
   bool require_confirmation = true;
+  bool allow_remote_sessions = false;
   std::vector<std::string> confirmation_exempt_services = {
       "gdm-password", "sddm", "lightdm", "login", 
       "swaylock", "i3lock", "xscreensaver", "kscreenlocker", "kde", "systemd-user"
@@ -107,6 +108,13 @@ inline void process_pam_config_line(std::string_view line,
   if (auto rc_opt = get_value("require_confirmation")) {
     if (auto b = config_parser::parse_bool_strict(*rc_opt)) {
       config.require_confirmation = *b;
+    }
+  }
+
+  // --- allow_remote_sessions ---
+  if (auto ar_opt = get_value("allow_remote_sessions")) {
+    if (auto b = config_parser::parse_bool_strict(*ar_opt)) {
+      config.allow_remote_sessions = *b;
     }
   }
 

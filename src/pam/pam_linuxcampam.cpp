@@ -4,8 +4,11 @@
 #include "ipc_protocol.hpp"
 #include "pam_config.hpp"
 #include "kde_lockscreen.hpp"
+#include "remote_session.hpp"
 
 #include <algorithm>
+#include <array>
+#include <climits>
 #include <cstring>
 #include <pwd.h>
 #include <security/pam_ext.h>
@@ -152,6 +155,28 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
       syslog(LOG_WARNING, "User not found in system database: %s", user);
       return PAM_USER_UNKNOWN;
     }
+    // Remote logins (SSH and friends) must never be satisfied by whoever is
+    // sitting in front of the local camera.
+    if (!config.allow_remote_sessions) {
+      const void *rhost_ptr = nullptr;
+      if (pam_get_item(pamh, PAM_RHOST, &rhost_ptr) != PAM_SUCCESS) {
+        rhost_ptr = nullptr;
+      }
+      const char *rhost = static_cast<const char *>(rhost_ptr);
+      std::array<char, HOST_NAME_MAX + 1> hostname{};
+      if (gethostname(hostname.data(), hostname.size() - 1) != 0) {
+        hostname.front() = '\0';
+      }
+      if (linuxcampam::pam::is_remote_session(service ? service : "",
+                                              rhost ? rhost : "",
+                                              hostname.data())) {
+        syslog(LOG_INFO,
+               "Skipping face auth for remote session: service=%s rhost=%s",
+               service ? service : "unknown", rhost ? rhost : "");
+        return PAM_IGNORE;
+      }
+    }
+
     // Create a socket to the authentication service
     if (flags & PAM_SILENT) {
       // If Silent, just debug log the version.

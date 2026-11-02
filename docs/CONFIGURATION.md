@@ -160,12 +160,14 @@ Protect against brute-force attacks by limiting the number of consecutive failur
 lockout_attempts = 5
 lockout_duration_sec = 300
 require_confirmation = true
+allow_remote_sessions = false
 confirmation_exempt_services = gdm-password, sddm, lightdm, login, swaylock, i3lock, xscreensaver, kscreenlocker, kde, systemd-user
 ```
 
 - **lockout_attempts**: Number of failed attempts before temporary lockout.
 - **lockout_duration_sec**: Duration of lockout in seconds (default 300s = 5 minutes).
-- **require_confirmation**: If `true` (default), blocks silent privilege escalation by requiring you to press `<Enter>` to invoke the camera, or type a password to seamlessly bypass face authentication altogether.
+- **require_confirmation**: If `true` (default), blocks silent privilege escalation by requiring you to press `<Enter>` to invoke the camera, or type a password to seamlessly bypass face authentication altogether. This stops passive authentication; it does not stop malware already running as you, which can answer the prompt itself.
+- **allow_remote_sessions**: If `false` (default), face authentication is skipped for remote logins (`sshd`, `cockpit`, `xrdp-sesman`, `remote`, or any session whose `PAM_RHOST` is another host) and PAM falls back to the password. Leave this off: the camera can only see whoever is at the machine, not the remote user.
 - **confirmation_exempt_services**: A comma-separated list of PAM services that bypass the confirmation prompt. These are typically explicit login events where the camera should activate instantly to avoid user fatigue.
 
 #### KDE Lock Screen
