@@ -81,6 +81,12 @@ void handle_client(int fd, AuthEngine &engine) {
       return cred.uid == *target_uid;
     };
 
+    // Adding or refining an embedding creates a new credential for the
+    // account, so it needs the same privilege as setting one: root. A matching
+    // UID alone would let anyone at an unlocked session enroll their own face
+    // and then pass face-authenticated sudo.
+    auto check_enroll_permission = [&]() -> bool { return cred.uid == 0; };
+
     // Command Dispatch
     switch (req.cmd) {
     case Command::AUTH_REQUEST: {
@@ -106,7 +112,7 @@ void handle_client(int fd, AuthEngine &engine) {
     case Command::ADD_USER: {
       if (req.args.empty())
         break;
-      if (!check_permission(req.args.front())) {
+      if (!check_enroll_permission()) {
         response = "ERROR Permission Denied";
         break;
       }
@@ -118,7 +124,7 @@ void handle_client(int fd, AuthEngine &engine) {
     case Command::TRAIN_USER: {
       if (req.args.empty())
         break;
-      if (!check_permission(req.args.front())) {
+      if (!check_enroll_permission()) {
         response = "ERROR Permission Denied";
         break;
       }
@@ -162,7 +168,8 @@ void handle_client(int fd, AuthEngine &engine) {
       if (req.args.size() < 2) {
         response = "ERROR Missing user or label";
       } else {
-        if (!check_permission(req.args.front())) {
+        // Labeling commits the pending capture from ADD_USER into a live embedding.
+        if (!check_enroll_permission()) {
           response = "ERROR Permission Denied";
           break;
         }
@@ -175,7 +182,7 @@ void handle_client(int fd, AuthEngine &engine) {
       if (req.args.empty()) {
         response = "ERROR Missing user";
       } else {
-        if (!check_permission(req.args.front())) {
+        if (!check_enroll_permission()) {
           response = "ERROR Permission Denied";
           break;
         }

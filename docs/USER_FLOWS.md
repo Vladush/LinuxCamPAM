@@ -27,7 +27,7 @@ graph TD
     Lighting --> EnrollAgain["Re-enroll"]
     
     Result -->|Face Detected, Low Score| Retrain["Retrain Model"]
-    Retrain --> CmdTrain["linuxcampam train USER"]
+    Retrain --> CmdTrain["sudo linuxcampam train USER"]
     
     Result -->|Too Dark| MinBright["Lower min_brightness in config"]
     
@@ -102,7 +102,7 @@ Bad enrollment data is the #1 cause of failure. Follow this loop for best result
 ```mermaid
 stateDiagram-v2
     [*] --> GoodLighting
-    GoodLighting --> Capture: Run linuxcampam add user
+    GoodLighting --> Capture: Run sudo linuxcampam add user
     
     state Capture {
         [*] --> AvoidBacklight: No window behind you
@@ -123,6 +123,6 @@ stateDiagram-v2
     Quality --> Done: Yes
     Quality --> TrainMore: No
     
-    TrainMore --> Capture: Run linuxcampam train user - Add variations glasses and angles
+    TrainMore --> Capture: Run sudo linuxcampam train user - Add variations glasses and angles
     Done --> [*]
 ```

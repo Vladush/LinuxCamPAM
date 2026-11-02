@@ -280,7 +280,7 @@ sudo linuxcampam add <username>
 Updates the existing user model with new face data to improve recognition accuracy.
 
 ```bash
-linuxcampam train <username>
+sudo linuxcampam train <username>
 ```
 
 **Test Authentication (Diagnostics):**
