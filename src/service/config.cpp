@@ -3,7 +3,9 @@
 #include "logger.hpp"
 #include "utils.hpp"
 #include "../common/config_parser.hpp"
+#include "../common/device_validator.hpp"
 
+#include <array>
 #include <fcntl.h>
 #include <fstream>
 #include <iostream>
@@ -174,15 +176,67 @@ void Configuration::parse_ini_into_self(
       get("General.max_embeddings", std::to_string(DEFAULT_MAX_EMBEDDINGS)), 0);
 
   // Capture Settings (Global)
-  if (ini.count("Capture.enroll_hdr"))
-    enroll_hdr = get("Capture.enroll_hdr");
+  if (ini.count("Capture.enroll_hdr")) {
+    std::string val = get("Capture.enroll_hdr");
+    if (val == "on" || val == "auto" || val == "off") {
+      enroll_hdr = val;
+    } else if (auto b = config_parser::parse_bool_strict(val)) {
+      enroll_hdr = *b ? "on" : "off";
+    } else {
+      throw std::invalid_argument("Invalid value for Capture.enroll_hdr: " + val + " (expected: on, auto, off)");
+    }
+  }
   if (ini.count("Capture.enroll_averaging"))
     enroll_averaging = get_bool("Capture.enroll_averaging", "false");
-  enroll_average_frames = get_int("Capture.enroll_average_frames", std::to_string(DEFAULT_ENROLL_AVG_FRAMES));
+  enroll_average_frames = get_int("Capture.enroll_average_frames",
+                                  std::to_string(DEFAULT_ENROLL_AVG_FRAMES),
+                                  linuxcampam::MIN_AVERAGE_FRAMES,
+                                  linuxcampam::MAX_AVERAGE_FRAMES);
 
   if (ini.count("Capture.verify_averaging"))
     verify_averaging = get_bool("Capture.verify_averaging", "false");
-  verify_average_frames = get_int("Capture.verify_average_frames", std::to_string(DEFAULT_VERIFY_AVG_FRAMES));
+  verify_average_frames = get_int("Capture.verify_average_frames",
+                                  std::to_string(DEFAULT_VERIFY_AVG_FRAMES),
+                                  linuxcampam::MIN_AVERAGE_FRAMES,
+                                  linuxcampam::MAX_AVERAGE_FRAMES);
+
+  // Validate all recognized aliases for ir_ambient_subtraction.
+  // Ambient subtraction is deferred in this release; requests to enable it are rejected.
+  std::optional<bool> parsed_ambient_subtraction;
+  std::string primary_key_found;
+
+  const std::array<std::pair<const char *, bool>, 3> ambient_aliases = {{
+      {"Capture.ir_ambient_subtraction", false},
+      {"Hardware.ir_ambient_subtraction", true},
+      {"Cameras.ir_ambient_subtraction", true}
+  }};
+
+  for (const auto &[key, is_deprecated] : ambient_aliases) {
+    if (ini.count(key)) {
+      std::string val = get(key);
+      auto b = config_parser::parse_bool_strict(val);
+      if (!b) {
+        throw std::invalid_argument("Invalid boolean for " + std::string(key) + ": " + val);
+      }
+      if (*b) {
+        throw std::invalid_argument(std::string(key) +
+            " is deferred and not supported in this release; must be false or omitted");
+      }
+      if (is_deprecated) {
+        log_warn("[Config] " + std::string(key) +
+                 " is deprecated; use Capture.ir_ambient_subtraction");
+      }
+      if (parsed_ambient_subtraction && *parsed_ambient_subtraction != *b) {
+        throw std::invalid_argument("Conflicting settings for " + primary_key_found +
+                                    " and " + std::string(key));
+      }
+      parsed_ambient_subtraction = b;
+      if (primary_key_found.empty()) {
+        primary_key_found = key;
+      }
+    }
+  }
+  ir_ambient_subtraction = parsed_ambient_subtraction.value_or(false);
 
   // Cameras
   std::string cam_names = get("Cameras.names", "");
@@ -190,13 +244,67 @@ void Configuration::parse_ini_into_self(
     for (const auto &id : config_parser::split_trimmed(cam_names)) {
       CameraDefinition def;
       def.id = id;
-      def.path = get("Camera." + id + ".path", "/dev/video0");
+      std::string path_str = get("Camera." + id + ".path", "/dev/video0");
+      if (!linuxcampam::isValidCameraPath(path_str)) {
+        std::string msg = "Invalid camera device path for Camera.";
+        msg += id;
+        msg += ": ";
+        msg += path_str;
+        throw std::invalid_argument(msg);
+      }
+      def.path = path_str;
       def.type = get("Camera." + id + ".type", "generic");
       def.min_brightness = get_int("Camera." + id + ".min_brightness", "0", 0, kMaxBrightness);
       def.mandatory = get_bool("Camera." + id + ".mandatory", "false");
-      def.enroll_hdr = get("Camera." + id + ".enroll_hdr", "");
-      def.enroll_averaging = get("Camera." + id + ".enroll_averaging", "");
-      def.enroll_average_frames = get_int("Camera." + id + ".enroll_average_frames", "0");
+      if (ini.count("Camera." + id + ".enroll_hdr")) {
+        std::string raw = get("Camera." + id + ".enroll_hdr");
+        if (raw == "on" || raw == "auto" || raw == "off" || raw == "true" || raw == "false") {
+          def.enroll_hdr = raw;
+        } else {
+          std::string msg = "Invalid value for Camera.";
+          msg += id;
+          msg += ".enroll_hdr: ";
+          msg += raw;
+          msg += " (expected: on, auto, off)";
+          throw std::invalid_argument(msg);
+        }
+      }
+      if (ini.count("Camera." + id + ".enroll_averaging")) {
+        std::string raw = get("Camera." + id + ".enroll_averaging");
+        if (auto b = config_parser::parse_bool_strict(raw)) {
+          def.enroll_averaging = b;
+        } else {
+          std::string msg = "Invalid boolean for Camera.";
+          msg += id;
+          msg += ".enroll_averaging: ";
+          msg += raw;
+          throw std::invalid_argument(msg);
+        }
+      }
+      if (ini.count("Camera." + id + ".enroll_average_frames")) {
+        def.enroll_average_frames = get_int(
+            "Camera." + id + ".enroll_average_frames",
+            std::to_string(linuxcampam::CAMERA_AVERAGE_FRAMES),
+            linuxcampam::MIN_AVERAGE_FRAMES, linuxcampam::MAX_AVERAGE_FRAMES);
+      }
+      if (ini.count("Camera." + id + ".ambient_subtraction")) {
+        std::string raw = get("Camera." + id + ".ambient_subtraction");
+        if (auto b = config_parser::parse_bool_strict(raw)) {
+          if (*b) {
+            std::string msg = "Camera.";
+            msg += id;
+            msg += ".ambient_subtraction is deferred and not supported in this release; must be false or omitted";
+            throw std::invalid_argument(msg);
+          }
+          def.ambient_subtraction = false;
+        } else {
+          std::string msg = "Invalid boolean for Camera.";
+          msg += id;
+          msg += ".ambient_subtraction: ";
+          msg += raw;
+          throw std::invalid_argument(msg);
+        }
+      }
 
       camera_defs.push_back(def);
     }
@@ -205,9 +313,16 @@ void Configuration::parse_ini_into_self(
     std::string path_ir = get("Hardware.camera_path_ir", "");
     std::string path_rgb = get("Hardware.camera_path_rgb", "");
     if (!path_ir.empty() || !path_rgb.empty()) {
-      if (!path_ir.empty())
+      if (!path_ir.empty()) {
+        if (!linuxcampam::isValidCameraPath(path_ir)) {
+          throw std::invalid_argument("Invalid camera device path for Hardware.camera_path_ir: " + path_ir);
+        }
         camera_defs.push_back({"ir", path_ir, "ir", 0, true});
+      }
       if (!path_rgb.empty()) {
+        if (!linuxcampam::isValidCameraPath(path_rgb)) {
+          throw std::invalid_argument("Invalid camera device path for Hardware.camera_path_rgb: " + path_rgb);
+        }
         int mb = get_int("Hardware.min_brightness",
                          std::to_string(linuxcampam::DEFAULT_MIN_BRIGHTNESS), 0, kMaxBrightness);
         camera_defs.push_back({"rgb", path_rgb, "rgb", mb, false});
@@ -372,6 +487,10 @@ std::string Configuration::toString() const {
     ss << "    Min Brightness: " << cam.min_brightness << "\n";
     if (!cam.enroll_hdr.empty()) {
       ss << "    Enroll HDR: " << cam.enroll_hdr << "\n";
+    }
+    if (cam.type == "ir" || cam.ambient_subtraction.has_value()) {
+      bool amb = cam.ambient_subtraction.value_or(ir_ambient_subtraction);
+      ss << "    Ambient Subtraction: " << (amb ? "Enabled" : "Disabled (deferred)") << "\n";
     }
     if (cam.type == "ir") {
       std::string ir_ver =

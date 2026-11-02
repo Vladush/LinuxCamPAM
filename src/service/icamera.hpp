@@ -27,4 +27,17 @@ public:
 
   // Capability detection
   [[nodiscard]] virtual bool supportsManualExposure() const = 0;
+
+  // Unified enrollment capture that resolves HDR and averaging on the active session
+  [[nodiscard]] virtual cv::Mat
+  captureEnrollment(std::string_view hdr_mode, bool use_averaging, int avg_frames) {
+    if (hdr_mode == "on" || hdr_mode == "true" ||
+        (hdr_mode == "auto" && supportsManualExposure())) {
+      return captureHDR();
+    }
+    if (use_averaging) {
+      return captureAveraged(avg_frames);
+    }
+    return capture();
+  }
 };

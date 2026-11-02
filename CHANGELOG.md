@@ -11,10 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **KDE lock screen**: New `kde_lockscreen` setting (`auto`, `single_enter`, `legacy`). In `single_enter`, press Enter to scan; a recognized face unlocks without a second Enter. `auto` enables this when the KDE PAM stack contains a `pam_kwallet5.so` auth rule.
 - **`linuxcampam check-kde`**: Read-only report of the effective KDE lock-screen behavior; also available as `linuxcampam-setup-config --check-kde`.
+- **IR Camera Pipeline Fixes**: Adaptive bimodal clustering to separate strobed IR_ON and IR_OFF frames, preventing ambient frame contamination during averaging in supported bursts and failing closed on ambiguous bursts.
+- **Dynamic Device Validation**: Enforced character-device validation at open time; camera construction is now free of hardware device opens and ioctl queries.
+- **Training & Enrollment Parity**: User training now honors configured HDR and frame averaging settings identical to enrollment.
 
 ### Changed
 
 - On upgrade, systems with the stock Kubuntu KDE PAM stack and no explicit `confirmation_exempt_services` switch to `single_enter`. Set `kde_lockscreen = legacy` to keep the previous behavior.
+- Frame averaging counts are strictly validated between 1 and 15 frames.
+- Ambient IR Subtraction: Feature is deferred in this release; requests to enable it are rejected fail-closed with an actionable error.
+- Re-enrollment note: If IR profiles were enrolled with frame averaging in bright ambient rooms, add a fresh profile (`sudo linuxcampam add <username>`). Use the label prompt to replace or supplement existing profiles. Note that ordinary training (`sudo linuxcampam train <username>`) blends new captures into existing embeddings rather than replacing them.
 
 ### Docs
 

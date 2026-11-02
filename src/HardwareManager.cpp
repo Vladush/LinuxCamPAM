@@ -1,7 +1,8 @@
 #include "HardwareManager.hpp"
-#include <system_error>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <system_error>
 #include <thread>
 
 bool HardwareManager::write_sysfs(const std::string& path, std::string_view value) {
@@ -20,13 +21,19 @@ bool HardwareManager::resolve_hid_device() {
         return false;
     }
 
-    for (const auto& entry : std::filesystem::directory_iterator(path, ec)) {
-        constexpr std::string_view PREFIX = "0018:";
-        std::string name = entry.path().filename().string();
-        if (name.rfind(PREFIX, 0) == 0) {
-            hid_id = std::move(name);
-            return true;
-        }
+    std::filesystem::directory_iterator dir(path, ec);
+    std::filesystem::directory_iterator end;
+    if (ec) {
+        return false;
+    }
+
+    auto it = std::find_if(dir, end, [](const auto& entry) {
+        constexpr std::string_view kPrefix = "0018:";
+        return entry.path().filename().string().rfind(kPrefix, 0) == 0;
+    });
+    if (it != end) {
+        hid_id = it->path().filename().string();
+        return true;
     }
     return false;
 }
