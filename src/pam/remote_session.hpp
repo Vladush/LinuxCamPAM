@@ -12,6 +12,10 @@ inline constexpr std::array<std::string_view, 4> REMOTE_SERVICES = {
 
 // PAM_RHOST values that still mean "this machine". sudo can set PAM_RHOST to
 // the local hostname, so that counts as local too.
+// Known limitation: with sudoers pam_rhost and fqdn enabled, sudo can pass a
+// canonical name (mybox.example) that differs from gethostname() (mybox), so
+// local sudo is treated as remote. The match stays exact on purpose: accepting
+// any name with the same first label would also accept other hosts.
 [[nodiscard]] inline bool is_local_rhost(std::string_view rhost,
                                          std::string_view hostname) {
   constexpr std::array<std::string_view, 6> loopback = {

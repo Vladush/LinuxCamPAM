@@ -32,7 +32,7 @@ jobs:
           TAG: ${{ github.event.workflow_run.head_branch }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          tag_sha=$(gh api "repos/${GITHUB_REPOSITORY}/commits/tags/${TAG}" --jq .sha)
+          tag_sha=$(gh api "repos/${GITHUB_REPOSITORY}/commits/refs/tags/${TAG}" --jq .sha)
           if [ "$tag_sha" != "$HEAD_SHA" ]; then
             echo "::error::Tag ${TAG} (${tag_sha}) does not match CI commit ${HEAD_SHA}"
             exit 1

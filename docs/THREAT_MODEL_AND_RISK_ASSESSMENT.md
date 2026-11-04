@@ -127,7 +127,7 @@ We use the STRIDE framework to analyze potential threats to the authentication p
 
 * **Threat:** The packaged PAM profile is enabled in `common-auth`, which remote services such as `sshd` also include. Without a check, a remote login would trigger the local camera and succeed whenever the target user happened to be sitting in front of it.
 * **Mitigation:** The PAM module returns `PAM_IGNORE` (falling through to the password) for remote-only services (`sshd`, `remote`, `cockpit`, `xrdp-sesman`) and whenever `PAM_RHOST` names a host other than this machine. This is controlled by `allow_remote_sessions` (default `false`).
-* **Residual Risk:** Low. Remote services that use a different PAM service name and do not set `PAM_RHOST` are not detected; restrict the module to specific services in that case.
+* **Residual Risk:** Low. Remote services that use a different PAM service name and do not set `PAM_RHOST` are not detected; restrict the module to specific services in that case. Separately, with sudoers `pam_rhost` and `fqdn` enabled, `sudo` can pass a canonical hostname that differs from `gethostname()`, so local `sudo` falls back to the password. This fails safe and doesn't affect default `sudo` configurations; `Defaults !pam_rhost` restores face authentication. Hostnames are matched exactly on purpose, because accepting any name with the same first label would also accept other hosts.
 
 ## 4. Risk Assessment Matrix
 
