@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Remote logins**: The PAM module no longer runs face authentication for remote sessions (`sshd`, `cockpit`, `xrdp-sesman`, `remote`, or a non-local `PAM_RHOST`); these fall back to the password. New `allow_remote_sessions` setting (default `false`).
+- **Enrollment requires root**: The daemon now rejects `ADD_USER`, `SET_LABEL`, `TRAIN_USER` and `TRAIN_NEW` from non-root callers. Previously only the CLI enforced this for `add`, and any user could enroll or refine a face on their own account through the socket. `linuxcampam train` now needs `sudo`.
+- **Release workflow**: Releases are only created from tag pushes in this repository, and the tag must point at the commit CI built. Previously a fork pull request from a branch named `v*` could publish its own build artifacts as a release.
+- **Installer temp files**: `linuxcampam-setup-config` and `install_ir_emitter.sh` no longer stage scripts or the Rust toolchain at fixed `/tmp` paths, which another local user could pre-create to run code as root.
+
 ### Added
 
 - **KDE lock screen**: New `kde_lockscreen` setting (`auto`, `single_enter`, `legacy`). In `single_enter`, press Enter to scan; a recognized face unlocks without a second Enter. `auto` enables this when the KDE PAM stack contains a `pam_kwallet5.so` auth rule.
@@ -25,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Docs
 
 - Corrected the documented default `confirmation_exempt_services` list.
+- Threat model: documented the residual risk of `require_confirmation` against malware running as the user, and added a remote-session section.
 
 ## [0.9.7.5] - 2026-06-10
 

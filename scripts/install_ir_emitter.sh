@@ -11,14 +11,18 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+# All build state lives in a private, root-owned directory. Fixed /tmp paths
+# would let another local user plant files or binaries that root then runs.
+WORK_DIR=$(mktemp -d)
+trap 'rm -rf -- "$WORK_DIR"' EXIT
+
 echo "=== Installing Dependencies ==="
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y git pkg-config libssl-dev libclang-dev libv4l-dev libopencv-dev meson ninja-build libgtk-3-dev libyaml-cpp-dev libargparse-dev
 
 echo "=== Cloning Repository ==="
-cd /tmp
-rm -rf linux-enable-ir-emitter
+cd "$WORK_DIR"
 # Use Vladush fork to test PR changes
 git clone https://github.com/Vladush/linux-enable-ir-emitter.git
 cd linux-enable-ir-emitter
@@ -87,14 +91,14 @@ if [ -f "Cargo.toml" ]; then
     fi
 
     # No pre-built binary - check for Rust toolchain
-    # IMPORTANT: Run `cargo --version` in /tmp where no Cargo.toml exists, or else old cargo versions abort instantly
+    # IMPORTANT: Run `cargo --version` outside the source tree (no Cargo.toml), or else old cargo versions abort instantly
     CARGO_AVAILABLE=false
     if command -v cargo &>/dev/null; then
         CARGO_AVAILABLE=true
     fi
     
     if [ "$CARGO_AVAILABLE" = true ]; then
-        CARGO_VERSION=$(cd /tmp && cargo --version 2>/dev/null | awk '{print $2}' | cut -d'.' -f1,2 | sed 's/\.//')
+        CARGO_VERSION=$(cd "$WORK_DIR" && cargo --version 2>/dev/null | awk '{print $2}' | cut -d'.' -f1,2 | sed 's/\.//')
         # Default to 0 if parsing fails
         CARGO_VERSION=${CARGO_VERSION:-0}
         if [ "$CARGO_VERSION" -lt 185 ]; then
@@ -105,10 +109,10 @@ if [ -f "Cargo.toml" ]; then
     
     if [ "$CARGO_AVAILABLE" = false ]; then
         echo "Temporarily installing the latest stable Rust toolchain via rustup..."
-        export RUSTUP_HOME=/tmp/rustup
-        export CARGO_HOME=/tmp/cargo
+        export RUSTUP_HOME="$WORK_DIR/rustup"
+        export CARGO_HOME="$WORK_DIR/cargo"
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
-        export PATH="/tmp/cargo/bin:$PATH"
+        export PATH="$CARGO_HOME/bin:$PATH"
         echo "Using temporary Rust toolchain: $(cargo --version)"
     fi
     
@@ -125,7 +129,7 @@ if [ -f "Cargo.toml" ]; then
         echo ""
         
         # Switch to stable 6.1.2 repository
-        cd /tmp
+        cd "$WORK_DIR"
         rm -rf linux-enable-ir-emitter
         git clone https://github.com/EmixamPP/linux-enable-ir-emitter.git
         cd linux-enable-ir-emitter
@@ -174,12 +178,7 @@ if [ -f "Cargo.toml" ]; then
     echo "Installing binary..."
     cp target/release/linux-enable-ir-emitter /usr/local/bin/
     chmod +x /usr/local/bin/linux-enable-ir-emitter
-    
-    # Cleanup temporary toolchain if we created it
-    if [ -n "$RUSTUP_HOME" ]; then
-        echo "Cleaning up temporary Rust toolchain..."
-        rm -rf /tmp/rustup /tmp/cargo
-    fi
+    # The temporary toolchain (if any) is removed with $WORK_DIR on exit.
 else
     echo "=== Building and Installing (Meson) ==="
     rm -rf build

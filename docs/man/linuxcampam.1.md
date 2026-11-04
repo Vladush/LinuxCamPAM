@@ -28,7 +28,7 @@ linuxcampam - Command line interface for LinuxCamPAM face authentication system
 
 **train** [*USERNAME*] [*OPTIONS*]
 :   Train or refine the model for a user.
-    **Requires root privileges** (unless training self and permissions allow).
+    **Requires root privileges.**
 
     **--label** *NAME*
     :   Refine a specific embedding label (e.g., "glasses", "dark").

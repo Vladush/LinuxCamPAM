@@ -284,7 +284,10 @@ int main(int argc, char *argv[]) {
       }
     }
 
-    if (!may_access_user(user)) return 1;
+    if (getuid() != 0) {
+      std::cerr << "Error: Training face data requires root privileges (sudo)." << '\n';
+      return 1;
+    }
 
     if (is_new) {
       // Prompt for new label
