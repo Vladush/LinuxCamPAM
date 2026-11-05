@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>LinuxCamPAM IR camera test</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: dark; --bg: #111316; --panel: #1b1e23; --line: #2e333a; --text: #e6e8eb;
+          --dim: #98a0aa; --good: #57c78a; --warn: #e5b454; --bad: #ef6f6c; --accent: #7aa7ff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 20px; background: var(--bg); color: var(--text);
+         font: 15px/1.45 system-ui, sans-serif; }
+  main { max-width: 1040px; margin: auto; display: grid; gap: 14px; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); }
+  header, #result, #live { grid-column: 1 / -1; }
+  @media (max-width: 760px) { main { grid-template-columns: minmax(0, 1fr); } }
+  h1 { margin: 0; font-size: 20px; }
+  h2 { margin: 0 0 8px; font-size: 15px; }
+  .dim { color: var(--dim); font-size: 13px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  canvas { display: block; width: 100%; background: #000; border-radius: 4px; }
+  #graph { margin-top: 10px; height: 70px; }
+  #verdict { font-size: 16px; font-weight: 600; }
+  #verdict-why { margin: 2px 0 12px; }
+  dl { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin: 0 0 14px; }
+  dt { color: var(--dim); }
+  dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+  .good { color: var(--good); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  button { width: 100%; margin-top: 6px; padding: 9px; font: inherit; color: var(--text); cursor: pointer;
+           background: #2a2f37; border: 1px solid var(--line); border-radius: 6px; }
+  button.primary { background: #2f4e86; border-color: var(--accent); }
+  button:hover:not(:disabled) { filter: brightness(1.2); }
+  button:disabled { opacity: .5; cursor: wait; }
+  pre { margin: 8px 0 0; padding: 10px; overflow-x: auto; background: #0c0e10; border-radius: 4px; font-size: 13px; }
+  #live-toggle { width: auto; padding: 9px 16px; }
+  #live-verdict { margin-top: 12px; font-size: 16px; font-weight: 600; }
+  #live-cameras { display: grid; gap: 12px; margin-top: 12px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .cam { border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
+  .cam-head { display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px; }
+  .cam-score { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .track { position: relative; height: 10px; margin: 4px 0 8px; background: #0c0e10; border-radius: 5px; }
+  .fill { height: 100%; border-radius: 5px; background: var(--dim); }
+  .tick { position: absolute; top: -3px; bottom: -3px; width: 2px; }
+  .tick.real { background: var(--text); }
+  .tick.whatif { background: var(--accent); }
+  #live-history { margin-top: 12px; height: 110px; }
+  .whatif-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+  .whatif-row input { width: 80px; padding: 4px 6px; font: inherit; color: var(--text); background: #0c0e10; border: 1px solid var(--line); border-radius: 4px; }
+  table { width: 100%; margin-top: 8px; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: 4px 8px; text-align: right; border-top: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--dim); font-weight: 500; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>LinuxCamPAM IR camera test</h1>
+    <div class="dim" id="device">Connecting…</div>
+  </header>
+
+  <section class="panel">
+    <canvas id="feed" width="640" height="360" aria-label="Live IR camera feed"></canvas>
+    <canvas id="graph" width="640" height="70" aria-label="Frame brightness over time"></canvas>
+    <div class="dim">Brightness per frame. Blue is lit, grey is dark, and the red line is the daemon's dark limit.</div>
+  </section>
+
+  <aside class="panel">
+    <div id="verdict">Starting…</div>
+    <div class="dim" id="verdict-why"></div>
+    <dl>
+      <dt>Lit brightness</dt><dd id="s-bright">–</dd>
+      <dt>Clipped pixels (glare)</dt><dd id="s-clip">–</dd>
+      <dt>Usable bursts, last 3s</dt><dd id="s-usable">–</dd>
+      <dt>Frame rate</dt><dd id="s-fps">–</dd>
+    </dl>
+    <button id="toggle">Stop camera</button>
+    <button id="test" class="primary">Run face test</button>
+    <p class="dim">Runs <code>linuxcampam test</code> through the daemon. Each failure counts toward the login
+      lockout (5 failures, 5 minutes by default), but your password still works during one.</p>
+  </aside>
+
+  <section class="panel" id="result" hidden>
+    <h2 id="result-title"></h2>
+    <div class="dim" id="result-when"></div>
+    <pre id="result-log"></pre>
+  </section>
+
+  <section class="panel" id="live">
+    <h2>Live scores from the real login code</h2>
+    <p class="dim" id="live-hint"></p>
+    <button id="live-toggle" hidden>Start live scores</button>
+    <div id="live-verdict" hidden></div>
+    <div class="dim" id="live-config"></div>
+    <div id="live-cameras"></div>
+    <div id="live-tuning" hidden>
+      <canvas id="live-history" width="1000" height="110" aria-label="Match score per scan"></canvas>
+      <div class="dim" id="live-legend"></div>
+      <label class="whatif-row">What if the threshold were
+        <input id="whatif" type="number" min="0" max="1" step="0.01"></label>
+      <table>
+        <thead><tr><th>Camera</th><th>Scans</th><th>Lowest</th><th>Average</th><th>Highest</th><th>At what-if</th><th>No face</th><th>No capture</th></tr></thead>
+        <tbody id="live-stats"></tbody>
+      </table>
+      <p class="dim" id="live-note"></p>
+    </div>
+  </section>
+</main>
+
+<script>
+// Values and rules from src/service/camera_frames.{hpp,cpp}.
+const DARK_FLOOR = 3.0;        // kDefaultIrDarkFrameMean
+const MIN_STROBE_GAP = 8.0;    // kMinStrobeDelta
+const STABLE_SPREAD = 4.0;     // kStableSpread
+const CLIP_VALUE = 250;        // kSaturationPixelValue
+const CLIP_LIMIT = 0.02;       // kDefaultMaxSaturationRatio
+const BURST_FRAMES = 6;        // kDefaultMaxCandidateReads
+
+const USABLE_WINDOW = 90;      // About 3 seconds at 30 fps.
+const GRAPH_FRAMES = 160;
+const STATS_INTERVAL_MS = 250;
+
+const VERDICTS = {
+  strobe:    ["Usable: emitter strobing", "good", "Lit and dark frames separate cleanly, so the daemon can pick a lit frame."],
+  stable:    ["Usable: steady IR light", "good", "Brightness is stable, so the daemon treats the light as continuous."],
+  ambiguous: ["Would be rejected: unstable", "warn", "Brightness is changing too much to separate lit frames. The daemon reports this as “Capture failed”. It often settles within a second."],
+  empty:     ["No IR light", "bad", "Frames are below the dark limit. The lens may be covered or the emitter off. Run the face test or \"sudo linux-enable-ir-emitter run\" to turn it on."],
+};
+
+const $ = (id) => document.getElementById(id);
+const token = new URLSearchParams(location.search).get("t") || "";
+const url = (path) => `${path}?t=${encodeURIComponent(token)}`;
+
+const feed = $("feed").getContext("2d");
+const graph = $("graph").getContext("2d");
+let image = null;
+let streamAbort = null;
+let frameCount = 0;
+let lastStats = { time: performance.now(), frames: 0 };
+let burst = [];
+let history = [];
+let usable = [];
+let current = { kind: "empty", threshold: Infinity };
+let litMean = null;
+let litClip = null;
+
+// Port of partitionCandidates(): classifies a burst the way the daemon does.
+function classifyBurst(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const n = sorted.length;
+  const min = sorted[0];
+  const max = sorted[n - 1];
+  if (max < DARK_FLOOR) return { kind: "empty", threshold: Infinity };
+
+  const minCluster = n >= 4 ? 2 : 1;
+  let bestGap = -1;
+  let threshold = 0;
+  for (let k = minCluster; k + minCluster <= n; k++) {
+    const maxLow = sorted[k - 1];
+    const minHigh = sorted[k];
+    const gap = minHigh - maxLow;
+    const compact = maxLow - min <= STABLE_SPREAD && max - minHigh <= STABLE_SPREAD;
+    if (compact && gap >= MIN_STROBE_GAP && minHigh >= DARK_FLOOR && gap > bestGap) {
+      bestGap = gap;
+      threshold = (maxLow + minHigh) / 2;
+    }
+  }
+  if (bestGap >= MIN_STROBE_GAP) return { kind: "strobe", threshold };
+  if (n >= 2 && max - min <= STABLE_SPREAD && min >= DARK_FLOOR) return { kind: "stable", threshold: DARK_FLOOR };
+  return { kind: "ambiguous", threshold: DARK_FLOOR };
+}
+
+function measure(frame) {
+  let sum = 0;
+  let clipped = 0;
+  for (let i = 0; i < frame.length; i++) {
+    sum += frame[i];
+    if (frame[i] >= CLIP_VALUE) clipped++;
+  }
+  return { mean: sum / frame.length, clip: clipped / frame.length };
+}
+
+function drawFrame(frame) {
+  const pixels = image.data;
+  for (let i = 0, p = 0; i < frame.length; i++, p += 4) {
+    pixels[p] = pixels[p + 1] = pixels[p + 2] = frame[i];
+    pixels[p + 3] = 255;
+  }
+  feed.putImageData(image, 0, 0);
+}
+
+function onFrame(frame) {
+  frameCount++;
+  const { mean, clip } = measure(frame);
+
+  burst.push(mean);
+  if (burst.length > BURST_FRAMES) burst.shift();
+  if (burst.length === BURST_FRAMES) {
+    current = classifyBurst(burst);
+    usable.push(current.kind === "strobe" || current.kind === "stable");
+    if (usable.length > USABLE_WINDOW) usable.shift();
+  }
+
+  // Skip the emitter's dark phase so the feed doesn't flicker.
+  const lit = mean >= current.threshold;
+  if (lit || current.kind === "empty") drawFrame(frame);
+  if (lit) {
+    litMean = mean;
+    litClip = clip;
+  }
+
+  history.push({ mean, lit });
+  if (history.length > GRAPH_FRAMES) history.shift();
+}
+
+function drawGraph() {
+  const { width, height } = graph.canvas;
+  graph.clearRect(0, 0, width, height);
+  const top = Math.max(60, ...history.map((h) => h.mean));
+  const barWidth = width / GRAPH_FRAMES;
+  history.forEach((h, i) => {
+    const barHeight = Math.max(1, (h.mean / top) * height);
+    graph.fillStyle = h.lit ? "#7aa7ff" : "#555c66";
+    graph.fillRect(i * barWidth, height - barHeight, Math.max(1, barWidth - 1), barHeight);
+  });
+  graph.fillStyle = "#ef6f6c";
+  graph.fillRect(0, height - (DARK_FLOOR / top) * height - 1, width, 1);
+}
+
+function showVerdict(text, tone, why) {
+  $("verdict").textContent = text;
+  $("verdict").className = tone;
+  $("verdict-why").textContent = why;
+}
+
+function updateStats() {
+  const now = performance.now();
+  if (streamAbort && now - lastStats.time >= STATS_INTERVAL_MS) {
+    const fps = ((frameCount - lastStats.frames) * 1000) / (now - lastStats.time);
+    lastStats = { time: now, frames: frameCount };
+    $("s-fps").textContent = `${fps.toFixed(0)} fps`;
+    if (frameCount >= BURST_FRAMES) {
+      const [text, tone, why] = VERDICTS[current.kind];
+      showVerdict(text, tone, why);
+      $("s-bright").textContent = litMean === null ? "–" : litMean.toFixed(1);
+      $("s-clip").textContent = litClip === null ? "–" : `${(litClip * 100).toFixed(1)}%`;
+      $("s-clip").className = litClip > CLIP_LIMIT ? "warn" : "";
+      const share = usable.length ? usable.filter(Boolean).length / usable.length : 0;
+      $("s-usable").textContent = `${(share * 100).toFixed(0)}%`;
+      $("s-usable").className = share >= 0.8 ? "good" : share >= 0.4 ? "warn" : "bad";
+    }
+    drawGraph();
+  }
+  requestAnimationFrame(updateStats);
+}
+
+async function startStream(frameBytes) {
+  const abort = new AbortController();
+  streamAbort = abort;
+  $("toggle").textContent = "Stop camera";
+  burst = [];
+  usable = [];
+  current = { kind: "empty", threshold: Infinity };
+  showVerdict("Starting…", "", "");
+  try {
+    const response = await fetch(url("/api/stream"), { signal: abort.signal });
+    if (!response.ok) throw new Error(await response.text());
+    const reader = response.body.getReader();
+    const frame = new Uint8Array(frameBytes);
+    let filled = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) throw new Error("The camera stream ended.");
+      let offset = 0;
+      while (offset < value.length) {
+        const count = Math.min(frameBytes - filled, value.length - offset);
+        frame.set(value.subarray(offset, offset + count), filled);
+        filled += count;
+        offset += count;
+        if (filled === frameBytes) {
+          onFrame(frame);
+          filled = 0;
+        }
+      }
+    }
+  } catch (error) {
+    if (!abort.signal.aborted) {
+      stopStream();
+      showVerdict("Camera unavailable", "bad", error.message);
+    }
+  }
+}
+
+function stopStream() {
+  if (streamAbort) streamAbort.abort();
+  streamAbort = null;
+  $("toggle").textContent = "Start camera";
+  $("s-fps").textContent = "–";
+  showVerdict("Camera stopped", "", "The camera is free, so real face logins can use it.");
+}
+
+async function runFaceTest(frameBytes) {
+  const wasStreaming = streamAbort !== null;
+  stopStream();
+  showVerdict("Testing…", "", "Look at the camera. The daemon has the camera for this test.");
+  $("test").disabled = true;
+  $("toggle").disabled = true;
+  $("result").hidden = false;
+  $("result-title").textContent = "Running…";
+  $("result-title").className = "";
+  $("result-when").textContent = "";
+  $("result-log").textContent = "";
+  try {
+    const response = await fetch(url("/api/test"), { method: "POST" });
+    if (!response.ok) throw new Error(await response.text());
+    const result = await response.json();
+    $("result-title").textContent = result.ok ? "Face test passed" : "Face test failed";
+    $("result-title").className = result.ok ? "good" : "bad";
+    $("result-log").textContent = [result.response, ...result.log].join("\n");
+  } catch (error) {
+    $("result-title").textContent = "Couldn't run the test";
+    $("result-title").className = "bad";
+    $("result-log").textContent = error.message;
+  }
+  $("result-when").textContent = `Finished at ${new Date().toLocaleTimeString()}`;
+  $("test").disabled = false;
+  $("toggle").disabled = false;
+  if (wasStreaming) startStream(frameBytes);
+  else stopStream();
+}
+
+// --- Live scores: each round is one complete pass of the real login code. ---
+
+const LIVE_GAP_MS = 300;       // Leaves room for real logins between scans.
+const LIVE_HISTORY = 60;
+const SERIES_COLORS = ["#7aa7ff", "#e5b454", "#57c78a", "#c792ea"];
+const SERIES_NAMES = ["blue", "amber", "green", "purple"];
+const MIN_FACE_LABEL_Y = 14;
+
+const live = { running: false, done: null, cards: new Map(), scans: [], threshold: null, whatIf: null };
+
+function makeCard(cam) {
+  const card = document.createElement("div");
+  card.className = "cam";
+  card.innerHTML = `<canvas width="640" height="360"></canvas>
+    <div class="cam-head"><span class="name"></span><span class="cam-score"></span></div>
+    <div class="track"><div class="fill"></div><div class="tick real"></div><div class="tick whatif"></div></div>
+    <div class="message"></div><div class="dim details"></div>`;
+  $("live-cameras").append(card);
+  const required = cam.mandatory ? ", required" : "";
+  card.querySelector(".name").textContent = `${cam.id} (${cam.type || "camera"}${required})`;
+  return card;
+}
+
+async function drawScanFrame(canvas, cam) {
+  const ctx = canvas.getContext("2d");
+  if (!cam.image) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    return;
+  }
+  const picture = new Image();
+  picture.src = `data:image/jpeg;base64,${cam.image}`;
+  await picture.decode();
+  canvas.width = picture.naturalWidth;
+  canvas.height = picture.naturalHeight;
+  ctx.drawImage(picture, 0, 0);
+  const scale = picture.naturalWidth / cam.width;
+  ctx.font = "14px system-ui, sans-serif";
+  ctx.lineWidth = 2;
+  // Green or red is the face the engine compared. Amber faces were ignored.
+  cam.faces.forEach((face, index) => {
+    const color = index > 0 ? "#e5b454" : cam.match ? "#57c78a" : "#ef6f6c";
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.strokeRect(face.x * scale, face.y * scale, face.w * scale, face.h * scale);
+    ctx.fillText(`face ${face.score.toFixed(2)}`, face.x * scale, Math.max(MIN_FACE_LABEL_Y, face.y * scale - 4));
+  });
+}
+
+function updateCard(cam, threshold) {
+  if (!live.cards.has(cam.id)) live.cards.set(cam.id, makeCard(cam));
+  const card = live.cards.get(cam.id);
+  drawScanFrame(card.querySelector("canvas"), cam);
+
+  const scored = cam.message === "MATCH" || cam.message === "NO MATCH";
+  const score = card.querySelector(".cam-score");
+  score.textContent = scored ? cam.score.toFixed(3) : "–";
+  score.className = `cam-score ${scored ? (cam.match ? "good" : "bad") : ""}`;
+  const fill = card.querySelector(".fill");
+  fill.style.width = `${(scored ? Math.max(0, Math.min(1, cam.score)) : 0) * 100}%`;
+  fill.style.background = cam.match ? "var(--good)" : "var(--bad)";
+  card.querySelector(".tick.real").style.left = `${threshold * 100}%`;
+  card.querySelector(".tick.whatif").style.left = `${live.whatIf * 100}%`;
+
+  const message = card.querySelector(".message");
+  message.textContent = scored ? `${cam.message}, needs ${threshold.toFixed(3)}` : cam.message;
+  message.className = `message ${cam.match ? "good" : "bad"}`;
+  const details = [`${cam.ms} ms`];
+  if (cam.brightness !== undefined) details.push(`brightness ${cam.brightness.toFixed(0)}`);
+  if (cam.clipped !== undefined) details.push(`glare ${(cam.clipped * 100).toFixed(1)}%`);
+  if (cam.faces.length > 1) details.push(`${cam.faces.length} faces, the green or red box was compared`);
+  card.querySelector(".details").textContent = details.join(" · ");
+}
+
+// The engine can stop before reaching a camera, such as when a required one fails.
+// Clear its card so an old score doesn't look like part of this scan.
+function clearCard(card) {
+  const canvas = card.querySelector("canvas");
+  canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+  card.querySelector(".cam-score").textContent = "–";
+  card.querySelector(".cam-score").className = "cam-score";
+  card.querySelector(".fill").style.width = "0%";
+  card.querySelector(".message").textContent = "Not reached in this scan";
+  card.querySelector(".message").className = "message dim";
+  card.querySelector(".details").textContent = "";
+}
+
+function cameraIds() {
+  return [...live.cards.keys()];
+}
+
+function drawLiveHistory() {
+  const canvas = $("live-history");
+  const ctx = canvas.getContext("2d");
+  const { width, height } = canvas;
+  const y = (score) => height - Math.max(0, Math.min(1, score)) * height;
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#e6e8eb";
+  ctx.fillRect(0, y(live.threshold) - 1, width, 1);
+  ctx.fillStyle = "#7aa7ff";
+  ctx.fillRect(0, y(live.whatIf) - 1, width, 1);
+
+  const recent = live.scans.slice(-LIVE_HISTORY);
+  const step = width / LIVE_HISTORY;
+  cameraIds().forEach((id, seriesIndex) => {
+    ctx.fillStyle = SERIES_COLORS[seriesIndex % SERIES_COLORS.length];
+    recent.forEach((scan, index) => {
+      const cam = scan.cameras.find((entry) => entry.id === id);
+      if (!cam) return;
+      const scored = cam.message === "MATCH" || cam.message === "NO MATCH";
+      // Scans with no score sit on the bottom edge.
+      ctx.fillRect(index * step + step / 2 - 3, (scored ? y(cam.score) : height - 3) - 3, 6, 6);
+    });
+  });
+  const names = cameraIds().map((id, index) => `${SERIES_NAMES[index % SERIES_NAMES.length]} is ${id}`);
+  $("live-legend").textContent = `Score per scan: ${names.join(", ")}. White line: current threshold. Thin blue line: what-if.`;
+}
+
+function updateLiveStats() {
+  const rows = cameraIds().map((id) => {
+    const all = live.scans.flatMap((scan) => scan.cameras.filter((cam) => cam.id === id));
+    const scores = all.filter((cam) => cam.message === "MATCH" || cam.message === "NO MATCH").map((cam) => cam.score);
+    const passing = scores.filter((score) => score >= live.whatIf).length;
+    const average = scores.reduce((total, score) => total + score, 0) / (scores.length || 1);
+    const format = (value) => (scores.length ? value.toFixed(3) : "–");
+    return [
+      id, all.length, format(Math.min(...scores)), format(average), format(Math.max(...scores)),
+      `${passing} of ${scores.length}`,
+      all.filter((cam) => cam.message === "NO_FACE_DETECTED").length,
+      all.filter((cam) => cam.message === "Capture failed").length,
+    ];
+  });
+  $("live-stats").replaceChildren(...rows.map((cells) => {
+    const row = document.createElement("tr");
+    for (const cell of cells) row.insertCell().textContent = cell;
+    return row;
+  }));
+}
+
+function renderScan(scan) {
+  const threshold = scan.threshold ?? live.threshold ?? 0;
+  if (live.threshold === null && scan.threshold !== undefined) {
+    live.threshold = scan.threshold;
+    live.whatIf = scan.threshold;
+    $("whatif").value = scan.threshold.toFixed(3);
+  }
+  const verdict = $("live-verdict");
+  verdict.hidden = false;
+  verdict.textContent = scan.would_pass ? "Would log in" : `Would be refused: ${scan.reason || "no reason given"}`;
+  verdict.className = scan.would_pass ? "good" : "bad";
+  if (scan.threshold !== undefined) {
+    $("live-config").textContent =
+      `Scan took ${scan.elapsed_ms} ms of ${scan.timeout_ms} ms allowed. Match threshold ${scan.threshold.toFixed(3)}, ` +
+      `face detection ${scan.detection_threshold.toFixed(2)}, ${scan.policy} policy.`;
+  }
+  if (!scan.cameras.length) return;
+  live.scans.push(scan);
+  scan.cameras.forEach((cam) => {
+    updateCard(cam, threshold);
+    delete cam.image; // Already handed to the canvas. Keeps long sessions small.
+  });
+  for (const [id, card] of live.cards) {
+    if (!scan.cameras.some((cam) => cam.id === id)) clearCard(card);
+  }
+  $("live-tuning").hidden = false;
+  drawLiveHistory();
+  updateLiveStats();
+}
+
+async function liveLoop() {
+  while (live.running) {
+    try {
+      const response = await fetch(url("/api/scan"), { method: "POST" });
+      if (!response.ok) throw new Error(await response.text());
+      renderScan(await response.json());
+    } catch (error) {
+      live.running = false;
+      renderScan({ would_pass: false, reason: error.message, cameras: [] });
+    }
+    if (live.running) await new Promise((resolve) => setTimeout(resolve, LIVE_GAP_MS));
+  }
+}
+
+function setLiveControls(running) {
+  $("test").disabled = running;
+  $("toggle").disabled = running;
+  $("live-toggle").textContent = running ? "Stop live scores" : "Start live scores";
+}
+
+function toggleLive() {
+  if (live.running) {
+    live.running = false;
+    $("live-toggle").disabled = true;
+    $("live-toggle").textContent = "Finishing this scan…";
+    return;
+  }
+  stopStream();
+  showVerdict("Live scores running", "", "The feed pauses because each scan needs the cameras. Scores are in the section below.");
+  setLiveControls(true);
+  live.running = true;
+  live.done = liveLoop().finally(() => {
+    setLiveControls(false);
+    $("live-toggle").disabled = false;
+    showVerdict("Camera stopped", "", "The camera is free, so real face logins can use it.");
+  });
+}
+
+function setupLive(info) {
+  if (!info.live) {
+    $("live-hint").textContent = "Off. To turn it on, run tools/ir-test/build.sh, then start this page with: sudo python3 tools/ir-test/server.py";
+    return;
+  }
+  $("live-hint").textContent =
+    `Scoring ${info.live_user} every few seconds. Each round is a complete login scan, including reopening the cameras, ` +
+    "so it's not smooth video. Scores compare against the enrolled face and aren't a percentage of certainty. " +
+    "These scans don't count toward the lockout or save images.";
+  $("live-note").textContent =
+    `The what-if line only changes this table. To change a setting, edit ${info.config}, then restart this page to score with it, ` +
+    "and run sudo systemctl restart linuxcampam so real logins use it.";
+  $("live-toggle").hidden = false;
+  $("live-toggle").addEventListener("click", toggleLive);
+  $("whatif").addEventListener("input", (event) => {
+    const value = Number.parseFloat(event.target.value);
+    if (Number.isNaN(value) || live.threshold === null) return;
+    live.whatIf = Math.max(0, Math.min(1, value));
+    const last = live.scans.at(-1);
+    if (last) {
+      last.cameras.forEach((cam) => {
+        live.cards.get(cam.id).querySelector(".tick.whatif").style.left = `${live.whatIf * 100}%`;
+      });
+      drawLiveHistory();
+      updateLiveStats();
+    }
+  });
+}
+
+async function init() {
+  const response = await fetch(url("/api/info"));
+  if (!response.ok) throw new Error("Open the full URL printed by server.py, including the token.");
+  const info = await response.json();
+  $("device").textContent = `${info.device}, ${info.width}×${info.height}, testing as ${info.user}`;
+  $("feed").width = info.width;
+  $("feed").height = info.height;
+  image = feed.createImageData(info.width, info.height);
+  const frameBytes = info.width * info.height;
+
+  $("toggle").addEventListener("click", () => {
+    if (streamAbort) stopStream();
+    else startStream(frameBytes);
+  });
+  $("test").addEventListener("click", () => runFaceTest(frameBytes));
+  setupLive(info);
+
+  requestAnimationFrame(updateStats);
+  startStream(frameBytes);
+}
+
+init().catch((error) => showVerdict("Couldn't start", "bad", error.message));
+</script>
+</body>
+</html>
